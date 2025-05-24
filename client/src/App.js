@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import TodoItem from "./TodoItem";
-const API_BASE = "http://localhost:4000/to-do-app";
+const API_BASE = process.env.MONGODB_URI;
 
 function App() {
 	const [items, setItems] = useState([]);

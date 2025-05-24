@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-const API_BASE = "http://localhost:4000/to-do-app";
+const API_BASE = process.env.MONGODB_URI;
 
 function TodoItem(props) {
 	const { name, id, completed, setItems } = props;
