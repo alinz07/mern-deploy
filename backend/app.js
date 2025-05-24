@@ -26,9 +26,9 @@ mongoose
 	});
 
 // route
-app.get("/", (req, res) => {
-	res.status(201).json({ message: "Connected to Backend!" });
-});
+// app.get("/", (req, res) => {
+// 	res.status(201).json({ message: "Connected to Backend!" });
+// });
 
 app.get("/todo", async (req, res) => {
 	const todos = await Todo.find();
