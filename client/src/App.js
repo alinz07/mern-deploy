@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import TodoItem from "./TodoItem";
-const API_BASE = process.env.API_BASE_TEST;
+const API_BASE = process.env.API_BASE_TEST + "/todo";
+console.log(API_BASE);
 
 function App() {
 	const [items, setItems] = useState([]);

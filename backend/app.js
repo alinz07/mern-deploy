@@ -1,9 +1,11 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const app = express();
 const cors = require("cors");
 const Todo = require("./models/Todo");
 require("dotenv").config();
+
+//Execute express
+const app = express();
 
 // middleware
 const corsOptions = {
@@ -26,9 +28,9 @@ mongoose
 	});
 
 // route
-// app.get("/", (req, res) => {
-// 	res.status(201).json({ message: "Connected to Backend!" });
-// });
+app.get("/", (req, res) => {
+	res.status(201).json({ message: "Connected to Backend!" });
+});
 
 app.get("/todo", async (req, res) => {
 	const todos = await Todo.find();
