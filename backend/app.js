@@ -12,7 +12,7 @@ const corsOptions = {
 	origin: "https://mern-deploy-1-hixt.onrender.com", // frontend URI (ReactJS)
 };
 app.use(express.json());
-app.use(cors(corsOptions));
+app.use(cors());
 
 // connect MongoDB
 mongoose
@@ -28,6 +28,8 @@ mongoose
 	});
 
 // route
+// app.get('/to-do-app', async(req,res)=> {
+
 app.get("/", (req, res) => {
 	res.status(201).json({ message: "Connected to Backend!" });
 });

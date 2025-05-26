@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-const API_BASE = process.env.API_BASE_TEST + "/todo";
+const API_BASE = process.env.API_BASE_TEST;
 
 function TodoItem(props) {
 	const { name, id, completed, setItems } = props;

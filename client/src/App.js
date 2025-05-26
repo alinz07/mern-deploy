@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import TodoItem from "./TodoItem";
-//const API_BASE = process.env.API_BASE_TEST + "/todo";
+const API_BASE = process.env.API_BASE_TEST;
 console.log(API_BASE);
 
 function App() {
@@ -16,7 +16,7 @@ function App() {
 	};
 
 	const GetTodos = () => {
-		fetch()
+		fetch(API_BASE + "/todo")
 			.then((res) => res.json())
 			.then((data) => setItems(data))
 			.catch((err) => console.log(err));
