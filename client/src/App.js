@@ -7,9 +7,9 @@ function App() {
 	const [items, setItems] = useState([]);
 	const [input, setInput] = useState("");
 
-	// useEffect(() => {
-	// 	GetTodos();
-	// }, []);
+	useEffect(() => {
+		GetTodos();
+	}, []);
 
 	const handleChange = (e) => {
 		setInput(e.target.value);
