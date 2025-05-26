@@ -8,11 +8,11 @@ require("dotenv").config();
 const app = express();
 
 // middleware
-const corsOptions = {
-	origin: "https://mern-deploy-1-hixt.onrender.com", // frontend URI (ReactJS)
-};
+// const corsOptions = {
+// 	origin: "https://mern-deploy-1-hixt.onrender.com", // frontend URI (ReactJS)
+// };
 app.use(express.json());
-app.use(cors(corsOptions));
+app.use(cors());
 
 // connect MongoDB
 mongoose
