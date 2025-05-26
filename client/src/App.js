@@ -16,7 +16,7 @@ function App() {
 	};
 
 	const GetTodos = () => {
-		fetch(API_BASE)
+		fetch(API_BASE + "/todo")
 			.then((res) => res.json())
 			.then((data) => setItems(data))
 			.catch((err) => console.log(err));

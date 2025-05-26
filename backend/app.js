@@ -28,8 +28,6 @@ mongoose
 	});
 
 // route
-// app.get('/to-do-app', async(req,res)=> {
-
 app.get("/", async (req, res) => {
 	res.status(201).json({ message: "Connected to Backend!" });
 });
