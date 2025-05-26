@@ -12,7 +12,7 @@ const corsOptions = {
 	origin: "https://mern-deploy-1-hixt.onrender.com", // frontend URI (ReactJS)
 };
 app.use(express.json());
-app.use(cors());
+app.use(cors(corsOptions));
 
 // connect MongoDB
 mongoose
