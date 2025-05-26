@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-const API_BASE = "https://mern-deploy-1-hixt.onrender.com";
+const API_BASE = process.env.PORT;
 
 function TodoItem(props) {
 	const { name, id, completed, setItems } = props;
