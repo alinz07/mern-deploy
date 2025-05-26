@@ -33,6 +33,7 @@ app.get("/", async (req, res) => {
 });
 
 app.get("/todo", async (req, res) => {
+	console.log("todo endpoint called");
 	const todos = await Todo.find();
 	res.json(todos);
 });
