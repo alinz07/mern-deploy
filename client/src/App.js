@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import TodoItem from "./TodoItem";
-const API_BASE = process.env.PORT;
+const API_BASE = "https://mern-deploy-1-hixt.onrender.com";
 console.log(API_BASE);
 
 function App() {
 	const [items, setItems] = useState([]);
 	const [input, setInput] = useState("");
 
-	useEffect(() => {
-		GetTodos();
-	}, []);
+	// useEffect(() => {
+	// 	GetTodos();
+	// }, []);
 
 	const handleChange = (e) => {
 		setInput(e.target.value);

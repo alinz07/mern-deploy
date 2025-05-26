@@ -7,12 +7,12 @@ require("dotenv").config();
 //Execute express
 const app = express();
 
-// middleware
-// const corsOptions = {
-// 	origin: "https://mern-deploy-1-hixt.onrender.com", // frontend URI (ReactJS)
-// };
+middleware;
+const corsOptions = {
+	origin: "https://mern-deploy-1-hixt.onrender.com", // frontend URI (ReactJS)
+};
 app.use(express.json());
-app.use(cors());
+app.use(cors(corsOptions));
 
 // connect MongoDB
 mongoose
@@ -34,17 +34,17 @@ app.get("/", async (req, res) => {
 	res.status(201).json({ message: "Connected to Backend!" });
 });
 
-app.get("/todo", async (req, res) => {
-	const todos = await Todo.find();
-	res.json(todos);
-});
+// app.get("/todo", async (req, res) => {
+// 	const todos = await Todo.find();
+// 	res.json(todos);
+// });
 
-app.post("/todo/new", async (req, res) => {
-	const newTask = await Todo.create(req.body);
-	res.status(201).json({ newTask });
-});
+// app.post("/todo/new", async (req, res) => {
+// 	const newTask = await Todo.create(req.body);
+// 	res.status(201).json({ newTask });
+// });
 
-app.delete("/todo/delete/:id", async (req, res) => {
-	const result = await Todo.findByIdAndDelete(req.params.id);
-	res.json(result);
-});
+// app.delete("/todo/delete/:id", async (req, res) => {
+// 	const result = await Todo.findByIdAndDelete(req.params.id);
+// 	res.json(result);
+// });
