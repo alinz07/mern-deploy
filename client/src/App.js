@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import TodoItem from "./TodoItem";
-const API_BASE = "";
+const API_BASE = "/";
 console.log(API_BASE);
 
 function App() {

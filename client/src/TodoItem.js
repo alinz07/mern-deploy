@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-const API_BASE = "";
+const API_BASE = "/";
 
 function TodoItem(props) {
 	const { name, id, completed, setItems } = props;
