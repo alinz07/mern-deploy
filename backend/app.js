@@ -8,7 +8,7 @@ require("dotenv").config();
 const app = express();
 const router = express.Router();
 
-middleware;
+//middleware
 const corsOptions = {
 	origin: "https://mern-deploy-1-hixt.onrender.com", // frontend URI (ReactJS)
 };
