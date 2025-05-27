@@ -6,6 +6,7 @@ require("dotenv").config();
 
 //Execute express
 const app = express();
+const router = express.Router();
 
 middleware;
 const corsOptions = {
@@ -28,22 +29,22 @@ mongoose
 	});
 
 // route
-app.get("/", async (req, res) => {
+router.get("/", async (req, res) => {
 	res.status(201).json({ message: "Connected to Backend!" });
 });
 
-app.get("/todo", async (req, res) => {
+router.get("/todo", async (req, res) => {
 	console.log("todo endpoint called");
 	const todos = await Todo.find();
 	res.json(todos);
 });
 
-app.post("/todo/new", async (req, res) => {
+router.post("/todo/new", async (req, res) => {
 	const newTask = await Todo.create(req.body);
 	res.status(201).json({ newTask });
 });
 
-app.delete("/todo/delete/:id", async (req, res) => {
+router.delete("/todo/delete/:id", async (req, res) => {
 	const result = await Todo.findByIdAndDelete(req.params.id);
 	res.json(result);
 });
