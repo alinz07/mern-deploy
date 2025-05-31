@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import TodoItem from "./TodoItem";
 const API_BASE = "https://mern-deploy-i7u8.onrender.com";
-console.log(API_BASE);
 
 function App() {
 	const [items, setItems] = useState([]);
