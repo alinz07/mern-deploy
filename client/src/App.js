@@ -34,10 +34,7 @@ function App() {
 		}).then((res) => res.json());
 		console.log(data);
 		await GetTodos();
-		setInput("").catch((error) => {
-			// Handle errors, e.g., network errors, server errors, or parsing errors
-			console.error("Fetch error:", error);
-		});
+		setInput("");
 	};
 
 	return (
