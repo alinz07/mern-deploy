@@ -1,6 +1,9 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const config = require("./config");
+const authRoutes = require("./routes/auth");
+
 const Todo = require("./models/Todo");
 require("dotenv").config();
 
@@ -17,7 +20,10 @@ app.use(cors(corsOptions));
 
 // connect MongoDB
 mongoose
-	.connect(process.env.MONGODB_URI)
+	.connect(process.env.MONGODB_URI, {
+		useNewUrlParser: true,
+		useUnifiedTopology: true,
+	})
 	.then(() => {
 		const PORT = process.env.PORT || 8000;
 		app.listen(PORT, () => {
@@ -27,6 +33,8 @@ mongoose
 	.catch((err) => {
 		console.log(err);
 	});
+
+app.use("/api/auth", authRoutes);
 
 // route
 app.get("/", async (req, res) => {
