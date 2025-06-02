@@ -11,9 +11,7 @@ app.use(express.json());
 app.use(cors());
 
 mongoose
-	.connect(
-		"mongodb+srv://alinz07:Spaceballs07@cluster0.rtdxnth.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-	)
+	.connect(process.env.MONGODB_URI)
 	.then(() => console.log("MongoDB Connected"))
 	.catch((err) => console.error(err));
 
