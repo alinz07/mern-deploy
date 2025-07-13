@@ -10,6 +10,8 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+console.log("index.js running");
+
 mongoose
 	.connect(process.env.MONGODB_URI)
 	.then(() => console.log("MongoDB Connected"))

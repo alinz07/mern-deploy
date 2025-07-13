@@ -29,6 +29,7 @@ router.post("/register", async (req, res) => {
 				.status(500)
 				.json({ msg: "Error saving user to database" });
 		}
+
 		const payload = {
 			user: { id: user.id },
 		};
