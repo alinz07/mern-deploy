@@ -26,6 +26,7 @@ const Register = () => {
 				}
 			);
 			setMessage("Registered successfully"); // Set success message
+			console.log("are these appearing?");
 		} catch (err) {
 			console.error(err.response.data);
 			setMessage("Failed to register, User already exists"); // Set error message
