@@ -76,6 +76,7 @@
 import React, { useState } from "react";
 import Register from "./components/Register";
 import Login from "./components/Login";
+import Student from "./components/Student";
 
 const App = () => {
 	const [loggedInUser, setLoggedInUser] = useState(null);
@@ -91,6 +92,7 @@ const App = () => {
 				<div>
 					<p>Welcome {loggedInUser}</p>
 					<button onClick={handleLogout}>Logout</button>
+					<Student />
 				</div>
 			) : (
 				<div>
