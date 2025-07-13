@@ -19,7 +19,7 @@ const Login = ({ setLoggedInUser }) => {
 		e.preventDefault();
 		try {
 			const res = await axios.post(
-				"https://mern-deploy-1-hixt.onrender.com/api/auth/login",
+				"https://mern-deploy-i7u8.onrender.com/api/auth/login",
 				{
 					username,
 					password,
