@@ -8,11 +8,14 @@ const User = require("../models/User");
 
 // Register Route
 router.post("/register", async (req, res) => {
+	console.log("Register endpoint hit with:", req.body);
+
 	const { username, password } = req.body;
 
 	try {
 		let user = await User.findOne({ username });
 		if (user) {
+			console.log("User already exists:", user.username);
 			return res.status(400).json({ msg: "User already exists" });
 		}
 
@@ -23,11 +26,12 @@ router.post("/register", async (req, res) => {
 
 		try {
 			await user.save();
-		} catch (saveError) {
-			console.error("Error saving user to database:", saveError.message);
+			console.log("User saved successfully");
+		} catch (saveErr) {
+			console.error("Save error:", saveErr.message);
 			return res
 				.status(500)
-				.json({ msg: "Error saving user to database" });
+				.json({ msg: "Error saving user", error: saveErr.message });
 		}
 
 		const payload = {
