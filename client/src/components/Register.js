@@ -19,7 +19,7 @@ const Register = () => {
 		e.preventDefault();
 		try {
 			const res = await axios.post(
-				"http://localhost:5000/api/auth/register",
+				"https://mern-deploy-1-hixt.onrender.com/api/auth/register",
 				{
 					username,
 					password,
