@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const config = require("../config");
 const User = require("../models/User");
+const User = require("../models/Student");
 
 console.log("Auth routes loaded");
 
