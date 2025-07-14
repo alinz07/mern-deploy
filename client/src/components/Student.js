@@ -1,37 +1,50 @@
-import React, { useState } from "react";
+// client/src/components/StudentList.js
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 
 const Student = () => {
-	// const [formData, setFormData] = useState({
-	// 	username: "",
-	// 	password: "",
-	// });
-	// const [message, setMessage] = useState("");
+	const [students, setStudents] = useState([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState("");
 
-	// const { username, password } = formData;
+	useEffect(() => {
+		const fetchStudents = async () => {
+			try {
+				const res = await axios.get(
+					"https://mern-deploy-1-hixt.onrender.com/api/students"
+				);
+				setStudents(res.data);
+				setLoading(false);
+			} catch (err) {
+				console.error("Failed to fetch students:", err.message);
+				setError("Failed to load students");
+				setLoading(false);
+			}
+		};
 
-	// const onChange = (e) =>
-	// 	setFormData({ ...formData, [e.target.name]: e.target.value });
+		fetchStudents();
+	}, []);
 
-	// const onSubmit = async (e) => {
-	// 	e.preventDefault();
-	// 	try {
-	// 		const res = await axios.post(
-	// 			"https://mern-deploy-1-hixt.onrender.com/api/auth/register",
-	// 			{
-	// 				username,
-	// 				password,
-	// 			}
-	// 		);
-	// 		setMessage("Registered successfully"); // Set success message
-	// 	} catch (err) {
-	// 		console.error(err.response.data);
-	// 		setMessage("Failed to register, User already exists"); // Set error message
-	// 	}
-	// };
+	if (loading) return <p>Loading students...</p>;
+	if (error) return <p className="error">{error}</p>;
 
 	return (
 		<div className="student-list">
-			<h2>Students</h2>
+			<h2>Student List</h2>
+			<table>
+				<thead>
+					<tr>
+						<th>Name</th>
+					</tr>
+				</thead>
+				<tbody>
+					{students.map((student) => (
+						<tr key={student._id}>
+							<td>{student.studentname}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
 		</div>
 	);
 };
