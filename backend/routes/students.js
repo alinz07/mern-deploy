@@ -1,14 +1,13 @@
-// server/routes/auth.js
 const express = require("express");
 const router = express.Router();
-const Student = require("../models/Student");
+const Student = require("../models/Student"); // Adjust path if needed
 
-// Get All Students
+// GET /api/students
 router.get("/", async (req, res) => {
-	console.log("GET /api/students called");
 	try {
-		const students = await Student.find(); // Returns [] if empty
-		res.json(students);
+		console.log("GET /api/students called");
+		const students = await Student.find(); // Fetch all student records
+		res.json(students); // Return array (could be empty)
 	} catch (err) {
 		console.error("Error fetching students:", err.message);
 		res.status(500).send("Server Error");

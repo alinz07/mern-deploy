@@ -4,7 +4,6 @@ const StudentSchema = new mongoose.Schema({
 	studentname: {
 		type: String,
 		required: true,
-		unique: true,
 	},
 });
 
