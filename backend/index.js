@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 require("dotenv").config();
 const authRoutes = require("./routes/auth");
+const studentRoutes = require("./routes/students");
 
 const app = express();
 
@@ -18,6 +19,7 @@ mongoose
 	.catch((err) => console.error(err));
 
 app.use("/api/auth", authRoutes);
+app.use("/api/students", studentRoutes);
 
 const PORT = process.env.PORT || 5000;
 console.log("Server started and listening");

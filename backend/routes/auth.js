@@ -5,7 +5,6 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const config = require("../config");
 const User = require("../models/User");
-const Student = require("../models/Student");
 
 console.log("Auth routes loaded");
 
@@ -88,18 +87,6 @@ router.post("/login", async (req, res) => {
 				res.json({ token });
 			}
 		);
-	} catch (err) {
-		console.error(err.message);
-		res.status(500).send("Server Error");
-	}
-});
-
-// Get All Students
-router.get("/students", async (req, res) => {
-	try {
-		const students = await Student.find();
-
-		res.json(students);
 	} catch (err) {
 		console.error(err.message);
 		res.status(500).send("Server Error");
