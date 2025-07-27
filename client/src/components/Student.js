@@ -11,7 +11,7 @@ const Student = () => {
 		const fetchStudents = async () => {
 			try {
 				const res = await axios.get(
-					"https://mern-deploy-1-hixt.onrender.com/api/students"
+					"https://mern-deploy-i7u8.onrender.com/api/students"
 				);
 				setStudents(res.data);
 				setLoading(false);
