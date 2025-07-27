@@ -4,7 +4,6 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 require("dotenv").config();
 const authRoutes = require("./routes/auth");
-const studentRoutes = require("./routes/students");
 
 const app = express();
 
@@ -19,7 +18,7 @@ mongoose
 	.catch((err) => console.error(err));
 
 app.use("/api/auth", authRoutes);
-app.use("/api/students", studentRoutes);
+
 app.get("/ping", (req, res) => {
 	res.send("pong");
 });

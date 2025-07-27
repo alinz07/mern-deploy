@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const config = require("./config");
 const authRoutes = require("./routes/auth");
+const studentRoutes = require("./routes/students");
 
 const Todo = require("./models/Todo");
 require("dotenv").config();
@@ -32,6 +33,7 @@ mongoose
 	});
 
 app.use("/api/auth", authRoutes);
+app.use("/api/students", studentRoutes);
 
 // route
 app.get("/", async (req, res) => {
