@@ -1,6 +1,7 @@
 // client/src/components/StudentList.js
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import "./style.css"; // Import CSS for styling
 
 const Student = () => {
 	const [students, setStudents] = useState([]);
@@ -11,6 +12,8 @@ const Student = () => {
 	const [formData, setFormData] = useState({
 		studentname: "",
 	});
+
+	const { studentname } = formData;
 
 	useEffect(() => {
 		const fetchStudents = async () => {
