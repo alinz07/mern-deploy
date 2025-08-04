@@ -6,6 +6,11 @@ const Student = () => {
 	const [students, setStudents] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
+	const [message, setMessage] = useState("");
+
+	const [formData, setFormData] = useState({
+		studentname: "",
+	});
 
 	useEffect(() => {
 		const fetchStudents = async () => {
