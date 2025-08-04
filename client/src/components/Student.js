@@ -46,7 +46,11 @@ const Student = () => {
 				}
 			);
 
-			// Set success message
+			// Append new student to the current list
+			setStudents([...students, res.data]);
+
+			// Clear form and show success message
+			setFormData({ studentname: "" });
 			setMessage("Student added successfully");
 		} catch (err) {
 			console.error(err.response.data);
