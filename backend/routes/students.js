@@ -14,4 +14,24 @@ router.get("/", async (req, res) => {
 	}
 });
 
+// POST /api/students/new
+router.post("/new", async (req, res) => {
+	try {
+		const { studentname } = req.body;
+
+		if (!studentname) {
+			return res.status(400).json({ msg: "studentname is required" });
+		}
+
+		const newStudent = new Student({ studentname });
+
+		const savedStudent = await newStudent.save();
+
+		res.status(201).json(savedStudent);
+	} catch (err) {
+		console.error("Error saving student:", err.message);
+		res.status(500).send("Server Error");
+	}
+});
+
 module.exports = router;
