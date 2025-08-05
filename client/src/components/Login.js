@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import "./style.css"; // Import CSS for styling
+import setAuthToken from "../utils/setAuthToken";
 
 const Login = ({ setLoggedInUser }) => {
 	const [formData, setFormData] = useState({
