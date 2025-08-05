@@ -6,7 +6,7 @@ import axios from "axios";
 import setAuthToken from "./utils/setAuthToken";
 
 const App = () => {
-	const [loggedInUser, setLoggedInUser] = useState(null);
+	const [user, setUser] = useState(null);
 
 	useEffect(() => {
 		// On app load, set the token for axios if it exists
@@ -18,32 +18,32 @@ const App = () => {
 			axios
 				.get("https://your-backend-url.com/api/auth/me")
 				.then((res) => {
-					setLoggedInUser(res.data); // 👈 store user info
+					setUser(res.data); // 👈 store user info
 				})
 				.catch((err) => {
 					console.error("Auth failed", err.message);
-					setLoggedInUser(null);
+					setUser(null);
 				});
 		}
 	}, []);
 
 	const handleLogout = () => {
 		localStorage.removeItem("token"); // Remove token from localStorage
-		setLoggedInUser(null); // Set logged-in user to null
+		setUser(null); // Set logged-in user to null
 	};
 
 	return (
 		<div className="App">
-			{loggedInUser ? (
+			{user ? (
 				<div>
-					<p>Welcome {loggedInUser}</p>
+					<p>Welcome {user}</p>
 					<button onClick={handleLogout}>Logout</button>
 					<Student />
 				</div>
 			) : (
 				<div>
 					<Register />
-					<Login setLoggedInUser={setLoggedInUser} />
+					<Login user={user} />
 				</div>
 			)}
 		</div>

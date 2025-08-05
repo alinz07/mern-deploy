@@ -4,7 +4,7 @@ import axios from "axios";
 import "./style.css"; // Import CSS for styling
 import setAuthToken from "../utils/setAuthToken";
 
-const Login = ({ setLoggedInUser }) => {
+const Login = ({ setUser }) => {
 	const [formData, setFormData] = useState({
 		username: "",
 		password: "",
@@ -27,7 +27,7 @@ const Login = ({ setLoggedInUser }) => {
 				}
 			);
 			localStorage.setItem("token", res.data.token);
-			setLoggedInUser(username);
+			setUser(username);
 			setAuthToken(res.data.token); // ✅ immediately set axios header
 
 			// Set success message
