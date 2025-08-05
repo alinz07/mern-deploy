@@ -59,6 +59,21 @@ const Student = () => {
 		}
 	};
 
+	// ✅ NEW: Delete handler
+	const handleDelete = async (id) => {
+		try {
+			await axios.delete(
+				`https://mern-deploy-i7u8.onrender.com/api/students/delete/${id}`
+			);
+			// Remove the student from the state list
+			setStudents(students.filter((student) => student._id !== id));
+			setMessage("Student deleted successfully");
+		} catch (err) {
+			console.error("Delete failed:", err.response?.data || err.message);
+			setMessage("Delete Failed");
+		}
+	};
+
 	if (loading) return <p>Loading students...</p>;
 	if (error) return <p className="error">{error}</p>;
 
@@ -70,17 +85,35 @@ const Student = () => {
 					<thead>
 						<tr>
 							<th>Name</th>
+							<th>Actions</th>
 						</tr>
 					</thead>
 					<tbody>
 						{students.map((student) => (
 							<tr key={student._id}>
 								<td>{student.studentname}</td>
+								<td>
+									<button
+										onClick={() =>
+											handleDelete(student._id)
+										}
+										style={{
+											color: "white",
+											backgroundColor: "red",
+											border: "none",
+											padding: "5px 10px",
+											cursor: "pointer",
+										}}
+									>
+										Delete
+									</button>
+								</td>
 							</tr>
 						))}
 					</tbody>
 				</table>
 			</div>
+
 			<div className="add-student-form">
 				<h2>New Student Name</h2>
 				<form onSubmit={onSubmit}>
