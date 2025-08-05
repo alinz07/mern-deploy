@@ -1,3 +1,8 @@
+const express = require("express");
+const router = express.Router();
+const auth = require("../middleware/auth");
+const Student = require("../models/User");
+
 router.get("/:id/data", auth, async (req, res) => {
 	try {
 		console.log("Incoming request for user data:", req.params.id);
