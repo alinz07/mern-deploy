@@ -68,7 +68,7 @@ const Student = () => {
 
 		try {
 			await axios.delete(
-				`https://mern-deploy-i7u8.onrender.com/api/students/${id}`
+				`https://mern-deploy-i7u8.onrender.com/api/students/delete/${id}`
 			);
 			setStudents(students.filter((student) => student._id !== id));
 			setMessage("Student deleted successfully");
