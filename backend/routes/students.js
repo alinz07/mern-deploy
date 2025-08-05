@@ -15,6 +15,22 @@ router.get("/", auth, async (req, res) => {
 	}
 });
 
+// GET /api/users/:id/data
+router.get("/:id/data", auth, async (req, res) => {
+	try {
+		// Only allow users to see their own data
+		if (req.user.id !== req.params.id && req.user.username !== "admin") {
+			return res.status(403).json({ msg: "Access denied" });
+		}
+
+		const data = await UserData.find({ userId: req.params.id });
+		res.json(data);
+	} catch (err) {
+		console.error(err.message);
+		res.status(500).send("Server Error");
+	}
+});
+
 // POST /api/students/new
 router.post("/new", auth, async (req, res) => {
 	try {

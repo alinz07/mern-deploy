@@ -4,6 +4,7 @@ import Login from "./components/Login";
 import Student from "./components/Student";
 import axios from "axios";
 import setAuthToken from "./utils/setAuthToken";
+import UserDashboard from "./components/UserDashboard";
 
 const App = () => {
 	const [user, setUser] = useState(null);
@@ -48,7 +49,8 @@ const App = () => {
 				<div>
 					<p>Welcome, {user?.username}</p>
 					<button onClick={handleLogout}>Logout</button>
-					<Student />
+					if(user.username === "admin") {<Student />}
+					else {<UserDashboard userId={user._id} user={user} />}
 				</div>
 			) : (
 				<div>
