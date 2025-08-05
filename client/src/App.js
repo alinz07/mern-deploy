@@ -47,14 +47,19 @@ const App = () => {
 		<div className="App">
 			{user ? (
 				<div>
-					<p>Welcome, {user?.username}</p>
 					<button onClick={handleLogout}>Logout</button>
 
 					{/* ✅ Correct Conditional Rendering */}
 					{user.username === "admin" ? (
-						<Student />
+						<div>
+							<p>Welcome, Professor</p>
+							<Student />
+						</div>
 					) : (
-						<UserDashboard userId={user._id} user={user} />
+						<div>
+							<p>Welcome, {user?.username}</p>
+							<UserDashboard userId={user._id} user={user} />
+						</div>
 					)}
 				</div>
 			) : (
