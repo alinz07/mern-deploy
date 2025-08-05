@@ -21,20 +21,27 @@ const Login = ({ setUser }) => {
 		try {
 			const res = await axios.post(
 				"https://mern-deploy-i7u8.onrender.com/api/auth/login",
-				{
-					username,
-					password,
-				}
+				{ username, password }
 			);
-			localStorage.setItem("token", res.data.token);
-			setUser(username);
-			setAuthToken(res.data.token); // ✅ immediately set axios header
 
-			// Set success message
-			setMessage("Logged in successfully");
+			if (res.data.token) {
+				// 1. Save token
+				localStorage.setItem("token", res.data.token);
+				setAuthToken(res.data.token);
+
+				// 2. Fetch real user info
+				const userRes = await axios.get(
+					"https://mern-deploy-i7u8.onrender.com/api/auth/me"
+				);
+				setUser(userRes.data); // 👈 Use real user object
+
+				setMessage("Logged in successfully");
+			} else {
+				console.error("No token in response:", res.data);
+				setMessage("Login failed - no token received");
+			}
 		} catch (err) {
-			console.error(err.response.data);
-			// Set error message
+			console.error(err.response?.data || err.message);
 			setMessage("Failed to login - wrong credentials");
 		}
 	};
