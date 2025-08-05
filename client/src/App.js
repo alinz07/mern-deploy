@@ -7,23 +7,27 @@ import setAuthToken from "./utils/setAuthToken";
 
 const App = () => {
 	const [user, setUser] = useState(null);
+	const [loading, setLoading] = useState(true); // ✅ new state
 
 	useEffect(() => {
-		// On app load, set the token for axios if it exists
 		const token = localStorage.getItem("token");
+
 		if (token) {
 			setAuthToken(token);
 
-			// Fetch current user using token
 			axios
 				.get("https://mern-deploy-i7u8.onrender.com/api/auth/me")
 				.then((res) => {
-					setUser(res.data); // 👈 store user info
+					setUser(res.data);
+					setLoading(false); // ✅ Done loading
 				})
 				.catch((err) => {
-					console.error("Auth failed", err.message);
+					console.error("Auth failed:", err.message);
 					setUser(null);
+					setLoading(false); // ✅ Still done loading
 				});
+		} else {
+			setLoading(false); // ✅ Done loading, no token
 		}
 	}, []);
 
@@ -33,6 +37,10 @@ const App = () => {
 	};
 
 	console.log("User:", user);
+
+	if (loading) {
+		return <div className="loading-spinner">Loading...</div>;
+	}
 
 	return (
 		<div className="App">
