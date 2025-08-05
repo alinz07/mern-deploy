@@ -32,11 +32,13 @@ const App = () => {
 		setUser(null); // Set logged-in user to null
 	};
 
+	console.log("User:", user);
+
 	return (
 		<div className="App">
 			{user ? (
 				<div>
-					<p>Welcome {user}</p>
+					<p>Welcome, {user?.username}</p>
 					<button onClick={handleLogout}>Logout</button>
 					<Student />
 				</div>
