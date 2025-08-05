@@ -16,7 +16,9 @@ const App = () => {
 
 			// Fetch current user using token
 			axios
-				.get("https://your-backend-url.com/api/auth/me")
+				.get(
+					"https://https://mern-deploy-i7u8.onrender.com/api/auth/me"
+				)
 				.then((res) => {
 					setUser(res.data); // 👈 store user info
 				})
