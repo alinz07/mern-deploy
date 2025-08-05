@@ -5,8 +5,19 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const config = require("../config");
 const User = require("../models/User");
+const auth = require("../middleware/auth");
 
 console.log("Auth routes loaded");
+
+router.get("/me", auth, async (req, res) => {
+	try {
+		const user = await User.findById(req.user.id).select("-password");
+		res.json(user);
+	} catch (err) {
+		console.error(err.message);
+		res.status(500).send("Server Error");
+	}
+});
 
 // Register Route
 router.post("/register", async (req, res) => {
