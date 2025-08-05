@@ -1,9 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const Student = require("../models/Student"); // Adjust path if needed
+const auth = require("../middleware/auth");
 
 // GET /api/students
-router.get("/", async (req, res) => {
+router.get("/", auth, async (req, res) => {
 	try {
 		console.log("GET /api/students called");
 		const students = await Student.find(); // Fetch all student records
@@ -15,7 +16,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/students/new
-router.post("/new", async (req, res) => {
+router.post("/new", auth, async (req, res) => {
 	try {
 		const { studentname } = req.body;
 
@@ -35,7 +36,7 @@ router.post("/new", async (req, res) => {
 });
 
 // routes/students.js
-router.delete("/delete/:id", async (req, res) => {
+router.delete("/delete/:id", auth, async (req, res) => {
 	try {
 		const student = await Student.findByIdAndDelete(req.params.id);
 		if (!student) {

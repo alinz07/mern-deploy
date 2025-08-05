@@ -27,6 +27,7 @@ const Login = ({ setLoggedInUser }) => {
 			);
 			localStorage.setItem("token", res.data.token);
 			setLoggedInUser(username);
+			setAuthToken(res.data.token); // ✅ immediately set axios header
 
 			// Set success message
 			setMessage("Logged in successfully");

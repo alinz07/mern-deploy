@@ -73,13 +73,22 @@
 
 // export default App;
 // client/src/App.js
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Register from "./components/Register";
 import Login from "./components/Login";
 import Student from "./components/Student";
+import setAuthToken from "./utils/setAuthToken";
 
 const App = () => {
 	const [loggedInUser, setLoggedInUser] = useState(null);
+
+	useEffect(() => {
+		// On app load, set the token for axios if it exists
+		const token = localStorage.getItem("token");
+		if (token) {
+			setAuthToken(token);
+		}
+	}, []);
 
 	const handleLogout = () => {
 		localStorage.removeItem("token"); // Remove token from localStorage
