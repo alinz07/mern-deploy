@@ -61,11 +61,15 @@ const Student = () => {
 
 	// ✅ NEW: Delete handler
 	const handleDelete = async (id) => {
+		const confirmed = window.confirm(
+			"Are you sure you want to delete this student?"
+		);
+		if (!confirmed) return;
+
 		try {
 			await axios.delete(
-				`https://mern-deploy-i7u8.onrender.com/api/students/delete/${id}`
+				`https://mern-deploy-i7u8.onrender.com/api/students/${id}`
 			);
-			// Remove the student from the state list
 			setStudents(students.filter((student) => student._id !== id));
 			setMessage("Student deleted successfully");
 		} catch (err) {
