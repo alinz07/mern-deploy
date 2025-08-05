@@ -8,12 +8,21 @@ function UserDashboard({ userId, user }) {
 	useEffect(() => {
 		const fetchData = async () => {
 			try {
+				const token = localStorage.getItem("token");
 				const res = await axios.get(
-					`https://mern-deploy-i7u8.onrender.com/api/students/${userId}/data`
+					`https://mern-deploy-i7u8.onrender.com/api/users/${userId}/data`,
+					{
+						headers: {
+							"x-auth-token": token,
+						},
+					}
 				);
 				setData(res.data);
 			} catch (err) {
-				console.error("Failed to load user data:", err.message);
+				console.error(
+					"Failed to load user data:",
+					err.response?.data || err.message
+				);
 			} finally {
 				setLoading(false);
 			}

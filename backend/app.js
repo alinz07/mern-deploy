@@ -4,6 +4,7 @@ const cors = require("cors");
 const config = require("./config");
 const authRoutes = require("./routes/auth");
 const studentRoutes = require("./routes/students");
+const userRoutes = require("./routes/users");
 
 const Todo = require("./models/Todo");
 require("dotenv").config();
@@ -34,24 +35,9 @@ mongoose
 
 app.use("/api/auth", authRoutes);
 app.use("/api/students", studentRoutes);
+app.use("/api/users", userRoutes);
 
 // route
 app.get("/", async (req, res) => {
 	res.status(201).json({ message: "Connected to Backend!" });
-});
-
-app.get("/todo", async (req, res) => {
-	console.log("todo endpoint called");
-	const todos = await Todo.find();
-	res.json(todos);
-});
-
-app.post("/new", async (req, res) => {
-	const newTask = await Todo.create(req.body);
-	res.status(201).json({ newTask });
-});
-
-app.delete("/delete/:id", async (req, res) => {
-	const result = await Todo.findByIdAndDelete(req.params.id);
-	res.json(result);
 });
