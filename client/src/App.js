@@ -49,9 +49,13 @@ const App = () => {
 				<div>
 					<p>Welcome, {user?.username}</p>
 					<button onClick={handleLogout}>Logout</button>
-					if(user.username === "admin") {<Student />}
-					else if(user.username!="admin")
-					{<UserDashboard userId={user._id} user={user} />}
+
+					{/* ✅ Correct Conditional Rendering */}
+					{user.username === "admin" ? (
+						<Student />
+					) : (
+						<UserDashboard userId={user._id} user={user} />
+					)}
 				</div>
 			) : (
 				<div>
