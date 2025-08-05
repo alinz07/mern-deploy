@@ -33,7 +33,9 @@ const Login = ({ setUser }) => {
 				const userRes = await axios.get(
 					"https://mern-deploy-i7u8.onrender.com/api/auth/me"
 				);
-				setUser(userRes.data); // 👈 Use real user object
+				if (typeof setUser === "function") {
+					setUser(userRes.data); // 👈 Safe call
+				}
 
 				setMessage("Logged in successfully");
 			} else {

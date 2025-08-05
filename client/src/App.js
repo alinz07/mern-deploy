@@ -45,7 +45,7 @@ const App = () => {
 			) : (
 				<div>
 					<Register />
-					<Login user={user} />
+					<Login setUser={setUser} />
 				</div>
 			)}
 		</div>
