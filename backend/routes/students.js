@@ -15,10 +15,12 @@ router.get("/", auth, async (req, res) => {
 	}
 });
 
-// GET /api/users/:id/data
 router.get("/:id/data", auth, async (req, res) => {
 	try {
-		// Only allow users to see their own data
+		console.log("Incoming request for user data:", req.params.id);
+		console.log("Authenticated user from token:", req.user);
+
+		// Only allow users to see their own data or admin
 		if (req.user.id !== req.params.id && req.user.username !== "admin") {
 			return res.status(403).json({ msg: "Access denied" });
 		}
@@ -26,7 +28,7 @@ router.get("/:id/data", auth, async (req, res) => {
 		const data = await UserData.find({ userId: req.params.id });
 		res.json(data);
 	} catch (err) {
-		console.error(err.message);
+		console.error("Route error:", err);
 		res.status(500).send("Server Error");
 	}
 });
