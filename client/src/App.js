@@ -50,7 +50,8 @@ const App = () => {
 					<p>Welcome, {user?.username}</p>
 					<button onClick={handleLogout}>Logout</button>
 					if(user.username === "admin") {<Student />}
-					else {<UserDashboard userId={user._id} user={user} />}
+					else if(user.username!="admin")
+					{<UserDashboard userId={user._id} user={user} />}
 				</div>
 			) : (
 				<div>
