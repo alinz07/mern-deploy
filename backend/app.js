@@ -11,7 +11,6 @@ require("dotenv").config();
 
 //Execute express
 const app = express();
-const router = express.Router();
 
 //middleware
 const corsOptions = {
@@ -35,7 +34,13 @@ mongoose
 
 app.use("/api/auth", authRoutes);
 app.use("/api/students", studentRoutes);
-app.use("/api/users", userRoutes);
+app.use("/api/users", userRoutes); // 🔹 User routes mounted
+console.log("✅ /api/users routes mounted");
+
+app.use((req, res) => {
+	console.warn("⚠️ 404 Not Found:", req.originalUrl);
+	res.status(404).json({ msg: "Not Found" });
+});
 
 // route
 app.get("/", async (req, res) => {
