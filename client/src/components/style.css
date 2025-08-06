@@ -48,3 +48,13 @@ td {
 	padding: 8px;
 	text-align: left;
 }
+button {
+	margin-left: 10px;
+	padding: 5px 10px;
+	cursor: pointer;
+}
+
+select {
+	margin-left: 10px;
+	padding: 5px;
+}
