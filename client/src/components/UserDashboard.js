@@ -35,7 +35,6 @@ function UserDashboard({ userId, user }) {
 
 	return (
 		<div>
-			<h2>Welcome, {user.username}</h2>
 			<h3>Your Info</h3>
 			<ul>
 				{/* <li>Email: {data.email}</li> */}

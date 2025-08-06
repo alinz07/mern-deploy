@@ -36,7 +36,6 @@ function AdminDashboard({ user }) {
 
 	return (
 		<div className="admin-dashboard">
-			<h2>Welcome, Admin {user.username}</h2>
 			<h3>All Registered Users</h3>
 
 			{users.length === 0 ? (

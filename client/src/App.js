@@ -64,7 +64,9 @@ const App = () => {
 					) : (
 						<div>
 							<p>Welcome, {user?.username}</p>
-							<UserDashboard userId={user._id} user={user} />
+							<UserDashboard userId={user._id} user={user}>
+								<MonthList user={user} />
+							</UserDashboard>
 						</div>
 					)}
 				</div>
