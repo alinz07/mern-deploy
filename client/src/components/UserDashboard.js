@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import MonthList from "./MonthList"; // ✅ Import it here
 
 function UserDashboard({ userId, user }) {
 	const [data, setData] = useState([]);
@@ -40,6 +41,7 @@ function UserDashboard({ userId, user }) {
 				{/* <li>Email: {data.email}</li> */}
 				<li>Username: {data.username}</li>
 			</ul>
+			<MonthList user={user} />
 		</div>
 	);
 }
