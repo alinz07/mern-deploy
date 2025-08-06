@@ -53,7 +53,7 @@ const App = () => {
 					{user.username === "admin" ? (
 						<div>
 							<p>Welcome, Professor</p>
-							<Student />
+							<AdminDashboard user={user} />
 						</div>
 					) : (
 						<div>

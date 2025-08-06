@@ -5,18 +5,35 @@ const router = express.Router();
 const auth = require("../middleware/auth");
 const User = require("../models/User"); // ✅ Get user info, not students
 
+// GET /api/users
+router.get("/", auth, async (req, res) => {
+	try {
+		console.log("GET /api/users hit by:", req.user.username);
+
+		// Only admin can view all users
+		if (req.user.username !== "admin") {
+			return res.status(403).json({ msg: "Access denied" });
+		}
+
+		// Fetch all users except passwords
+		const users = await User.find().select("-password");
+		res.json(users);
+	} catch (err) {
+		console.error("Error fetching users:", err.message);
+		res.status(500).send("Server Error");
+	}
+});
+
 // GET /api/users/:id/data
 router.get("/:id/data", auth, async (req, res) => {
 	try {
 		console.log("Incoming request for user data:", req.params.id);
-		console.log("Authenticated user from token:", req.user);
 
-		// Only allow users to see their own info or admin
+		// Allow self or admin
 		if (req.user.id !== req.params.id && req.user.username !== "admin") {
 			return res.status(403).json({ msg: "Access denied" });
 		}
 
-		// Fetch the user's info (excluding password)
 		const user = await User.findById(req.params.id).select("-password");
 
 		if (!user) {
@@ -25,7 +42,7 @@ router.get("/:id/data", auth, async (req, res) => {
 
 		res.json(user);
 	} catch (err) {
-		console.error("Route error:", err);
+		console.error("Route error:", err.message);
 		res.status(500).send("Server Error");
 	}
 });
