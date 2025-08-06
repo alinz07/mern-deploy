@@ -33,62 +33,56 @@ function MonthList({ user }) {
 		fetchMonths();
 	}, []);
 
-	// Submit new month
-	const onSubmit = async (e) => {
-		e.preventDefault();
-		if (!name.trim()) return;
+	// Utility: Format "MonthName YYYY"
+	const getFormattedMonth = (offset = 0) => {
+		const date = new Date();
+		date.setMonth(date.getMonth() + offset);
+		const name = date.toLocaleString("default", { month: "long" });
+		const year = date.getFullYear();
+		return `${name} ${year}`;
+	};
+
+	const handleAddMonth = async (offset) => {
+		const name = getFormattedMonth(offset);
 
 		try {
 			const token = localStorage.getItem("token");
+
 			const res = await axios.post(
 				"https://mern-deploy-i7u8.onrender.com/api/months/new",
 				{ name },
-				{
-					headers: { "x-auth-token": token },
-				}
+				{ headers: { "x-auth-token": token } }
 			);
 
 			setMonths([...months, res.data]);
-			setName("");
-			setMessage("Month added successfully");
+			setMessage(`✅ Added: ${name}`);
 		} catch (err) {
-			console.error(
-				"Failed to add month:",
-				err.response?.data || err.message
-			);
-			setMessage("Failed to add month");
+			const msg = err.response?.data?.msg || "Something went wrong";
+			setMessage(`❌ ${msg}`);
 		}
 	};
 
 	if (loading) return <p>Loading months...</p>;
 
 	return (
-		<div>
-			<h2>
-				{user.username === "admin"
-					? "All Months (Admin)"
-					: "Your Months"}
-			</h2>
+		<div className="month-list">
+			<h3>Your Months</h3>
 
+			{/* Message */}
+			{message && <p className="message">{message}</p>}
+
+			{/* Add buttons */}
+			<button onClick={() => handleAddMonth(0)}>
+				➕ Add Current Month
+			</button>
+			<button onClick={() => handleAddMonth(1)}>➕ Add Next Month</button>
+
+			{/* Month list */}
 			<ul>
 				{months.map((month) => (
 					<li key={month._id}>{month.name}</li>
 				))}
 			</ul>
-
-			<h3>Add a New Month</h3>
-			<form onSubmit={onSubmit}>
-				<input
-					type="text"
-					placeholder="Month name"
-					value={name}
-					onChange={(e) => setName(e.target.value)}
-					required
-				/>
-				<button type="submit">Add Month</button>
-			</form>
-
-			{message && <p className="message">{message}</p>}
 		</div>
 	);
 }

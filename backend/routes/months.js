@@ -25,22 +25,29 @@ router.get("/", auth, async (req, res) => {
 router.post("/new", auth, async (req, res) => {
 	const { name } = req.body;
 
-	if (!name) {
-		return res.status(400).json({ msg: "Month name is required" });
-	}
+	if (!name) return res.status(400).json({ msg: "Month name is required" });
 
 	try {
+		// Prevent duplicates per user
+		const existing = await Month.findOne({
+			name,
+			userId: req.user.id,
+		});
+
+		if (existing) {
+			return res.status(400).json({ msg: "Month already exists" });
+		}
+
 		const newMonth = new Month({
 			name,
 			userId: req.user.id,
 		});
 
-		const savedMonth = await newMonth.save();
-		res.json(savedMonth);
+		const saved = await newMonth.save();
+		res.status(201).json(saved);
 	} catch (err) {
-		console.error("Error creating month:", err.message);
+		console.error("Failed to add month:", err.message);
 		res.status(500).send("Server Error");
 	}
 });
-
 module.exports = router;
