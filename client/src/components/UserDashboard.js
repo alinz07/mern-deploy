@@ -17,7 +17,7 @@ function UserDashboard({ userId, user }) {
 						},
 					}
 				);
-				setData(res.data);
+				setData(res.data); // data will now be a single object
 			} catch (err) {
 				console.error(
 					"Failed to load user data:",
@@ -36,11 +36,10 @@ function UserDashboard({ userId, user }) {
 	return (
 		<div>
 			<h2>Welcome, {user.username}</h2>
-			<h3>Your Data</h3>
+			<h3>Your Info</h3>
 			<ul>
-				{data.map((item) => (
-					<li key={item._id}>{item.title}</li>
-				))}
+				{/* <li>Email: {data.email}</li> */}
+				<li>Username: {data.username}</li>
 			</ul>
 		</div>
 	);
