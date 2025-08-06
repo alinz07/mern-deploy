@@ -87,13 +87,10 @@ router.post("/login", async (req, res) => {
 		// Generate JWT token
 		const payload = {
 			user: {
-				user: {
-					id: user.id,
-					username: user.username, // ✅ Include username
-				},
+				id: user.id,
+				username: user.username,
 			},
 		};
-
 		jwt.sign(
 			payload,
 			config.jwtSecret,
