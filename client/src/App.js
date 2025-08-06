@@ -6,6 +6,7 @@ import axios from "axios";
 import setAuthToken from "./utils/setAuthToken";
 import UserDashboard from "./components/UserDashboard";
 import AdminDashboard from "./components/AdminDashboard";
+import MonthList from "./components/MonthList";
 
 const App = () => {
 	const [user, setUser] = useState(null);
