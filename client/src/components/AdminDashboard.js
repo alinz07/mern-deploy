@@ -124,7 +124,7 @@ function AdminDashboard({ user }) {
 					<thead>
 						<tr>
 							<th>Username</th>
-							{/* <th>Email</th> */}
+							<th>Email</th>
 							<th>Actions</th>{" "}
 							{/* Placeholder for future actions */}
 						</tr>
@@ -133,7 +133,7 @@ function AdminDashboard({ user }) {
 						{users.map((u) => (
 							<tr key={u._id}>
 								<td>{u.username}</td>
-								{/* <td>{u.email || "N/A"}</td> */}
+								<td>{u.email || "N/A"}</td>
 								<td>
 									{/* Future: Add edit/delete buttons here */}
 									<button disabled>Edit</button>

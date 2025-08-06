@@ -38,7 +38,7 @@ function UserDashboard({ userId, user }) {
 		<div>
 			<h3>Your Info</h3>
 			<ul>
-				{/* <li>Email: {data.email}</li> */}
+				<li>Email: {data.email}</li>
 				<li>Username: {data.username}</li>
 			</ul>
 			<MonthList user={user} />
