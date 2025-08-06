@@ -25,16 +25,26 @@ router.get("/me", auth, async (req, res) => {
 router.post("/register", async (req, res) => {
 	console.log("Register endpoint hit with:", req.body);
 
-	const { username, password } = req.body;
+	const { username, password, email } = req.body;
 
 	try {
+		// Check if username exists
 		let user = await User.findOne({ username });
 		if (user) {
 			console.log("User already exists:", user.username);
 			return res.status(400).json({ msg: "User already exists" });
 		}
+		// Check if email exists
+		let existingEmail = await User.findOne({ email });
+		if (existingEmail) {
+			return res.status(400).json({ msg: "Email already exists" });
+		}
 
-		user = new User({ username: username, password: password });
+		user = new User({
+			username: username,
+			password: password,
+			email: email,
+		});
 
 		const salt = await bcrypt.genSalt(10);
 		user.password = await bcrypt.hash(password, salt);

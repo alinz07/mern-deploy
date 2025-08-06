@@ -7,10 +7,11 @@ const Register = () => {
 	const [formData, setFormData] = useState({
 		username: "",
 		password: "",
+		email: "",
 	});
 	const [message, setMessage] = useState("");
 
-	const { username, password } = formData;
+	const { username, password, email } = formData;
 
 	const onChange = (e) =>
 		setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -23,6 +24,7 @@ const Register = () => {
 				{
 					username,
 					password,
+					email,
 				}
 			);
 			setMessage("Registered successfully"); // Set success message
@@ -52,6 +54,13 @@ const Register = () => {
 					value={password}
 					onChange={onChange}
 					required
+				/>
+				<input
+					type="email"
+					placeholder="Email"
+					name="email"
+					value={email}
+					onChange={onChange}
 				/>
 				<button type="submit">Register</button>
 			</form>
