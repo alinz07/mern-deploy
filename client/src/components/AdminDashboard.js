@@ -3,7 +3,8 @@ import axios from "axios";
 
 function AdminDashboard({ user }) {
 	const [users, setUsers] = useState([]);
-	const [loading, setLoading] = useState(true);
+	const [loadingUsers, setLoadingUsers] = useState(true);
+	const [loadingMonths, setLoadingMonths] = useState(true);
 	const [error, setError] = useState("");
 	const [months, setMonths] = useState([]);
 	const [filteredMonths, setFilteredMonths] = useState([]);
@@ -15,7 +16,7 @@ function AdminDashboard({ user }) {
 			try {
 				const token = localStorage.getItem("token");
 				const res = await axios.get(
-					"https://mern-deploy-i7u8.onrender.com/api/users", // ✅ Future endpoint
+					"https://mern-deploy-i7u8.onrender.com/api/users",
 					{
 						headers: { "x-auth-token": token },
 					}
@@ -28,7 +29,7 @@ function AdminDashboard({ user }) {
 				);
 				setError("Failed to load users");
 			} finally {
-				setLoading(false);
+				setLoadingUsers(false); // 🔹
 			}
 		};
 
@@ -51,7 +52,7 @@ function AdminDashboard({ user }) {
 				console.error("Admin failed to fetch months:", err.message);
 				setError("Could not load months.");
 			} finally {
-				setLoading(false);
+				setLoadingMonths(false); // 🔹
 			}
 		};
 
@@ -109,7 +110,7 @@ function AdminDashboard({ user }) {
 		document.body.removeChild(link);
 	};
 
-	if (loading) return <p>Loading users...</p>;
+	if (loadingUsers || loadingMonths) return <p>Loading dashboard data...</p>;
 	if (error) return <p className="error">{error}</p>;
 
 	return (
