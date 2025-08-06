@@ -23,6 +23,11 @@ const App = () => {
 					setUser(res.data);
 					setLoading(false); // ✅ Done loading
 				})
+				.then((res) => {
+					console.log("Auth/me response:", res.data);
+					setUser(res.data);
+					setLoading(false);
+				})
 				.catch((err) => {
 					console.error("Auth failed:", err.message);
 					setUser(null);
