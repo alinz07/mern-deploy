@@ -114,10 +114,18 @@ function MonthList({ user }) {
 			{message && <p className="message">{message}</p>}
 
 			{/* Add Buttons */}
-			<button onClick={() => handleAddMonth(0)} disabled={currentExists}>
+			<button
+				onClick={() => handleAddMonth(0)}
+				disabled={currentExists}
+				title={currentExists ? "Current month already added" : ""}
+			>
 				➕ Add Current Month
 			</button>
-			<button onClick={() => handleAddMonth(1)} disabled={nextExists}>
+			<button
+				onClick={() => handleAddMonth(1)}
+				disabled={nextExists}
+				title={currentExists ? "Next month already added" : ""}
+			>
 				➕ Add Next Month
 			</button>
 
