@@ -7,11 +7,13 @@ const Month = require("../models/Month");
 router.get("/", auth, async (req, res) => {
 	try {
 		const filter =
-			req.user.username === "admin"
-				? {} // Admin sees all months
-				: { userId: req.user.id }; // Normal user sees only theirs
+			req.user.username === "admin" ? {} : { userId: req.user.id };
 
-		const months = await Month.find(filter).sort({ name: 1 });
+		// 👇 Populate the username of the user who owns the month
+		const months = await Month.find(filter)
+			.sort({ name: 1 })
+			.populate("userId", "username");
+
 		res.json(months);
 	} catch (err) {
 		console.error("Error fetching months:", err.message);
