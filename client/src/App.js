@@ -5,6 +5,7 @@ import Student from "./components/Student";
 import axios from "axios";
 import setAuthToken from "./utils/setAuthToken";
 import UserDashboard from "./components/UserDashboard";
+import AdminDashboard from "./components/AdminDashboard";
 
 const App = () => {
 	const [user, setUser] = useState(null);
