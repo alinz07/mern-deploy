@@ -43,6 +43,21 @@ app.use((req, res) => {
 	res.status(404).json({ msg: "Not Found" });
 });
 
+// Diagnostic: Log all mounted routes
+function listRoutes(app) {
+	console.log("🔍 Registered Routes:");
+	app._router.stack
+		.filter((r) => r.route) // Only routes, skip middleware
+		.forEach((r) => {
+			const methods = Object.keys(r.route.methods)
+				.map((m) => m.toUpperCase())
+				.join(", ");
+			console.log(`${methods} ${r.route.path}`);
+		});
+}
+
+listRoutes(app);
+
 // route
 app.get("/", async (req, res) => {
 	res.status(201).json({ message: "Connected to Backend!" });
