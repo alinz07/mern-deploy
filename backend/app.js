@@ -6,7 +6,6 @@ const authRoutes = require("./routes/auth");
 const studentRoutes = require("./routes/students");
 const userRoutes = require("./routes/users");
 
-const Todo = require("./models/Todo");
 require("dotenv").config();
 
 //Execute express
@@ -18,6 +17,8 @@ const corsOptions = {
 };
 app.use(express.json());
 app.use(cors(corsOptions));
+
+app.get("/ping", (req, res) => res.send("pong"));
 
 // connect MongoDB
 mongoose
