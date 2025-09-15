@@ -1,14 +1,11 @@
 // client/src/components/Login.js
 import React, { useState } from "react";
 import axios from "axios";
-import "./style.css"; // Import CSS for styling
+import "./style.css";
 import setAuthToken from "../utils/setAuthToken";
 
 const Login = ({ setUser }) => {
-	const [formData, setFormData] = useState({
-		username: "",
-		password: "",
-	});
+	const [formData, setFormData] = useState({ username: "", password: "" });
 	const [message, setMessage] = useState("");
 
 	const { username, password } = formData;
@@ -18,32 +15,32 @@ const Login = ({ setUser }) => {
 
 	const onSubmit = async (e) => {
 		e.preventDefault();
+		setMessage("");
 		try {
 			const res = await axios.post(
 				"https://mern-deploy-i7u8.onrender.com/api/auth/login",
 				{ username, password }
 			);
 
-			if (res.data.token) {
-				// 1. Save token
+			if (res.data?.token) {
+				// 1) Persist token and set axios default header
 				localStorage.setItem("token", res.data.token);
 				setAuthToken(res.data.token);
 
-				// 2. Fetch real user info
-				const userRes = await axios.get(
+				// 2) Get the current user
+				const me = await axios.get(
 					"https://mern-deploy-i7u8.onrender.com/api/auth/me"
 				);
-				if (typeof setUser === "function") {
-					setUser(userRes.data); // 👈 Safe call
-				}
 
+				if (typeof setUser === "function") {
+					setUser(me.data);
+				}
 				setMessage("Logged in successfully");
 			} else {
-				console.error("No token in response:", res.data);
 				setMessage("Login failed - no token received");
 			}
 		} catch (err) {
-			console.error(err.response?.data || err.message);
+			console.error("Login error:", err.response?.data || err.message);
 			setMessage("Failed to login - wrong credentials");
 		}
 	};
