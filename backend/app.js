@@ -6,6 +6,7 @@ const authRoutes = require("./routes/auth");
 const studentRoutes = require("./routes/students");
 const userRoutes = require("./routes/users");
 const monthRoutes = require("./routes/months");
+const dayRoutes = require("./routes/days");
 
 require("dotenv").config();
 
@@ -36,6 +37,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/users", userRoutes); // 🔹 User routes mounted
 app.use("/api/months", monthRoutes);
+app.use("/api/days", dayRoutes);
 
 // route
 app.get("/", async (req, res) => {

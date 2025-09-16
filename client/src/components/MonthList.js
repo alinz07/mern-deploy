@@ -1,12 +1,14 @@
+// client/src/components/MonthList.js
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import DayList from "./DayList"; // ⬅️ NEW: renders days for a selected month
 
 function MonthList({ user }) {
 	const [months, setMonths] = useState([]);
-	const [name, setName] = useState("");
 	const [loading, setLoading] = useState(true);
 	const [message, setMessage] = useState("");
 	const [selectedYear, setSelectedYear] = useState("all");
+	const [selectedMonthId, setSelectedMonthId] = useState(null); // ⬅️ NEW
 
 	// Utility: Format "MonthName YYYY"
 	const getFormattedMonth = (offset = 0) => {
@@ -124,7 +126,9 @@ function MonthList({ user }) {
 			<button
 				onClick={() => handleAddMonth(1)}
 				disabled={nextExists}
-				title={currentExists ? "Next month already added" : ""}
+				title={
+					nextExists ? "Next month already added" : ""
+				} /* fixed title */
 			>
 				➕ Add Next Month
 			</button>
@@ -138,7 +142,42 @@ function MonthList({ user }) {
 			) : (
 				<ul>
 					{filtered.map((month) => (
-						<li key={month._id}>{month.name}</li>
+						<li key={month._id}>
+							{/* Clickable month name toggles its days */}
+							<button
+								type="button"
+								onClick={() =>
+									setSelectedMonthId(
+										selectedMonthId === month._id
+											? null
+											: month._id
+									)
+								}
+								style={{
+									background: "none",
+									border: "none",
+									padding: 0,
+									margin: 0,
+									textDecoration: "underline",
+									cursor: "pointer",
+									font: "inherit",
+								}}
+							>
+								{month.name}
+							</button>
+
+							{/* Show DayList when this month is selected */}
+							{selectedMonthId === month._id && (
+								<div
+									style={{
+										marginTop: "0.5rem",
+										marginLeft: "1rem",
+									}}
+								>
+									<DayList monthId={month._id} />
+								</div>
+							)}
+						</li>
 					))}
 				</ul>
 			)}
