@@ -4,7 +4,7 @@ const auth = require("../middleware/auth");
 const Day = require("../models/Day");
 const Month = require("../models/Month");
 
-// GET /api/days?monthId=...
+// GET /api/day?monthId=...
 router.get("/", auth, async (req, res) => {
 	try {
 		const { monthId } = req.query;
@@ -37,7 +37,7 @@ router.get("/", auth, async (req, res) => {
 	}
 });
 
-// POST /api/days/new  { monthId, day, isoDate?, notes? }
+// POST /api/day/new  { monthId, day, isoDate?, notes? }
 router.post("/new", auth, async (req, res) => {
 	try {
 		const { monthId, day, isoDate, notes } = req.body;

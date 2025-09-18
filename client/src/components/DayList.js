@@ -12,7 +12,7 @@ function DayList({ monthId }) {
 			try {
 				const token = localStorage.getItem("token");
 				const res = await axios.get(
-					`https://mern-deploy-i7u8.onrender.com/api/days`,
+					`https://mern-deploy-i7u8.onrender.com/api/day`,
 					{
 						headers: { "x-auth-token": token },
 						params: { monthId },

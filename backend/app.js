@@ -37,7 +37,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/users", userRoutes); // 🔹 User routes mounted
 app.use("/api/months", monthRoutes);
-app.use("/api/days", dayRoutes);
+app.use("/api/day", dayRoutes);
 
 // route
 app.get("/", async (req, res) => {
