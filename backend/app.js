@@ -6,7 +6,7 @@ const authRoutes = require("./routes/auth");
 const studentRoutes = require("./routes/students");
 const userRoutes = require("./routes/users");
 const monthRoutes = require("./routes/months");
-const dayRoutes = require("./routes/days");
+const dayRoutes = require("./routes/day");
 
 require("dotenv").config();
 
