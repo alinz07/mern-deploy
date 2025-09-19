@@ -1,7 +1,7 @@
 // client/src/components/MonthList.js
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import DayList from "./DayList"; // ⬅️ NEW: renders days for a selected month
+import DayList from "./DayList";
 
 function MonthList({ user }) {
 	const [months, setMonths] = useState([]);
