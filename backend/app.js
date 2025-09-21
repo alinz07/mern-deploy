@@ -3,7 +3,6 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const config = require("./config");
 const authRoutes = require("./routes/auth");
-const studentRoutes = require("./routes/students");
 const userRoutes = require("./routes/users");
 const monthRoutes = require("./routes/months");
 
@@ -33,7 +32,6 @@ mongoose
 	});
 
 app.use("/api/auth", authRoutes);
-app.use("/api/students", studentRoutes);
 app.use("/api/users", userRoutes); // 🔹 User routes mounted
 app.use("/api/months", monthRoutes);
 
