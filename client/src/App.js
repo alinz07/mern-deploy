@@ -52,18 +52,7 @@ const App = () => {
 			{user ? (
 				<div>
 					<button onClick={handleLogout}>Logout</button>
-					{user.username?.toLowerCase() === "admin" ? (
-						<div>
-							<p>Welcome, Professor</p>
-							<AdminDashboard user={user} />
-						</div>
-					) : (
-						<div>
-							<p>Welcome, {user.username}</p>
-							<UserDashboard userId={user._id} user={user} />
-						</div>
-					)}
-					+{" "}
+
 					<Routes>
 						<Route
 							path="/"
