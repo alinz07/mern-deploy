@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const auth = require("../middleware/auth");
 const Month = require("../models/Month");
+const Day = require("../models/Day");
 
 // GET all months (admin sees all, others see their own)
 router.get("/", auth, async (req, res) => {
@@ -48,6 +49,32 @@ router.post("/new", auth, async (req, res) => {
 	} catch (err) {
 		console.error("Failed to add month:", err.message);
 		res.status(500).send("Server Error");
+	}
+});
+
+router.post("/new", auth, async (req, res) => {
+	try {
+		const { name } = req.body;
+		if (!name) return res.status(400).json({ msg: "Name is required" });
+
+		// prevent duplicates per owner unless admin (admin can create global months if you want)
+		const exists = await Month.findOne({ name, owner: req.user.id });
+		if (exists)
+			return res.status(400).json({ msg: "Month already exists" });
+
+		const month = await Month.create({ name, owner: req.user.id });
+
+		// seed 31 Day docs
+		const days = Array.from({ length: 31 }, (_, i) => ({
+			dayNumber: i + 1,
+			month: month._id,
+			owner: req.user.id,
+		}));
+		await Day.insertMany(days);
+
+		return res.status(201).json(month);
+	} catch (e) {
+		res.status(500).json({ msg: "Server error", error: e.message });
 	}
 });
 module.exports = router;

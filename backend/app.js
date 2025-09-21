@@ -5,6 +5,7 @@ const config = require("./config");
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/users");
 const monthRoutes = require("./routes/months");
+const days = require("./routes/days");
 
 require("dotenv").config();
 
@@ -34,6 +35,7 @@ mongoose
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes); // 🔹 User routes mounted
 app.use("/api/months", monthRoutes);
+app.use("/api/days", days);
 
 // route
 app.get("/", async (req, res) => {

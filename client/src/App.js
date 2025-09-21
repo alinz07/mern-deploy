@@ -1,11 +1,13 @@
 // client/src/App.js
 import React, { useState, useEffect } from "react";
+import { Routes, Route } from "react-router-dom";
 import Register from "./components/Register";
 import Login from "./components/Login";
 import axios from "axios";
 import setAuthToken from "./utils/setAuthToken";
 import UserDashboard from "./components/UserDashboard";
 import AdminDashboard from "./components/AdminDashboard";
+import DayList from "./components/DayList";
 
 const App = () => {
 	const [user, setUser] = useState(null);
@@ -61,6 +63,29 @@ const App = () => {
 							<UserDashboard userId={user._id} user={user} />
 						</div>
 					)}
+					+{" "}
+					<Routes>
+						<Route
+							path="/"
+							element={
+								user.username?.toLowerCase() === "admin" ? (
+									<div>
+										<p>Welcome, Professor</p>
+										<AdminDashboard user={user} />
+									</div>
+								) : (
+									<div>
+										<p>Welcome, {user.username}</p>
+										<UserDashboard
+											userId={user._id}
+											user={user}
+										/>
+									</div>
+								)
+							}
+						/>
+						<Route path="/months/:monthId" element={<DayList />} />
+					</Routes>
 				</div>
 			) : (
 				<div>

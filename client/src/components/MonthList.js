@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { Link } from "react-router-dom";
 
 function MonthList({ user }) {
 	const [months, setMonths] = useState([]);
@@ -138,7 +139,11 @@ function MonthList({ user }) {
 			) : (
 				<ul>
 					{filtered.map((month) => (
-						<li key={month._id}>{month.name}</li>
+						<li key={month._id}>
+							<Link to={`/months/${month._id}`}>
+								{month.name}
+							</Link>
+						</li>
 					))}
 				</ul>
 			)}
