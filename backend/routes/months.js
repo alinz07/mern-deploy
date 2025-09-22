@@ -28,7 +28,7 @@ router.post("/new", auth, async (req, res) => {
 		if (!name)
 			return res.status(400).json({ msg: "Month name is required" });
 
-		// prevent duplicates per owner unless admin (admin can create global months if you want)
+		// prevent duplicates per userId unless admin (admin can create global months if you want)
 		const exists = await Month.findOne({ name, userId: req.user.id });
 		if (exists)
 			return res.status(400).json({ msg: "Month already exists" });
@@ -41,7 +41,14 @@ router.post("/new", auth, async (req, res) => {
 			month: month._id,
 			userId: req.user.id,
 		}));
-		await Day.insertMany(days);
+		try {
+			await Day.insertMany(days, { ordered: false }); // ← don’t stop on first error
+		} catch (e) {
+			console.error(
+				"Day seeding had some duplicates or validation issues:",
+				e?.writeErrors ?? e
+			);
+		}
 
 		return res.status(201).json(month);
 	} catch (e) {
@@ -54,7 +61,7 @@ router.get("/:id", auth, async (req, res) => {
 	try {
 		const m = await Month.findById(req.params.id);
 		if (!m) return res.status(404).json({ msg: "Not found" });
-		// Only allow owner (or admin) to read
+		// Only allow user (or admin) to read
 		if (req.user.username !== "admin" && String(m.userId) !== req.user.id) {
 			return res.status(403).json({ msg: "Forbidden" });
 		}
