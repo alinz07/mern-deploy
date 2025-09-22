@@ -22,53 +22,24 @@ router.get("/", auth, async (req, res) => {
 	}
 });
 
-// POST create a new month
-router.post("/new", auth, async (req, res) => {
-	const { name } = req.body;
-
-	if (!name) return res.status(400).json({ msg: "Month name is required" });
-
-	try {
-		// Prevent duplicates per user
-		const existing = await Month.findOne({
-			name,
-			userId: req.user.id,
-		});
-
-		if (existing) {
-			return res.status(400).json({ msg: "Month already exists" });
-		}
-
-		const newMonth = new Month({
-			name,
-			userId: req.user.id,
-		});
-
-		const saved = await newMonth.save();
-		res.status(201).json(saved);
-	} catch (err) {
-		console.error("Failed to add month:", err.message);
-		res.status(500).send("Server Error");
-	}
-});
-
 router.post("/new", auth, async (req, res) => {
 	try {
 		const { name } = req.body;
-		if (!name) return res.status(400).json({ msg: "Name is required" });
+		if (!name)
+			return res.status(400).json({ msg: "Month name is required" });
 
 		// prevent duplicates per owner unless admin (admin can create global months if you want)
-		const exists = await Month.findOne({ name, owner: req.user.id });
+		const exists = await Month.findOne({ name, userId: req.user.id });
 		if (exists)
 			return res.status(400).json({ msg: "Month already exists" });
 
-		const month = await Month.create({ name, owner: req.user.id });
+		const month = await Month.create({ name, userId: req.user.id });
 
 		// seed 31 Day docs
 		const days = Array.from({ length: 31 }, (_, i) => ({
 			dayNumber: i + 1,
 			month: month._id,
-			owner: req.user.id,
+			userId: req.user.id,
 		}));
 		await Day.insertMany(days);
 
@@ -77,4 +48,20 @@ router.post("/new", auth, async (req, res) => {
 		res.status(500).json({ msg: "Server error", error: e.message });
 	}
 });
+
+// backend/routes/months.js
+router.get("/:id", auth, async (req, res) => {
+	try {
+		const m = await Month.findById(req.params.id);
+		if (!m) return res.status(404).json({ msg: "Not found" });
+		// Only allow owner (or admin) to read
+		if (req.user.username !== "admin" && String(m.userId) !== req.user.id) {
+			return res.status(403).json({ msg: "Forbidden" });
+		}
+		res.json(m);
+	} catch (e) {
+		res.status(500).json({ msg: "Server error" });
+	}
+});
+
 module.exports = router;

@@ -9,7 +9,7 @@ const DaySchema = new mongoose.Schema(
 			ref: "Month",
 			required: true,
 		},
-		owner: {
+		userId: {
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "User",
 			required: true,

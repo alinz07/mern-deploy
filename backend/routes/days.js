@@ -12,7 +12,7 @@ router.get("/", auth, async (req, res) => {
 			return res.status(400).json({ msg: "monthId is required" });
 
 		const q = { month: monthId };
-		if (!isAdmin(req)) q.owner = req.user.id;
+		if (!isAdmin(req)) q.userId = req.user.id;
 
 		const days = await Day.find(q).sort({ dayNumber: 1 });
 		return res.json(days);
