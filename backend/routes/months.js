@@ -7,33 +7,47 @@ const Day = require("../models/Day");
 
 /**
  * Ensure a month has Day(1..31) documents for the given user.
- * - Uses $setOnInsert for { month, dayNumber } so inserts are complete.
- * - Uses $set for { userId } so ownership stays consistent.
- * - ordered:false so one conflict won't stop the rest.
- * Idempotent: safe to run multiple times.
+ * - Sequential, explicit upserts (simplest + most robust on all hosts)
+ * - $setOnInsert for { month, dayNumber } so inserts are complete
+ * - $set for { userId } to keep ownership consistent
+ * - Ignores duplicate-key noise; throws on anything else
  */
 async function ensureDaysForMonth(monthId, userId) {
-	const ops = Array.from({ length: 31 }, (_, idx) => {
-		const dayNumber = idx + 1;
-		return {
-			updateOne: {
-				filter: { month: monthId, dayNumber },
-				update: {
+	for (let dayNumber = 1; dayNumber <= 31; dayNumber++) {
+		try {
+			await Day.updateOne(
+				{ month: monthId, dayNumber },
+				{
 					$set: { userId },
 					$setOnInsert: { month: monthId, dayNumber },
 				},
-				upsert: true,
-			},
-		};
-	});
+				{ upsert: true }
+			);
+		} catch (err) {
+			// Duplicate key is fine (another request already created it)
+			const msg = err && err.message ? err.message : String(err);
+			const isDup =
+				msg.includes("E11000") ||
+				(err.code && Number(err.code) === 11000);
 
-	await Day.bulkWrite(ops, { ordered: false });
+			if (isDup) {
+				// Keep going; this just means the day already exists.
+				continue;
+			}
+
+			console.error(
+				`ensureDaysForMonth: failed for day ${dayNumber} of month ${monthId}: ${msg}`
+			);
+			// Bubble up real errors so the route returns a 500 with details
+			throw err;
+		}
+	}
 }
 
 /**
  * GET /api/months
  * Admin sees all; non-admin sees only their months.
- * Populates owner username for display.
+ * Populates owner username.
  */
 router.get("/", auth, async (req, res) => {
 	try {
@@ -46,7 +60,7 @@ router.get("/", auth, async (req, res) => {
 
 		res.json(months);
 	} catch (err) {
-		console.error("Error fetching months:", err.message);
+		console.error("Error fetching months:", err?.message || err);
 		res.status(500).send("Server Error");
 	}
 });
@@ -79,8 +93,10 @@ router.post("/new", auth, async (req, res) => {
 		await ensureDaysForMonth(month._id, req.user.id);
 		return res.status(200).json(month);
 	} catch (e) {
-		console.error("POST /api/months/new failed:", e);
-		return res.status(500).json({ msg: "Server error", error: e.message });
+		console.error("POST /api/months/new failed:", e?.message || e);
+		return res
+			.status(500)
+			.json({ msg: "Server error", error: e?.message || String(e) });
 	}
 });
 
@@ -93,14 +109,13 @@ router.get("/:id", auth, async (req, res) => {
 		const m = await Month.findById(req.params.id);
 		if (!m) return res.status(404).json({ msg: "Not found" });
 
-		// Only allow user (or admin) to read
 		if (req.user.username !== "admin" && String(m.userId) !== req.user.id) {
 			return res.status(403).json({ msg: "Forbidden" });
 		}
 
 		res.json(m);
 	} catch (e) {
-		console.error("GET /months/:id failed:", e);
+		console.error("GET /months/:id failed:", e?.message || e);
 		res.status(500).json({ msg: "Server error" });
 	}
 });
