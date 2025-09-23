@@ -6,26 +6,68 @@ const Day = require("../models/Day");
 
 /**
  * Ensure a month has Day(1..31) documents for the given user.
- * Idempotent: safe to run multiple times.
+ * Strategy:
+ *  1) Find existing dayNumbers for this month
+ *  2) Insert missing via insertMany({ordered:false})  (fast path)
+ *  3) If that throws, fall back to individual upserts (slow but unkillable)
  */
 async function ensureDaysForMonth(monthId, userId) {
-	const ops = Array.from({ length: 31 }, (_, i) => {
-		const dayNumber = i + 1;
-		return {
-			updateOne: {
-				filter: { month: monthId, dayNumber },
-				update: {
-					// Always assert ownership (keeps in sync if userId was ever missing)
-					$set: { userId },
-					// Only set these when inserting a new Day
-					$setOnInsert: { month: monthId, dayNumber },
-				},
-				upsert: true,
-			},
-		};
-	});
+	// Find existing days (only project number to keep it light)
+	const existing = await Day.find(
+		{ month: monthId },
+		{ dayNumber: 1, _id: 0 }
+	).lean();
+	const have = new Set(existing.map((d) => d.dayNumber));
 
-	await Day.bulkWrite(ops, { ordered: false });
+	const missingDocs = [];
+	for (let i = 1; i <= 31; i++) {
+		if (!have.has(i)) {
+			missingDocs.push({
+				dayNumber: i,
+				month: monthId,
+				userId: userId,
+			});
+		}
+	}
+
+	if (missingDocs.length === 0) return { inserted: 0, fallbackUpserts: 0 };
+
+	// Fast path: bulk insert only what’s missing
+	try {
+		const inserted = await Day.insertMany(missingDocs, { ordered: false });
+		return { inserted: inserted.length, fallbackUpserts: 0 };
+	} catch (e) {
+		// If the schema has extra required fields or an index race happened,
+		// fall back to idempotent upserts and keep going no matter what.
+		console.warn(
+			"ensureDaysForMonth: insertMany failed, falling back to upserts:",
+			e?.message || e
+		);
+
+		let ok = 0;
+		for (const doc of missingDocs) {
+			try {
+				await Day.updateOne(
+					{ month: monthId, dayNumber: doc.dayNumber },
+					{
+						$setOnInsert: {
+							month: monthId,
+							dayNumber: doc.dayNumber,
+						},
+						$set: { userId: userId },
+					},
+					{ upsert: true }
+				);
+				ok++;
+			} catch (err) {
+				console.error(
+					`ensureDaysForMonth: upsert failed for day ${doc.dayNumber}:`,
+					err?.message || err
+				);
+			}
+		}
+		return { inserted: 0, fallbackUpserts: ok };
+	}
 }
 
 // GET all months (admin sees all, others see their own)
@@ -46,7 +88,7 @@ router.get("/", auth, async (req, res) => {
 	}
 });
 
-// Create month if missing; always ensure 31 days
+// Create a month if missing; ALWAYS ensure 31 days exist for it.
 router.post("/new", auth, async (req, res) => {
 	try {
 		const { name } = req.body;
@@ -54,19 +96,24 @@ router.post("/new", auth, async (req, res) => {
 			return res.status(400).json({ msg: "Month name is required" });
 		}
 
-		// Find-or-create per user
+		// Find-or-create per user (admin creates under their own userId here)
 		let month = await Month.findOne({ name, userId: req.user.id });
 
 		if (!month) {
-			// Create new month
 			month = await Month.create({ name, userId: req.user.id });
-			await ensureDaysForMonth(month._id, req.user.id);
-			return res.status(201).json(month);
+
+			const result = await ensureDaysForMonth(month._id, req.user.id);
+			// Helpful, non-fatal telemetry in the response (you can remove later)
+			return res
+				.status(201)
+				.json({ ...month.toObject(), _telemetry: result });
 		}
 
-		// Month already exists -> still ensure 31 days, then return 200
-		await ensureDaysForMonth(month._id, req.user.id);
-		return res.status(200).json(month);
+		// Month already exists -> still ensure 31 days
+		const result = await ensureDaysForMonth(month._id, req.user.id);
+		return res
+			.status(200)
+			.json({ ...month.toObject(), _telemetry: result });
 	} catch (e) {
 		console.error("POST /months/new failed:", e);
 		return res.status(500).json({ msg: "Server error", error: e.message });
