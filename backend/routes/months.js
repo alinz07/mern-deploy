@@ -35,12 +35,13 @@ router.post("/new", auth, async (req, res) => {
 
 		const month = await Month.create({ name, userId: req.user.id });
 
-		// seed 31 Day docs
+		// backend/routes/months.js  (inside POST /new, right after creating `month`)
 		await Day.bulkWrite(
 			Array.from({ length: 31 }, (_, i) => ({
 				updateOne: {
 					filter: { month: month._id, dayNumber: i + 1 },
-					update: { $setOnInsert: { userId: req.user.id } }, // <-- userId, not owner
+					// Set userId whether the doc already exists or not
+					update: { $set: { userId: req.user.id } },
 					upsert: true,
 				},
 			}))
