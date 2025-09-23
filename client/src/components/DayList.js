@@ -46,8 +46,13 @@ export default function DayList() {
 			) : (
 				<ul>
 					{days.map((d) => (
-						<li key={d._id}>Day {d.dayNumber}</li>
-					))}
+						<li key={d._id}>
+							<Link to={`/days/${d._id}/check`}>
+								{d.dayNumber}:{" "}
+								{new Date(d.date).toLocaleDateString()}
+							</Link>
+						</li>
+					))}{" "}
 				</ul>
 			)}
 			<p>

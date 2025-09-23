@@ -8,6 +8,7 @@ import setAuthToken from "./utils/setAuthToken";
 import UserDashboard from "./components/UserDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import DayList from "./components/DayList";
+import CheckPage from "./pages/CheckPage";
 
 const App = () => {
 	const [user, setUser] = useState(null);
@@ -74,6 +75,10 @@ const App = () => {
 							}
 						/>
 						<Route path="/months/:monthId" element={<DayList />} />
+						<Route
+							path="/days/:dayId/check"
+							element={<CheckPage />}
+						/>
 					</Routes>
 				</div>
 			) : (
