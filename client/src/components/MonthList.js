@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 
@@ -9,13 +9,17 @@ function MonthList({ user }) {
 	const [message, setMessage] = useState("");
 	const [selectedYear, setSelectedYear] = useState("all");
 
+	// NEW: creation/loading state
+	const [isCreating, setIsCreating] = useState(false);
+	const [progressMsg, setProgressMsg] = useState("");
+
 	// Utility: Format "MonthName YYYY"
 	const getFormattedMonth = (offset = 0) => {
 		const date = new Date();
 		date.setMonth(date.getMonth() + offset);
-		const name = date.toLocaleString("default", { month: "long" });
+		const mname = date.toLocaleString("default", { month: "long" });
 		const year = date.getFullYear();
-		return `${name} ${year}`;
+		return `${mname} ${year}`;
 	};
 
 	const doesMonthExist = (monthName) =>
@@ -34,9 +38,11 @@ function MonthList({ user }) {
 		return date;
 	};
 
-	const uniqueYears = Array.from(
-		new Set(months.map((m) => m.name.split(" ")[1]))
-	).sort();
+	const uniqueYears = useMemo(
+		() =>
+			Array.from(new Set(months.map((m) => m.name.split(" ")[1]))).sort(),
+		[months]
+	);
 
 	// Fetch months on mount
 	useEffect(() => {
@@ -45,9 +51,7 @@ function MonthList({ user }) {
 				const token = localStorage.getItem("token");
 				const res = await axios.get(
 					"https://mern-deploy-i7u8.onrender.com/api/months",
-					{
-						headers: { "x-auth-token": token },
-					}
+					{ headers: { "x-auth-token": token } }
 				);
 				setMonths(res.data);
 			} catch (err) {
@@ -64,37 +68,84 @@ function MonthList({ user }) {
 		fetchMonths();
 	}, []);
 
+	// NEW: poll until all 31 days are visible to this user
+	const waitForDays = async (
+		monthId,
+		expected = 31,
+		maxMs = 20000,
+		intervalMs = 700
+	) => {
+		const token = localStorage.getItem("token");
+		const start = Date.now();
+
+		while (Date.now() - start < maxMs) {
+			try {
+				const res = await axios.get(
+					`https://mern-deploy-i7u8.onrender.com/api/days?monthId=${monthId}`,
+					{ headers: { "x-auth-token": token } }
+				);
+				const count = Array.isArray(res.data) ? res.data.length : 0;
+				setProgressMsg(
+					`Finishing setup… created ${Math.min(
+						count,
+						expected
+					)}/${expected} days`
+				);
+				if (count >= expected) return true;
+			} catch (e) {
+				// Keep trying; transient 500s are ok while upserts run
+			}
+			await new Promise((r) => setTimeout(r, intervalMs));
+		}
+		return false; // timed out
+	};
+
 	const handleAddMonth = async (offset) => {
-		const name = getFormattedMonth(offset);
+		const monthToAdd = getFormattedMonth(offset);
+		setIsCreating(true);
+		setProgressMsg("Creating month…");
 
 		try {
 			const token = localStorage.getItem("token");
-
 			const res = await axios.post(
 				"https://mern-deploy-i7u8.onrender.com/api/months/new",
-				{ name },
+				{ name: monthToAdd },
 				{ headers: { "x-auth-token": token } }
 			);
 
-			setMonths([...months, res.data]);
-			setMessage(`✅ Added: ${name}`);
+			// Update list immediately so link appears
+			setMonths((prev) => [...prev, res.data]);
+			setMessage(`✅ Added: ${monthToAdd}`);
+
+			// If server indicates not all days are yet visible, poll until 31 are ready
+			const telemetry = res.data?._telemetry; // from POST /months/new response
+			// months/new already ensures 31 upserts server-side; telemetry tells us if caller can see all of them yet. :contentReference[oaicite:2]{index=2}
+			if (telemetry?.missingForCaller?.length) {
+				setProgressMsg("Finishing setup… creating days");
+				await waitForDays(res.data._id, 31);
+			}
 		} catch (err) {
-			const msg = err.response?.data?.msg || "Something went wrong";
+			const msg =
+				err.response?.data?.msg ||
+				err.response?.data?.error ||
+				"Something went wrong";
 			setMessage(`❌ ${msg}`);
+		} finally {
+			setIsCreating(false);
+			setProgressMsg("");
 		}
 	};
 
 	if (loading) return <p>Loading months...</p>;
 
 	const filtered = months
-		.filter((m) => {
-			if (selectedYear === "all") return true;
-			return m.name.endsWith(selectedYear);
-		})
+		.filter((m) =>
+			selectedYear === "all" ? true : m.name.endsWith(selectedYear)
+		)
 		.sort((a, b) => parseMonthDate(a.name) - parseMonthDate(b.name));
 
 	return (
-		<div className="month-list">
+		<div className="month-list" style={{ position: "relative" }}>
 			<h3>Your Months</h3>
 
 			{/* Year Filter Dropdown */}
@@ -117,15 +168,15 @@ function MonthList({ user }) {
 			{/* Add Buttons */}
 			<button
 				onClick={() => handleAddMonth(0)}
-				disabled={currentExists}
+				disabled={currentExists || isCreating}
 				title={currentExists ? "Current month already added" : ""}
 			>
 				➕ Add Current Month
 			</button>
 			<button
 				onClick={() => handleAddMonth(1)}
-				disabled={nextExists}
-				title={currentExists ? "Next month already added" : ""}
+				disabled={nextExists || isCreating}
+				title={nextExists ? "Next month already added" : ""}
 			>
 				➕ Add Next Month
 			</button>
@@ -146,6 +197,52 @@ function MonthList({ user }) {
 						</li>
 					))}
 				</ul>
+			)}
+
+			{/* NEW: Full-screen-ish overlay while creating */}
+			{isCreating && (
+				<div
+					style={{
+						position: "fixed",
+						inset: 0,
+						background: "rgba(0,0,0,0.45)",
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "center",
+						zIndex: 9999,
+					}}
+				>
+					<div
+						style={{
+							background: "white",
+							borderRadius: 12,
+							padding: "20px 28px",
+							boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+							display: "flex",
+							alignItems: "center",
+							gap: 14,
+							minWidth: 260,
+						}}
+					>
+						{/* Simple CSS spinner */}
+						<div
+							style={{
+								width: 28,
+								height: 28,
+								border: "3px solid #ddd",
+								borderTopColor: "#444",
+								borderRadius: "50%",
+								animation: "spin 0.9s linear infinite",
+							}}
+						/>
+						<div style={{ fontWeight: 600 }}>
+							{progressMsg || "Working…"}
+						</div>
+					</div>
+
+					{/* inline keyframes */}
+					<style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+				</div>
 			)}
 		</div>
 	);
