@@ -36,20 +36,15 @@ router.post("/new", auth, async (req, res) => {
 		const month = await Month.create({ name, userId: req.user.id });
 
 		// seed 31 Day docs
-		const days = Array.from({ length: 31 }, (_, i) => ({
-			dayNumber: i + 1,
-			month: month._id,
-			userId: req.user.id,
-		}));
-		try {
-			await Day.insertMany(days, { ordered: false }); // ← don’t stop on first error
-		} catch (e) {
-			console.error(
-				"Day seeding had some duplicates or validation issues:",
-				e?.writeErrors ?? e
-			);
-		}
-
+		await Day.bulkWrite(
+			Array.from({ length: 31 }, (_, i) => ({
+				updateOne: {
+					filter: { month: month._id, dayNumber: i + 1 },
+					update: { $setOnInsert: { userId: req.user.id } }, // <-- userId, not owner
+					upsert: true,
+				},
+			}))
+		);
 		return res.status(201).json(month);
 	} catch (e) {
 		res.status(500).json({ msg: "Server error", error: e.message });
