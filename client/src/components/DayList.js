@@ -9,6 +9,13 @@ export default function DayList() {
 	const [monthName, setMonthName] = useState("");
 	const [loading, setLoading] = useState(true);
 	const [msg, setMsg] = useState("");
+	// Build a JS Date from "September 2025" + dayNumber
+	const makeDateFromMonthName = (monthName, dayNumber) => {
+		if (!monthName) return null;
+		const [mName, yStr] = monthName.split(" ");
+		const d = new Date(`${mName} ${dayNumber}, ${yStr}`);
+		return isNaN(d) ? null : d;
+	};
 
 	useEffect(() => {
 		const token = localStorage.getItem("token");
@@ -45,14 +52,20 @@ export default function DayList() {
 				<p>No days.</p>
 			) : (
 				<ul>
-					{days.map((d) => (
-						<li key={d._id}>
-							<Link to={`/days/${d._id}/check`}>
-								{d.dayNumber}:{" "}
-								{new Date(d.date).toLocaleDateString()}
-							</Link>
-						</li>
-					))}{" "}
+					{days.map((d) => {
+						const dt = makeDateFromMonthName(
+							monthName,
+							d.dayNumber
+						);
+						const label = dt ? dt.toLocaleDateString() : "";
+						return (
+							<li key={d._id}>
+								<Link to={`/days/${d._id}/check`}>
+									{d.dayNumber}: {label}
+								</Link>
+							</li>
+						);
+					})}{" "}
 				</ul>
 			)}
 			<p>
