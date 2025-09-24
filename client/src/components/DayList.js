@@ -9,14 +9,19 @@ export default function DayList() {
 	const [monthName, setMonthName] = useState("");
 	const [loading, setLoading] = useState(true);
 	const [msg, setMsg] = useState("");
-	// Build a JS Date from "September 2025" + dayNumber
-	const makeDateFromMonthName = (monthName, dayNumber) => {
-		if (!monthName) return null;
+	// helper: "Mon 9/1"
+	const formatDayLabel = (monthName, dayNumber) => {
+		if (!monthName) return String(dayNumber);
 		const [mName, yStr] = monthName.split(" ");
 		const d = new Date(`${mName} ${dayNumber}, ${yStr}`);
-		return isNaN(d) ? null : d;
+		if (isNaN(d)) return String(dayNumber);
+		const wk = d.toLocaleDateString(undefined, { weekday: "short" }); // Mon
+		const md = d.toLocaleDateString(undefined, {
+			month: "numeric",
+			day: "numeric",
+		}); // 9/1
+		return `${wk} ${md}`;
 	};
-
 	useEffect(() => {
 		const token = localStorage.getItem("token");
 		const load = async () => {
@@ -52,20 +57,18 @@ export default function DayList() {
 				<p>No days.</p>
 			) : (
 				<ul>
-					{days.map((d) => {
-						const dt = makeDateFromMonthName(
-							monthName,
-							d.dayNumber
-						);
-						const label = dt ? dt.toLocaleDateString() : "";
-						return (
+					{[...days]
+						.sort((a, b) => a.dayNumber - b.dayNumber)
+						.map((d) => (
 							<li key={d._id}>
-								<Link to={`/days/${d._id}/check`}>
-									{d.dayNumber}: {label}
+								<Link
+									to={`/days/${d._id}/check?monthId=${monthId}`}
+								>
+									{d.dayNumber}:{" "}
+									{formatDayLabel(monthName, d.dayNumber)}
 								</Link>
 							</li>
-						);
-					})}{" "}
+						))}{" "}
 				</ul>
 			)}
 			<p>
