@@ -12,6 +12,10 @@ function AdminDashboard({ user }) {
 	const [sortAsc, setSortAsc] = useState(true);
 	const [deletingId, setDeletingId] = useState(null);
 
+	const tokenHeader = () => ({
+		headers: { "x-auth-token": localStorage.getItem("token") },
+	});
+
 	useEffect(() => {
 		const fetchUsers = async () => {
 			try {
