@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import axios from "axios";
 
 function AdminDashboard({ user }) {
@@ -219,7 +220,14 @@ function AdminDashboard({ user }) {
 				<tbody>
 					{filteredMonths.map((month) => (
 						<tr key={month._id}>
-							<td>{month.name}</td>
+							<td>
+								<Link
+									to={`/months/${month._id}`}
+									title={`Open ${month.name}`}
+								>
+									{month.name}
+								</Link>
+							</td>{" "}
 							<td>{month.userId?.username || "Unknown"}</td>
 						</tr>
 					))}
