@@ -10,6 +10,7 @@ function AdminDashboard({ user }) {
 	const [filteredMonths, setFilteredMonths] = useState([]);
 	const [selectedUser, setSelectedUser] = useState("all");
 	const [sortAsc, setSortAsc] = useState(true);
+	const [deletingId, setDeletingId] = useState(null);
 
 	useEffect(() => {
 		const fetchUsers = async () => {
@@ -110,6 +111,39 @@ function AdminDashboard({ user }) {
 		document.body.removeChild(link);
 	};
 
+	const handleDeleteUser = async (u) => {
+		if (!u?._id) return;
+		const ok = window.confirm(
+			`Delete user "${u.username}" and their data? This cannot be undone.`
+		);
+		if (!ok) return;
+		try {
+			setDeletingId(u._id);
+			await axios.delete(
+				`https://mern-deploy-i7u8.onrender.com/api/users/${u._id}`,
+				tokenHeader()
+			);
+			// Remove user from local state
+			setUsers((prev) => prev.filter((x) => x._id !== u._id));
+			// Remove their months from both tables
+			setMonths((prev) => prev.filter((m) => m.userId?._id !== u._id));
+			setFilteredMonths((prev) =>
+				prev.filter((m) => m.userId?._id !== u._id)
+			);
+			// If you want to reset the filter when the selected user was deleted:
+			if (selectedUser === u.username) setSelectedUser("all");
+		} catch (err) {
+			console.error("Delete failed:", err.response?.data || err.message);
+			alert(
+				err?.response?.data?.msg ||
+					err?.response?.data?.error ||
+					"Failed to delete user"
+			);
+		} finally {
+			setDeletingId(null);
+		}
+	};
+
 	if (loadingUsers || loadingMonths) return <p>Loading dashboard data...</p>;
 	if (error) return <p className="error">{error}</p>;
 
@@ -135,9 +169,16 @@ function AdminDashboard({ user }) {
 								<td>{u.username}</td>
 								<td>{u.email || "N/A"}</td>
 								<td>
-									{/* Future: Add edit/delete buttons here */}
 									<button disabled>Edit</button>
-									<button disabled>Delete</button>
+									<button
+										onClick={() => handleDeleteUser(u)}
+										disabled={deletingId === u._id}
+										title="Delete this user"
+									>
+										{deletingId === u._id
+											? "Deleting…"
+											: "Delete"}
+									</button>{" "}
 								</td>
 							</tr>
 						))}
