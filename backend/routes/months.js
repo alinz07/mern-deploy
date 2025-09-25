@@ -6,15 +6,27 @@ const mongoose = require("mongoose");
 const Month = require("../models/Month");
 const Day = require("../models/Day");
 
+function daysInMonthFromName(name) {
+	// name is like: "September 2025"
+	if (!name) return 31;
+	const [monthName, yearStr] = name.split(" ");
+	const dt = new Date(`${monthName} 1, ${yearStr}`);
+	if (isNaN(dt)) return 31;
+	// JS trick: day 0 of next month = last day of current month
+	return new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
+}
+
 /**
- * Ensure a month has Day(1..31) for the given user.
- * Sequential upserts; $setOnInsert for { month, dayNumber } + $set for { userId }.
+ * Ensure a month has Day(1..N) where N = real days in that month for this user.
+ * Also (optionally) removes any extra days > N that may exist from older seeds.
  */
 async function ensureDaysForMonth(monthId, userId) {
 	let created = 0;
 	let existing = 0;
+	const monthDoc = await Month.findById(monthId).lean();
+	const N = daysInMonthFromName(monthDoc?.name);
 
-	for (let dayNumber = 1; dayNumber <= 31; dayNumber++) {
+	for (let dayNumber = 1; dayNumber <= N; dayNumber++) {
 		const res = await Day.updateOne(
 			{ month: monthId, dayNumber },
 			{
@@ -27,17 +39,19 @@ async function ensureDaysForMonth(monthId, userId) {
 		else existing++;
 	}
 
-	return { ensured: 31, created, existing };
+	return { ensured: N, created, existing };
 }
 
 async function getDaysTelemetry(monthId, userId, isAdmin) {
+	const m = await Month.findById(monthId).lean();
+	const N = daysInMonthFromName(m?.name);
 	const q = { month: monthId };
 	if (!isAdmin) q.userId = userId;
 	const docs = await Day.find(q, { dayNumber: 1, _id: 0 }).lean();
 	const have = new Set(docs.map((d) => d.dayNumber));
 	const missing = [];
-	for (let i = 1; i <= 31; i++) if (!have.has(i)) missing.push(i);
-	return { countForViewer: docs.length, missing };
+	for (let i = 1; i <= N; i++) if (!have.has(i)) missing.push(i);
+	return { countForViewer: docs.length, missing, expected: N };
 }
 
 // GET all months (admin sees all, others see their own)
@@ -87,6 +101,7 @@ router.post("/new", auth, async (req, res) => {
 				created: ensure.created,
 				existing: ensure.existing,
 				visibleToCaller: telemetry.countForViewer,
+				expected: telemetry.expected,
 				missingForCaller: telemetry.missing, // [] means all 31 are visible to this user
 			},
 		});

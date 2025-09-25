@@ -71,7 +71,7 @@ function MonthList({ user }) {
 	// NEW: poll until all 31 days are visible to this user
 	const waitForDays = async (
 		monthId,
-		expected = 31,
+		expected,
 		maxMs = 20000,
 		intervalMs = 700
 	) => {
@@ -100,6 +100,14 @@ function MonthList({ user }) {
 		return false; // timed out
 	};
 
+	const daysInMonthFromName = (name) => {
+		if (!name) return 31;
+		const [mName, yStr] = name.split(" ");
+		const dt = new Date(`${mName} 1, ${yStr}`);
+		if (isNaN(dt)) return 31;
+		return new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
+	};
+
 	const handleAddMonth = async (offset) => {
 		const monthToAdd = getFormattedMonth(offset);
 		setIsCreating(true);
@@ -118,11 +126,12 @@ function MonthList({ user }) {
 			setMessage(`✅ Added: ${monthToAdd}`);
 
 			// If server indicates not all days are yet visible, poll until 31 are ready
-			const telemetry = res.data?._telemetry; // from POST /months/new response
-			// months/new already ensures 31 upserts server-side; telemetry tells us if caller can see all of them yet. :contentReference[oaicite:2]{index=2}
+			const telemetry = res.data?._telemetry;
+			const expected =
+				telemetry?.expected ?? daysInMonthFromName(res.data?.name);
 			if (telemetry?.missingForCaller?.length) {
 				setProgressMsg("Finishing setup… creating days");
-				await waitForDays(res.data._id, 31);
+				await waitForDays(res.data._id, expected);
 			}
 		} catch (err) {
 			const msg =
