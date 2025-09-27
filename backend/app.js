@@ -39,7 +39,16 @@ app.use("/api/months", monthRoutes);
 app.use("/api/days", days);
 app.use("/api/checks", checkRoutes);
 
-// route
-app.get("/", async (req, res) => {
-	res.status(201).json({ message: "Connected to Backend!" });
+const path = require("path");
+
+// Serve the React build (adjust the path if your build dir differs)
+app.use(express.static(path.join(__dirname, "client", "build")));
+
+// History API fallback for React Router (exclude /api/*)
+app.get(/^\/(?!api).*/, (req, res) => {
+	res.sendFile(path.join(__dirname, "client", "build", "index.html"));
+});
+
+app.get("/api/health", (req, res) => {
+	res.status(200).json({ ok: true });
 });
