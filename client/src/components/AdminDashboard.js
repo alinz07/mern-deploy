@@ -37,7 +37,7 @@ function AdminDashboard({ user }) {
 		const fetchMonths = async () => {
 			try {
 				const res = await axios.get(
-					"https://mern-deploy-i7u8.onrender.com/api/months/all",
+					"https://mern-deploy-i7u8.onrender.com/api/months",
 					tokenHeader()
 				);
 				setMonths(res.data);
