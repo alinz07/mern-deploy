@@ -41,14 +41,14 @@ app.use("/api/checks", checkRoutes);
 
 const path = require("path");
 
-// Serve the React build (adjust the path if your build dir differs)
-app.use(express.static(path.join(__dirname, "client", "build")));
+// Serve CRA build
+const buildPath = path.join(__dirname, "..", "client", "build");
+app.use(express.static(buildPath));
 
-// History API fallback for React Router (exclude /api/*)
+// SPA fallback for non-API routes
 app.get(/^\/(?!api).*/, (req, res) => {
-	res.sendFile(path.join(__dirname, "client", "build", "index.html"));
+	res.sendFile(path.join(buildPath, "index.html"));
 });
 
-app.get("/api/health", (req, res) => {
-	res.status(200).json({ ok: true });
-});
+// Optional health check that won't be shadowed
+app.get("/api/health", (req, res) => res.json({ ok: true }));

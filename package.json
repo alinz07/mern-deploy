@@ -4,8 +4,8 @@
 	"description": "",
 	"main": "index.js",
 	"scripts": {
-		"install-server": "cd backend && npm install",
-		"start-server": "cd backend && node app.js",
+		"install-server": "npm ci && npm --prefix client ci && npm --prefix client run build && npm --prefix backend ci",
+		"start-server": "NODE_ENV=production node backend/app.js",
 		"install-client": "cd client && npm install",
 		"build-client": "cd client && npm run build",
 		"start-client": "cd client && npm run start"
