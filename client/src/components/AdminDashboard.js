@@ -1,16 +1,18 @@
-import React, { useEffect, useState } from "react";
+// client/src/components/AdminDashboard.js
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 
 function AdminDashboard({ user }) {
 	const [users, setUsers] = useState([]);
+	const [months, setMonths] = useState([]);
 	const [loadingUsers, setLoadingUsers] = useState(true);
 	const [loadingMonths, setLoadingMonths] = useState(true);
 	const [error, setError] = useState("");
-	const [months, setMonths] = useState([]);
-	const [filteredMonths, setFilteredMonths] = useState([]);
-	const [selectedUser, setSelectedUser] = useState("all");
-	const [sortAsc, setSortAsc] = useState(true);
+
+	// UI controls
+	const [searchTerm, setSearchTerm] = useState(""); // filter by username
+	const [sortDir, setSortDir] = useState("desc"); // "desc" = newest->oldest by parsed month/year
 	const [deletingId, setDeletingId] = useState(null);
 
 	const tokenHeader = () => ({
@@ -20,125 +22,85 @@ function AdminDashboard({ user }) {
 	useEffect(() => {
 		const fetchUsers = async () => {
 			try {
-				const token = localStorage.getItem("token");
 				const res = await axios.get(
 					"https://mern-deploy-i7u8.onrender.com/api/users",
-					{
-						headers: { "x-auth-token": token },
-					}
+					tokenHeader()
 				);
 				setUsers(res.data);
-			} catch (err) {
-				console.error(
-					"Failed to fetch users:",
-					err.response?.data || err.message
-				);
+			} catch (e) {
 				setError("Failed to load users");
 			} finally {
-				setLoadingUsers(false); // 🔹
+				setLoadingUsers(false);
+			}
+		};
+
+		const fetchMonths = async () => {
+			try {
+				const res = await axios.get(
+					"https://mern-deploy-i7u8.onrender.com/api/months/all",
+					tokenHeader()
+				);
+				setMonths(res.data);
+			} catch (e) {
+				setError("Failed to load months");
+			} finally {
+				setLoadingMonths(false);
 			}
 		};
 
 		fetchUsers();
+		fetchMonths();
 	}, []);
 
-	useEffect(() => {
-		const fetchAllMonths = async () => {
-			try {
-				const token = localStorage.getItem("token");
-				const res = await axios.get(
-					"https://mern-deploy-i7u8.onrender.com/api/months",
-					{
-						headers: { "x-auth-token": token },
-					}
-				);
-				setMonths(res.data);
-				setFilteredMonths(res.data);
-			} catch (err) {
-				console.error("Admin failed to fetch months:", err.message);
-				setError("Could not load months.");
-			} finally {
-				setLoadingMonths(false); // 🔹
-			}
-		};
-
-		fetchAllMonths();
-	}, []);
-
-	const uniqueUsers = [...new Set(months.map((m) => m.userId?.username))];
-
-	// Handle filter
-	const handleFilter = (e) => {
-		const username = e.target.value;
-		setSelectedUser(username);
-
-		if (username === "all") {
-			setFilteredMonths([...months]);
-		} else {
-			const filtered = months.filter(
-				(m) => m.userId?.username === username
-			);
-			setFilteredMonths(filtered);
-		}
+	// ---- Sorting only by parsed Month Name (e.g., "September 2025") ----
+	const nameToDate = (name) => {
+		if (!name) return null;
+		const [mName, yStr] = name.split(" ");
+		const d = new Date(`${mName} 1, ${yStr}`);
+		return isNaN(d) ? null : d;
 	};
 
-	// Handle sort toggle
-	const handleSort = () => {
-		const sorted = [...filteredMonths].sort((a, b) => {
-			const nameA = a.userId?.username?.toLowerCase() || "";
-			const nameB = b.userId?.username?.toLowerCase() || "";
-			return sortAsc
-				? nameA.localeCompare(nameB)
-				: nameB.localeCompare(nameA);
+	const monthRecencyTs = (m) => {
+		const d = nameToDate(m?.name);
+		return (d ? d : new Date(0)).getTime();
+	};
+
+	// Filter (by owner username) + sort (by parsed month/year)
+	const filteredSortedMonths = useMemo(() => {
+		const term = searchTerm.trim().toLowerCase();
+		const byUser = (m) =>
+			(m?.userId?.username || "").toLowerCase().includes(term);
+
+		const list = term ? months.filter(byUser) : months.slice();
+
+		list.sort((x, y) => {
+			const dx = monthRecencyTs(x);
+			const dy = monthRecencyTs(y);
+			return sortDir === "desc" ? dy - dx : dx - dy;
 		});
-		setFilteredMonths(sorted);
-		setSortAsc(!sortAsc);
-	};
 
-	// Export to CSV
-	const exportCSV = () => {
-		const headers = ["Month Name", "Username"];
-		const rows = filteredMonths.map((m) => [
-			m.name,
-			m.userId?.username || "",
-		]);
+		return list;
+	}, [months, searchTerm, sortDir]);
 
-		let csvContent =
-			"data:text/csv;charset=utf-8," +
-			[headers, ...rows].map((e) => e.join(",")).join("\n");
-
-		const encodedUri = encodeURI(csvContent);
-		const link = document.createElement("a");
-		link.setAttribute("href", encodedUri);
-		link.setAttribute("download", "months_export.csv");
-		document.body.appendChild(link); // Required for Firefox
-		link.click();
-		document.body.removeChild(link);
-	};
-
+	// ---- Delete user (with confirmation) ----
 	const handleDeleteUser = async (u) => {
 		if (!u?._id) return;
 		const ok = window.confirm(
 			`Delete user "${u.username}" and their data? This cannot be undone.`
 		);
 		if (!ok) return;
+
 		try {
 			setDeletingId(u._id);
 			await axios.delete(
 				`https://mern-deploy-i7u8.onrender.com/api/users/${u._id}`,
 				tokenHeader()
 			);
-			// Remove user from local state
+
+			// Remove from UI
 			setUsers((prev) => prev.filter((x) => x._id !== u._id));
-			// Remove their months from both tables
 			setMonths((prev) => prev.filter((m) => m.userId?._id !== u._id));
-			setFilteredMonths((prev) =>
-				prev.filter((m) => m.userId?._id !== u._id)
-			);
-			// If you want to reset the filter when the selected user was deleted:
-			if (selectedUser === u.username) setSelectedUser("all");
 		} catch (err) {
-			console.error("Delete failed:", err.response?.data || err.message);
 			alert(
 				err?.response?.data?.msg ||
 					err?.response?.data?.error ||
@@ -149,88 +111,124 @@ function AdminDashboard({ user }) {
 		}
 	};
 
-	if (loadingUsers || loadingMonths) return <p>Loading dashboard data...</p>;
-	if (error) return <p className="error">{error}</p>;
+	if (loadingUsers || loadingMonths) return <p>Loading admin data…</p>;
+	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
 
 	return (
-		<div className="admin-dashboard">
-			<h3>All Registered Users</h3>
+		<div>
+			<h2>Admin Dashboard</h2>
 
-			{users.length === 0 ? (
-				<p>No users found.</p>
-			) : (
-				<table>
-					<thead>
-						<tr>
-							<th>Username</th>
-							<th>Email</th>
-							<th>Actions</th>{" "}
-							{/* Placeholder for future actions */}
-						</tr>
-					</thead>
-					<tbody>
-						{users.map((u) => (
-							<tr key={u._id}>
-								<td>{u.username}</td>
-								<td>{u.email || "N/A"}</td>
-								<td>
-									<button disabled>Edit</button>
-									<button
-										onClick={() => handleDeleteUser(u)}
-										disabled={deletingId === u._id}
-										title="Delete this user"
-									>
-										{deletingId === u._id
-											? "Deleting…"
-											: "Delete"}
-									</button>{" "}
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
-			)}
-			<h3>All Users' Months</h3>
-			{/* Filter Dropdown */}
-			<label>Filter by User: </label>
-			<select value={selectedUser} onChange={handleFilter}>
-				<option value="all">All</option>
-				{uniqueUsers.map((user) => (
-					<option key={user} value={user}>
-						{user}
-					</option>
-				))}
-			</select>
-
-			{/* Sort Button */}
-			<button onClick={handleSort}>
-				Sort by Username {sortAsc ? "↑" : "↓"}
-			</button>
-			{/* Export Button */}
-			<button onClick={exportCSV}>Export as CSV</button>
-
-			{/* Table */}
+			{/* USERS TABLE */}
+			<h3>Users</h3>
 			<table>
 				<thead>
 					<tr>
-						<th>Month Name</th>
 						<th>Username</th>
+						<th>Email</th>
+						<th>Actions</th>
 					</tr>
 				</thead>
 				<tbody>
-					{filteredMonths.map((month) => (
-						<tr key={month._id}>
+					{users.map((u) => (
+						<tr key={u._id}>
+							<td>{u.username}</td>
+							<td>{u.email || "N/A"}</td>
 							<td>
-								<Link
-									to={`/months/${month._id}`}
-									title={`Open ${month.name}`}
+								<button disabled>Edit</button>
+								<button
+									type="button"
+									onClick={() => handleDeleteUser(u)}
+									disabled={deletingId === u._id}
+									title="Delete this user"
 								>
-									{month.name}
-								</Link>
-							</td>{" "}
-							<td>{month.userId?.username || "Unknown"}</td>
+									{deletingId === u._id
+										? "Deleting…"
+										: "Delete"}
+								</button>
+							</td>
 						</tr>
 					))}
+				</tbody>
+			</table>
+
+			{/* MONTHS TABLE CONTROLS */}
+			<div
+				style={{
+					marginTop: 24,
+					marginBottom: 12,
+					display: "flex",
+					gap: 12,
+					alignItems: "center",
+					flexWrap: "wrap",
+				}}
+			>
+				<h3 style={{ margin: 0 }}>Months</h3>
+				<div>
+					<input
+						type="text"
+						placeholder="Filter months by username…"
+						value={searchTerm}
+						onChange={(e) => setSearchTerm(e.target.value)}
+						style={{ padding: "6px 8px" }}
+						aria-label="Filter months by username"
+					/>
+				</div>
+				<div>
+					<button
+						type="button"
+						onClick={() =>
+							setSortDir((d) => (d === "desc" ? "asc" : "desc"))
+						}
+						title="Toggle month/year sort"
+					>
+						Sort:{" "}
+						{sortDir === "desc"
+							? "Newest → Oldest"
+							: "Oldest → Newest"}
+					</button>
+				</div>
+			</div>
+
+			{/* MONTHS TABLE */}
+			<table>
+				<thead>
+					<tr>
+						<th>Month</th>
+						<th>Owner</th>
+						<th>Month Start</th>
+					</tr>
+				</thead>
+				<tbody>
+					{filteredSortedMonths.map((m) => {
+						const parsed = nameToDate(m.name);
+						const label = parsed
+							? parsed.toLocaleDateString()
+							: "—";
+						return (
+							<tr key={m._id}>
+								<td>
+									<Link
+										to={`/months/${m._id}`}
+										title={`Open ${m.name}`}
+									>
+										{m.name}
+									</Link>
+								</td>
+								<td>{m.userId?.username || "Unknown"}</td>
+								<td>{label}</td>
+							</tr>
+						);
+					})}
+					{filteredSortedMonths.length === 0 && (
+						<tr>
+							<td
+								colSpan={3}
+								style={{ opacity: 0.7, fontStyle: "italic" }}
+							>
+								No months match your current filter.
+							</td>
+						</tr>
+					)}
 				</tbody>
 			</table>
 		</div>
