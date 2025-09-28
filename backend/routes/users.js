@@ -84,4 +84,70 @@ router.delete("/:id", auth, async (req, res) => {
 	}
 });
 
+// PUT /api/users/:id  (admin only) - update username/email
+router.put("/:id", auth, async (req, res) => {
+	try {
+		if (req.user.username !== "admin") {
+			return res.status(403).json({ msg: "Access denied" });
+		}
+
+		const { id } = req.params;
+		let { username, email } = req.body || {};
+
+		if (!mongoose.isValidObjectId(id)) {
+			return res.status(400).json({ msg: "Invalid user id" });
+		}
+
+		// normalize
+		if (typeof username === "string") username = username.trim();
+		if (typeof email === "string") email = email.trim().toLowerCase();
+
+		// validate (server-side)
+		const update = {};
+		if (typeof username === "string") {
+			if (username.length < 3)
+				return res
+					.status(400)
+					.json({ msg: "Username must be at least 3 characters" });
+			if (username.length > 50)
+				return res
+					.status(400)
+					.json({ msg: "Username must be at most 50 characters" });
+			update.username = username;
+		}
+		if (typeof email === "string" && email !== "") {
+			const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+			if (!emailOk)
+				return res.status(400).json({ msg: "Invalid email address" });
+			update.email = email;
+		} else if (email === "") {
+			// Optional: allow clearing email
+			update.email = undefined;
+		}
+
+		if (!Object.keys(update).length) {
+			return res.status(400).json({ msg: "No fields to update" });
+		}
+		const updated = await User.findByIdAndUpdate(id, update, {
+			new: true,
+			runValidators: true,
+			context: "query",
+			select: "-password",
+		});
+
+		if (!updated) return res.status(404).json({ msg: "User not found" });
+		return res.json(updated);
+	} catch (err) {
+		if (err?.code === 11000) {
+			// duplicate key (username or email)
+			const field = Object.keys(err.keyPattern || {})[0] || "field";
+			return res
+				.status(400)
+				.json({ msg: `That ${field} is already in use` });
+		}
+		console.error("PUT /api/users/:id error:", err);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
+
 module.exports = router;

@@ -14,6 +14,60 @@ function AdminDashboard({ user }) {
 	const [searchTerm, setSearchTerm] = useState(""); // filter by username
 	const [sortDir, setSortDir] = useState("desc"); // "desc" = newest->oldest by parsed month/year
 	const [deletingId, setDeletingId] = useState(null);
+	const [editId, setEditId] = useState(null);
+	const [editForm, setEditForm] = useState({ username: "", email: "" });
+	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+	const startEdit = (u) => {
+		setEditId(u._id);
+		setEditForm({ username: u.username || "", email: u.email || "" });
+	};
+
+	const cancelEdit = () => {
+		setEditId(null);
+		setEditForm({ username: "", email: "" });
+	};
+
+	const saveEdit = async () => {
+		const username = (editForm.username || "").trim();
+		const email = (editForm.email || "").trim();
+
+		// Client-side checks
+		if (!username) {
+			alert("Username is required.");
+			return;
+		}
+		if (username.length < 3) {
+			alert("Username must be at least 3 characters.");
+			return;
+		}
+		if (username.length > 50) {
+			alert("Username must be at most 50 characters.");
+			return;
+		}
+		if (email && !emailRegex.test(email)) {
+			alert("Please enter a valid email or leave it blank.");
+			return;
+		}
+
+		try {
+			const res = await axios.put(
+				`https://mern-deploy-i7u8.onrender.com/api/users/${editId}`,
+				{ username, email }, // <-- send normalized values
+				tokenHeader()
+			);
+			setUsers((prev) =>
+				prev.map((x) => (x._id === editId ? res.data : x))
+			);
+			cancelEdit();
+		} catch (err) {
+			const msg =
+				err?.response?.data?.msg ||
+				err?.response?.data?.error ||
+				"Failed to update user";
+			alert(msg);
+		}
+	};
 
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
@@ -129,25 +183,90 @@ function AdminDashboard({ user }) {
 					</tr>
 				</thead>
 				<tbody>
-					{users.map((u) => (
-						<tr key={u._id}>
-							<td>{u.username}</td>
-							<td>{u.email || "N/A"}</td>
-							<td>
-								<button disabled>Edit</button>
-								<button
-									type="button"
-									onClick={() => handleDeleteUser(u)}
-									disabled={deletingId === u._id}
-									title="Delete this user"
-								>
-									{deletingId === u._id
-										? "Deleting…"
-										: "Delete"}
-								</button>
-							</td>
-						</tr>
-					))}
+					{users.map((u) => {
+						const isEditing = editId === u._id;
+						return (
+							<tr key={u._id}>
+								<td>
+									{isEditing ? (
+										<input
+											type="text"
+											value={editForm.username}
+											onChange={(e) =>
+												setEditForm((f) => ({
+													...f,
+													username: e.target.value,
+												}))
+											}
+											placeholder="username"
+											style={{ padding: "4px 6px" }}
+										/>
+									) : (
+										u.username
+									)}
+								</td>
+								<td>
+									{isEditing ? (
+										<input
+											type="email"
+											value={editForm.email}
+											onChange={(e) =>
+												setEditForm((f) => ({
+													...f,
+													email: e.target.value,
+												}))
+											}
+											placeholder="email"
+											style={{ padding: "4px 6px" }}
+										/>
+									) : (
+										u.email || "N/A"
+									)}
+								</td>
+								<td>
+									{isEditing ? (
+										<>
+											<button
+												type="button"
+												onClick={saveEdit}
+												title="Save changes"
+											>
+												Save
+											</button>
+											<button
+												type="button"
+												onClick={cancelEdit}
+												title="Cancel edit"
+											>
+												Cancel
+											</button>
+										</>
+									) : (
+										<>
+											<button
+												type="button"
+												onClick={() => startEdit(u)}
+											>
+												Edit
+											</button>
+											<button
+												type="button"
+												onClick={() =>
+													handleDeleteUser(u)
+												}
+												disabled={deletingId === u._id}
+												title="Delete this user"
+											>
+												{deletingId === u._id
+													? "Deleting…"
+													: "Delete"}
+											</button>
+										</>
+									)}
+								</td>
+							</tr>
+						);
+					})}
 				</tbody>
 			</table>
 
