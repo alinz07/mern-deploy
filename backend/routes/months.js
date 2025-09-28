@@ -58,7 +58,10 @@ async function getDaysTelemetry(monthId, userId, isAdmin) {
 router.get("/", auth, async (req, res) => {
 	try {
 		const filter =
-			req.user.username === "admin" ? {} : { userId: req.user.id };
+			req.user.role === "admin"
+				? { adminUser: req.user.adminUser }
+				: { userId: req.user.id };
+
 		const months = await Month.find(filter)
 			.sort({ name: 1 })
 			.populate("userId", "username");
@@ -85,13 +88,18 @@ router.post("/new", auth, async (req, res) => {
 
 		let month = await Month.findOne({ name, userId });
 		const isNew = !month;
-		if (!month) month = await Month.create({ name, userId });
+		if (!month)
+			month = await Month.create({
+				name,
+				userId,
+				adminUser: req.user.adminUser,
+			});
 
 		const ensure = await ensureDaysForMonth(month._id, userId);
 		const telemetry = await getDaysTelemetry(
 			month._id,
 			userId,
-			req.user.username === "admin"
+			req.user.role === "admin"
 		);
 
 		return res.status(isNew ? 201 : 200).json({
@@ -102,7 +110,7 @@ router.post("/new", auth, async (req, res) => {
 				existing: ensure.existing,
 				visibleToCaller: telemetry.countForViewer,
 				expected: telemetry.expected,
-				missingForCaller: telemetry.missing, // [] means all 31 are visible to this user
+				missingForCaller: telemetry.missing,
 			},
 		});
 	} catch (e) {
@@ -118,7 +126,11 @@ router.get("/:id", auth, async (req, res) => {
 	try {
 		const m = await Month.findById(req.params.id);
 		if (!m) return res.status(404).json({ msg: "Not found" });
-		if (req.user.username !== "admin" && String(m.userId) !== req.user.id) {
+
+		const sameTenant = String(m.adminUser) === String(req.user.adminUser);
+		const isOwner = String(m.userId) === req.user.id;
+
+		if (!(sameTenant && (req.user.role === "admin" || isOwner))) {
 			return res.status(403).json({ msg: "Forbidden" });
 		}
 		res.json(m);

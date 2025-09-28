@@ -48,6 +48,8 @@ const App = () => {
 		return <div className="loading-spinner">Loading...</div>;
 	}
 
+	const isAdmin = user?.role === "admin";
+
 	return (
 		<div className="App">
 			{user ? (
@@ -58,9 +60,9 @@ const App = () => {
 						<Route
 							path="/"
 							element={
-								user.username?.toLowerCase() === "admin" ? (
+								isAdmin ? (
 									<div>
-										<p>Welcome, Professor</p>
+										<p>Welcome, {user.username}</p>
 										<AdminDashboard user={user} />
 									</div>
 								) : (

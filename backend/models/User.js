@@ -1,64 +1,80 @@
+// backend/models/User.js
 const mongoose = require("mongoose");
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-const UserSchema = new mongoose.Schema({
-	username: {
-		type: String,
-		required: true,
-		trim: true,
-		minlength: 3,
-		maxlength: 50,
-		unique: true,
-	},
-	password: {
-		type: String,
-		required: true,
-		minlength: 6,
-	},
-	email: {
-		type: String,
-		required: true,
-		unique: true,
-		lowercase: true,
-		trim: true,
-		validate: {
-			validator: (v) => v == null || v === "" || EMAIL_REGEX.test(v),
-			message: "Invalid email address",
+const UserSchema = new mongoose.Schema(
+	{
+		username: {
+			type: String,
+			required: true,
+			trim: true,
+			minlength: 3,
+			maxlength: 50,
+			unique: true,
 		},
+		password: { type: String, required: true, minlength: 6 },
+		email: {
+			type: String,
+			trim: true,
+			lowercase: true,
+			unique: true,
+			required: true,
+			validate: {
+				validator: (v) => v == null || v === "" || EMAIL_REGEX.test(v),
+				message: "Invalid email address",
+			},
+		},
+		role: {
+			type: String,
+			enum: ["admin", "user"],
+			default: "user",
+			index: true,
+		},
+		adminUser: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "AdminUser",
+			index: true,
+		}, // required for both roles
 	},
-});
+	{ timestamps: true }
+);
 
 UserSchema.pre("save", function (next) {
-	if (this.isModified("username") && typeof this.username === "string") {
+	if (this.isModified("username") && typeof this.username === "string")
 		this.username = this.username.trim();
-	}
 	if (this.isModified("email") && typeof this.email === "string") {
 		this.email = this.email.trim().toLowerCase();
-		if (this.email === "") this.email = undefined; // treat empty string as unset
+		if (this.email === "") this.email = undefined;
 	}
 	next();
 });
 
-// Normalize on update queries (findOneAndUpdate / updateOne / updateMany)
 UserSchema.pre(
 	["findOneAndUpdate", "updateOne", "updateMany"],
 	function (next) {
 		const update = this.getUpdate() || {};
 		const $set = update.$set || update;
-
-		if ($set.username && typeof $set.username === "string") {
+		if ($set.username && typeof $set.username === "string")
 			$set.username = $set.username.trim();
-		}
 		if ($set.email && typeof $set.email === "string") {
 			const trimmed = $set.email.trim().toLowerCase();
 			$set.email = trimmed === "" ? undefined : trimmed;
 		}
-
 		if (update.$set) update.$set = $set;
 		else this.setUpdate($set);
-
 		next();
+	}
+);
+
+UserSchema.index({ username: 1 }, { unique: true });
+UserSchema.index(
+	{ email: 1 },
+	{
+		unique: true,
+		partialFilterExpression: {
+			email: { $exists: true, $type: "string", $ne: "" },
+		},
 	}
 );
 
