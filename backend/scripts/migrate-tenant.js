@@ -8,7 +8,7 @@ const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 (async () => {
-	await mongoose.connect(process.env.MONGO_URI);
+	await mongoose.connect(process.env.MONGODB_URI);
 
 	// Create a single AdminUser for your current “solo admin” world.
 	// Pick the actual admin account’s _id:
