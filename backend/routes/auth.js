@@ -27,43 +27,63 @@ router.get("/me", auth, async (req, res) => {
 
 // Register
 router.post("/register", async (req, res) => {
-	const { username, password, email, newAdmin, adminName, adminJoinCode } =
-		req.body;
+	const {
+		username,
+		password,
+		email,
+		newAdmin,
+		adminName,
+		adminJoinCode,
+		adminCode, // <— expect this from the client when creating an admin
+	} = req.body;
 
 	try {
-		// Uniqueness checks (username/email)
+		// basic presence checks
+		if (!username || !password || !email) {
+			return res
+				.status(400)
+				.json({ msg: "username, password, and email are required" });
+		}
+
+		// uniqueness checks
 		if (await User.findOne({ username }))
 			return res.status(400).json({ msg: "User already exists" });
-		if (!email) return res.status(400).json({ msg: "Email is required" });
 		if (await User.findOne({ email }))
 			return res.status(400).json({ msg: "Email already exists" });
 
-		let role = "user";
-		let adminUserDoc = null;
-
+		// CREATE ADMIN FLOW
 		if (newAdmin) {
+			// Server-side enforcement: verify admin creation code
+			if (
+				!adminCode ||
+				String(adminCode).trim() !== config.adminCreateCode
+			) {
+				// Don’t reveal the expected code value; just say invalid.
+				return res
+					.status(403)
+					.json({ msg: "Invalid admin creation code" });
+			}
 			if (!adminName)
 				return res
 					.status(400)
 					.json({ msg: "adminName is required when newAdmin=true" });
+
 			const joinCode = generateJoinCode();
 
-			// user placeholder to satisfy required ownerUser (we’ll create the user next)
-			adminUserDoc = new AdminUser({
-				name: adminName,
-				joinCode,
-				ownerUser: undefined,
-			});
-			// create the admin user account next
+			// Create admin user first
 			let user = new User({ username, password, email, role: "admin" });
 			const salt = await bcrypt.genSalt(10);
 			user.password = await bcrypt.hash(password, salt);
 			user = await user.save();
 
-			adminUserDoc.ownerUser = user._id;
-			adminUserDoc = await adminUserDoc.save();
+			// Create AdminUser org owned by this admin
+			let adminUserDoc = await AdminUser.create({
+				name: adminName,
+				joinCode,
+				ownerUser: user._id,
+			});
 
-			// update user to point at adminUser
+			// Link admin to the org
 			user.adminUser = adminUserDoc._id;
 			await user.save();
 
@@ -81,20 +101,26 @@ router.post("/register", async (req, res) => {
 				{ expiresIn: 3600 },
 				(err, token) => {
 					if (err) throw err;
+					// Return the joinCode so admin can invite users
 					res.status(201).json({
 						token,
 						joinCode: adminUserDoc.joinCode,
-					}); // return joinCode so admin can share it
+					});
 				}
 			);
 			return;
 		}
-		// Register as a child user using adminJoinCode
+
+		// CHILD USER FLOW (must provide a valid adminJoinCode)
 		if (!adminJoinCode)
-			return res.status(400).json({
-				msg: "adminJoinCode is required for non-admin registration",
-			});
-		adminUserDoc = await AdminUser.findOne({ joinCode: adminJoinCode });
+			return res
+				.status(400)
+				.json({
+					msg: "adminJoinCode is required for non-admin registration",
+				});
+		const adminUserDoc = await AdminUser.findOne({
+			joinCode: adminJoinCode.trim(),
+		});
 		if (!adminUserDoc)
 			return res.status(400).json({ msg: "Invalid admin join code" });
 
@@ -102,7 +128,7 @@ router.post("/register", async (req, res) => {
 			username,
 			password,
 			email,
-			role,
+			role: "user",
 			adminUser: adminUserDoc._id,
 		});
 		const salt = await bcrypt.genSalt(10);
@@ -113,7 +139,7 @@ router.post("/register", async (req, res) => {
 			user: {
 				id: user.id,
 				username: user.username,
-				role,
+				role: "user",
 				adminUser: adminUserDoc._id,
 			},
 		};
@@ -128,6 +154,12 @@ router.post("/register", async (req, res) => {
 		);
 	} catch (err) {
 		console.error("Register error:", err);
+		if (err?.code === 11000) {
+			const field = Object.keys(err.keyPattern || {})[0] || "field";
+			return res
+				.status(400)
+				.json({ msg: `That ${field} is already in use` });
+		}
 		res.status(500).send("Server Error");
 	}
 });

@@ -50,6 +50,7 @@ const Register = () => {
 						username: username.trim(),
 						password,
 						email: email.trim(),
+						adminCode, // <— send the UI-entered code to the server
 				  }
 				: {
 						adminJoinCode: adminJoinCode.trim(),
