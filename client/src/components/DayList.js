@@ -51,6 +51,9 @@ export default function DayList() {
 
 	return (
 		<div className="day-list">
+			<p>
+				<Link to="/">← Back to Months</Link>
+			</p>
 			<h3>{monthName || "Days"}</h3>
 			{msg && <p className="message">{msg}</p>}
 			{days.length === 0 ? (
@@ -71,9 +74,6 @@ export default function DayList() {
 						))}{" "}
 				</ul>
 			)}
-			<p>
-				<Link to="/">← Back to Months</Link>
-			</p>
 		</div>
 	);
 }
