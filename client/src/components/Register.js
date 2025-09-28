@@ -50,7 +50,7 @@ const Register = () => {
 						username: username.trim(),
 						password,
 						email: email.trim(),
-						adminCode, // <— send the UI-entered code to the server
+						adminCode: (formData.adminCode || "").trim(),
 				  }
 				: {
 						adminJoinCode: adminJoinCode.trim(),
@@ -107,6 +107,14 @@ const Register = () => {
 
 				{newAdmin ? (
 					<>
+						<input
+							type="password"
+							placeholder="Admin creation code"
+							name="adminCode"
+							value={formData.adminCode || ""}
+							onChange={onChange}
+							required
+						/>
 						<input
 							type="text"
 							placeholder="Organization / Admin name"
