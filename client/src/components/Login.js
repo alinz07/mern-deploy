@@ -3,10 +3,12 @@ import React, { useState } from "react";
 import axios from "axios";
 import "./style.css";
 import setAuthToken from "../utils/setAuthToken";
+import { useNavigate } from "react-router-dom";
 
 const Login = ({ setUser }) => {
 	const [formData, setFormData] = useState({ username: "", password: "" });
 	const [message, setMessage] = useState("");
+	const navigate = useNavigate();
 
 	const { username, password } = formData;
 
@@ -36,6 +38,7 @@ const Login = ({ setUser }) => {
 					setUser(me.data);
 				}
 				setMessage("Logged in successfully");
+				navigate("/", { replace: true });
 			} else {
 				setMessage("Login failed - no token received");
 			}
