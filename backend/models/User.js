@@ -11,17 +11,21 @@ const UserSchema = new mongoose.Schema(
 			trim: true,
 			minlength: 3,
 			maxlength: 50,
-			unique: true,
+			unique: true, // unique username
 		},
-		password: { type: String, required: true, minlength: 6 },
+		password: {
+			type: String,
+			required: true,
+			minlength: 6,
+		},
 		email: {
 			type: String,
+			required: true, // NOW required
 			trim: true,
 			lowercase: true,
-			unique: true,
-			required: true,
+			unique: true, // plain unique (no partial needed)
 			validate: {
-				validator: (v) => v == null || v === "" || EMAIL_REGEX.test(v),
+				validator: (v) => EMAIL_REGEX.test(v),
 				message: "Invalid email address",
 			},
 		},
@@ -35,17 +39,18 @@ const UserSchema = new mongoose.Schema(
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "AdminUser",
 			index: true,
-		}, // required for both roles
+		},
 	},
 	{ timestamps: true }
 );
 
+/** Normalize inputs */
 UserSchema.pre("save", function (next) {
-	if (this.isModified("username") && typeof this.username === "string")
+	if (this.isModified("username") && typeof this.username === "string") {
 		this.username = this.username.trim();
+	}
 	if (this.isModified("email") && typeof this.email === "string") {
 		this.email = this.email.trim().toLowerCase();
-		if (this.email === "") this.email = undefined;
 	}
 	next();
 });
@@ -55,27 +60,21 @@ UserSchema.pre(
 	function (next) {
 		const update = this.getUpdate() || {};
 		const $set = update.$set || update;
-		if ($set.username && typeof $set.username === "string")
+
+		if ($set.username && typeof $set.username === "string") {
 			$set.username = $set.username.trim();
-		if ($set.email && typeof $set.email === "string") {
-			const trimmed = $set.email.trim().toLowerCase();
-			$set.email = trimmed === "" ? undefined : trimmed;
 		}
+		if ($set.email && typeof $set.email === "string") {
+			$set.email = $set.email.trim().toLowerCase();
+		}
+
 		if (update.$set) update.$set = $set;
 		else this.setUpdate($set);
+
 		next();
 	}
 );
 
-UserSchema.index({ username: 1 }, { unique: true });
-UserSchema.index(
-	{ email: 1 },
-	{
-		unique: true,
-		partialFilterExpression: {
-			email: { $exists: true, $type: "string", $ne: "" },
-		},
-	}
-);
+// NOTE: Do NOT keep a schema-level partial index on email anymore.
 
 module.exports = mongoose.model("User", UserSchema);

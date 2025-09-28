@@ -38,7 +38,10 @@ const Register = () => {
 		e.preventDefault();
 		setMessage("");
 		setJoinCode("");
-
+		if (!email.trim()) {
+			setMessage("Email is required.");
+			return;
+		}
 		try {
 			const payload = newAdmin
 				? {
@@ -143,7 +146,7 @@ const Register = () => {
 				/>
 				<input
 					type="email"
-					placeholder="Email (optional)"
+					placeholder="Email"
 					name="email"
 					value={email}
 					onChange={onChange}

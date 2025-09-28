@@ -34,6 +34,7 @@ router.post("/register", async (req, res) => {
 		// Uniqueness checks (username/email)
 		if (await User.findOne({ username }))
 			return res.status(400).json({ msg: "User already exists" });
+		if (!email) return res.status(400).json({ msg: "Email is required" });
 		if (await User.findOne({ email }))
 			return res.status(400).json({ msg: "Email already exists" });
 

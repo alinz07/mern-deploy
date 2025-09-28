@@ -1,9 +1,11 @@
 // scripts/migrate-tenant.js  (run with `node scripts/migrate-tenant.js`)
-require("dotenv").config();
 const mongoose = require("mongoose");
-const User = require("../backend/models/User");
-const Month = require("../backend/models/Month");
-const AdminUser = require("../backend/models/AdminUser");
+const User = require("../models/User");
+const Month = require("../models/Month");
+const AdminUser = require("../models/AdminUser");
+
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 (async () => {
 	await mongoose.connect(process.env.MONGO_URI);
