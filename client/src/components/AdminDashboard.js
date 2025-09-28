@@ -163,16 +163,7 @@ function AdminDashboard({ user }) {
 				}}
 			>
 				<h3 style={{ margin: 0 }}>Months</h3>
-				<div>
-					<input
-						type="text"
-						placeholder="Filter months by username…"
-						value={searchTerm}
-						onChange={(e) => setSearchTerm(e.target.value)}
-						style={{ padding: "6px 8px" }}
-						aria-label="Filter months by username"
-					/>
-				</div>
+
 				<div>
 					<button
 						type="button"
@@ -186,6 +177,16 @@ function AdminDashboard({ user }) {
 							? "Newest → Oldest"
 							: "Oldest → Newest"}
 					</button>
+				</div>
+				<div>
+					<input
+						type="text"
+						placeholder="search by username"
+						value={searchTerm}
+						onChange={(e) => setSearchTerm(e.target.value)}
+						style={{ padding: "6px 8px" }}
+						aria-label="search by username"
+					/>
 				</div>
 			</div>
 
