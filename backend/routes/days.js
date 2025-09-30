@@ -1,7 +1,6 @@
 const express = require("express");
 const router = express.Router();
 const auth = require("../middleware/auth");
-const isAdmin = require("../utils/isAdmin");
 const Day = require("../models/Day");
 const Month = require("../models/Month");
 
