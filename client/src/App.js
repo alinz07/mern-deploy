@@ -62,7 +62,7 @@ const App = () => {
 							element={
 								isAdmin ? (
 									<div>
-										<p>Welcome, {user.username}</p>
+										<p>Welcome, Professor</p>
 										<AdminDashboard user={user} />
 									</div>
 								) : (
