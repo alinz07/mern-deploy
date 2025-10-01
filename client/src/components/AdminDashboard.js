@@ -194,7 +194,7 @@ function AdminDashboard({ user }) {
 
 	return (
 		<div>
-			<h2>Admin Dashboard</h2>+ {/* NEW: Admin Stats Table */}
+			<h2>Admin Dashboard</h2>
 			<h3>Completion Stats</h3>
 			<p style={{ marginTop: -8, opacity: 0.8 }}>
 				Current month: {stats.currentMonthLabel || "—"} (to date) ·
