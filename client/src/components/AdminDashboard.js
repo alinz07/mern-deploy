@@ -17,6 +17,12 @@ function AdminDashboard({ user }) {
 	const [editId, setEditId] = useState(null);
 	const [editForm, setEditForm] = useState({ username: "", email: "" });
 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+	const [stats, setStats] = useState({
+		rows: [],
+		currentMonthLabel: "",
+		previousMonthLabel: "",
+	});
+	const [loadingStats, setLoadingStats] = useState(true);
 
 	const startEdit = (u) => {
 		setEditId(u._id);
@@ -102,8 +108,24 @@ function AdminDashboard({ user }) {
 			}
 		};
 
+		const fetchStats = async () => {
+			try {
+				const res = await axios.get(
+					"https://mern-deploy-i7u8.onrender.com/api/stats/admin-checks",
+					tokenHeader()
+				);
+				setStats(res.data);
+			} catch (e) {
+				console.error(e);
+				// keep users/months usable even if stats fails
+			} finally {
+				setLoadingStats(false);
+			}
+		};
+
 		fetchUsers();
 		fetchMonths();
+		fetchStats();
 	}, []);
 
 	// ---- Sorting only by parsed Month Name (e.g., "September 2025") ----
@@ -165,13 +187,48 @@ function AdminDashboard({ user }) {
 		}
 	};
 
-	if (loadingUsers || loadingMonths) return <p>Loading admin data…</p>;
+	if (loadingUsers || loadingMonths || loadingStats)
+		return <p>Loading admin data…</p>;
+
 	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
 
 	return (
 		<div>
-			<h2>Admin Dashboard</h2>
-
+			<h2>Admin Dashboard</h2>+ {/* NEW: Admin Stats Table */}
+			<h3>Completion Stats</h3>
+			<p style={{ marginTop: -8, opacity: 0.8 }}>
+				Current month: {stats.currentMonthLabel || "—"} (to date) ·
+				Previous month: {stats.previousMonthLabel || "—"}
+			</p>
+			<table>
+				<thead>
+					<tr>
+						<th>User</th>
+						<th>% days all 5 checked (current)</th>
+						<th>% days all 5 checked (previous)</th>
+					</tr>
+				</thead>
+				<tbody>
+					{stats.rows.length === 0 ? (
+						<tr>
+							<td
+								colSpan={3}
+								style={{ opacity: 0.7, fontStyle: "italic" }}
+							>
+								No users to show.
+							</td>
+						</tr>
+					) : (
+						stats.rows.map((r) => (
+							<tr key={r.userId}>
+								<td>{r.username}</td>
+								<td>{r.currentMonthPercent}%</td>
+								<td>{r.previousMonthPercent}%</td>
+							</tr>
+						))
+					)}
+				</tbody>
+			</table>
 			{/* USERS TABLE */}
 			<h3>Users</h3>
 			<table>
@@ -269,7 +326,6 @@ function AdminDashboard({ user }) {
 					})}
 				</tbody>
 			</table>
-
 			{/* MONTHS TABLE CONTROLS */}
 			<div
 				style={{
@@ -308,7 +364,6 @@ function AdminDashboard({ user }) {
 					/>
 				</div>
 			</div>
-
 			{/* MONTHS TABLE */}
 			<table>
 				<thead>
