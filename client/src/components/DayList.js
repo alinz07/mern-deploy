@@ -1,4 +1,4 @@
-// client/src/components/DayList.js
+// DayList.js (DROP-IN)
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
@@ -9,19 +9,21 @@ export default function DayList() {
 	const [monthName, setMonthName] = useState("");
 	const [loading, setLoading] = useState(true);
 	const [msg, setMsg] = useState("");
+
 	// helper: "Mon 9/1"
 	const formatDayLabel = (monthName, dayNumber) => {
 		if (!monthName) return String(dayNumber);
 		const [mName, yStr] = monthName.split(" ");
 		const d = new Date(`${mName} ${dayNumber}, ${yStr}`);
 		if (isNaN(d)) return String(dayNumber);
-		const wk = d.toLocaleDateString(undefined, { weekday: "short" }); // Mon
+		const wk = d.toLocaleDateString(undefined, { weekday: "short" });
 		const md = d.toLocaleDateString(undefined, {
 			month: "numeric",
 			day: "numeric",
-		}); // 9/1
+		});
 		return `${wk} ${md}`;
 	};
+
 	useEffect(() => {
 		const token = localStorage.getItem("token");
 		const load = async () => {
@@ -65,13 +67,13 @@ export default function DayList() {
 						.map((d) => (
 							<li key={d._id}>
 								<Link
-									to={`/days/${d._id}/check?monthId=${monthId}`}
+									to={`/days/${d._id}/check?monthId=${monthId}&userId=${d.userId}`}
 								>
 									{d.dayNumber}:{" "}
 									{formatDayLabel(monthName, d.dayNumber)}
 								</Link>
 							</li>
-						))}{" "}
+						))}
 				</ul>
 			)}
 		</div>
