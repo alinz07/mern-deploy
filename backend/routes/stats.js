@@ -7,21 +7,80 @@ const User = require("../models/User");
 const AdminUser = require("../models/AdminUser");
 const Month = require("../models/Month");
 const Day = require("../models/Day");
-const Check = require("../models/Check"); // one doc per (day,user) with checkone..checkfive booleans
+const Check = require("../models/Check");
 
-const auth = require("../middleware/auth"); // sets req.user = { id, ... }
+const auth = require("../middleware/auth");
 
-function monthLabel(date) {
-	return date.toLocaleString("en-US", { month: "long", year: "numeric" }); // e.g., "October 2025"
+// ===== Timezone helpers (use a fixed app TZ to avoid UTC drift) =====
+const APP_TZ = "America/Los_Angeles"; // change if you prefer a different canonical TZ
+
+const MONTH_NAMES = [
+	"January",
+	"February",
+	"March",
+	"April",
+	"May",
+	"June",
+	"July",
+	"August",
+	"September",
+	"October",
+	"November",
+	"December",
+];
+
+function tzParts(date = new Date(), tz = APP_TZ) {
+	// Returns { y, m, d } in the given timezone (m = 1..12)
+	const fmt = new Intl.DateTimeFormat("en-US", {
+		timeZone: tz,
+		year: "numeric",
+		month: "numeric",
+		day: "numeric",
+	});
+	const parts = fmt.formatToParts(date);
+	// parts order is locale-dependent; find by type
+	const y = +parts.find((p) => p.type === "year").value;
+	const m = +parts.find((p) => p.type === "month").value;
+	const d = +parts.find((p) => p.type === "day").value;
+	return { y, m, d };
 }
-function lastDayOfMonth(d) {
-	return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+
+function monthLabelFromParts({ y, m }) {
+	return `${MONTH_NAMES[m - 1]} ${y}`; // e.g., "October 2025"
+}
+
+// Shift month by delta (can be negative) in the given tz, returning parts
+function shiftMonth({ y, m, d }, delta) {
+	const newM = m + delta;
+	const y2 = y + Math.floor((newM - 1) / 12);
+	let m2 = (newM - 1) % 12;
+	if (m2 < 0) m2 += 12;
+	m2 += 1; // back to 1..12
+	// clamp day (not really needed for label/denominator computation)
+	const d2 = d;
+	return { y: y2, m: m2, d: d2 };
+}
+
+// last day of (y,m) in the target tz
+function lastDayOfMonthTZ({ y, m }, tz = APP_TZ) {
+	// Construct a date safely: take 1st of next month then go back 1 day.
+	const nextMonth = shiftMonth({ y, m, d: 1 }, +1);
+	const asDate = new Date(
+		`${MONTH_NAMES[nextMonth.m - 1]} 1, ${nextMonth.y} 00:00:00 GMT`
+	);
+	// step back one day in ms
+	const oneDay = 24 * 60 * 60 * 1000;
+	const prev = new Date(asDate.getTime() - oneDay);
+
+	// Extract the "day" in target tz to avoid DST/UTC surprises
+	return tzParts(prev, tz).d;
 }
 
 router.get("/admin-checks", auth, async (req, res) => {
 	const t0 = Date.now();
 	try {
 		console.log("\n[STATS] ===== /api/stats/admin-checks =====");
+		console.log("[STATS] server now (system tz):", new Date().toString());
 		console.log("[STATS] req.user:", req.user);
 
 		const adminId = req.user?.id;
@@ -34,26 +93,33 @@ router.get("/admin-checks", auth, async (req, res) => {
 		const adminOrg = await AdminUser.findOne({ ownerUser: adminId }).lean();
 		console.log("[STATS] adminOrg _id:", adminOrg?._id || null);
 
-		const now = new Date();
-		const currLabel = monthLabel(now); // e.g., "October 2025"
-		const prevAnchor = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-		const prevLabel = monthLabel(prevAnchor);
+		// ---- Timezone-accurate "now" parts and labels ----
+		const nowTZ = tzParts(new Date(), APP_TZ); // e.g., {y:2025,m:10,d:2}
+		const prevTZ = shiftMonth(nowTZ, -1); // previous month parts
+		const currLabel = monthLabelFromParts(nowTZ); // "October 2025"
+		const prevLabel = monthLabelFromParts(prevTZ); // "September 2025"
 
-		const daysElapsedThisMonth = now.getDate(); // include today
-		const daysInPrevMonth = lastDayOfMonth(prevAnchor).getDate(); // full previous month
+		// Denominators
+		const daysElapsedThisMonth = nowTZ.d; // include "today" in target TZ
+		const daysInPrevMonth = lastDayOfMonthTZ(prevTZ, APP_TZ);
 
 		console.log(
-			"[STATS] currLabel:",
+			"[STATS] TZ:",
+			APP_TZ,
+			"| nowTZ:",
+			nowTZ,
+			"| prevTZ:",
+			prevTZ,
+			"| currLabel:",
 			currLabel,
 			"| prevLabel:",
 			prevLabel,
-			"| daysElapsedThisMonth (denom incl. today):",
+			"| daysElapsedThisMonth:",
 			daysElapsedThisMonth,
-			"| daysInPrevMonth (denom):",
+			"| daysInPrevMonth:",
 			daysInPrevMonth
 		);
 
-		// If admin has no org yet, return empty (no users)
 		if (!adminOrg) {
 			console.log("[STATS] -> no AdminUser org; returning empty rows.");
 			return res.json({
@@ -63,7 +129,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 			});
 		}
 
-		// All non-admin users in this org (role can be "student", "user", etc.)
+		// All non-admin users in this org
 		const childUsers = await User.find({
 			adminUser: adminOrg._id,
 			role: { $ne: "admin" },
@@ -83,7 +149,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 
 		const userIds = childUsers.map((u) => u._id);
 
-		// Seed per-user rows with 0s; we’ll bump counters if we find successes.
+		// Seed per-user rows with 0s
 		const rowsMap = new Map(
 			childUsers.map((u) => [
 				String(u._id),
@@ -98,7 +164,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 			])
 		);
 
-		// Find Month docs for these users by exact label
+		// Find Month docs by exact label
 		const [monthsCurr, monthsPrev] = await Promise.all([
 			Month.find({ name: currLabel, userId: { $in: userIds } })
 				.select({ _id: 1, userId: 1, name: 1 })
@@ -122,28 +188,25 @@ router.get("/admin-checks", auth, async (req, res) => {
 			monthsPrev.map((m) => [String(m.userId), String(m._id)])
 		);
 
-		// Mark which users actually have a Month doc per bucket
+		// Mark month presence per user
 		for (const u of childUsers) {
 			const uid = String(u._id);
 			const r = rowsMap.get(uid);
 			r.hasCurrMonth = currByUser.has(uid);
 			r.hasPrevMonth = prevByUser.has(uid);
-			if (!r.hasCurrMonth) {
+			if (!r.hasCurrMonth)
 				console.log(
-					`[STATS] user "${u.username}" has NO current Month (${currLabel}). Will be 0% current.`
+					`[STATS] user "${u.username}" has NO current Month (${currLabel}). 0% current.`
 				);
-			}
-			if (!r.hasPrevMonth) {
+			if (!r.hasPrevMonth)
 				console.log(
-					`[STATS] user "${u.username}" has NO previous Month (${prevLabel}). Will be 0% previous.`
+					`[STATS] user "${u.username}" has NO previous Month (${prevLabel}). 0% previous.`
 				);
-			}
 		}
 
-		// If there are zero Month docs in both buckets, we still return all users with 0%
 		if (monthsCurr.length === 0 && monthsPrev.length === 0) {
 			console.log(
-				"[STATS] -> no months found for either bucket; returning rows with 0%."
+				"[STATS] -> no months for either bucket; returning rows with 0%."
 			);
 			const rows0 = Array.from(rowsMap.values())
 				.map((r) => ({
@@ -153,7 +216,6 @@ router.get("/admin-checks", auth, async (req, res) => {
 					previousMonthPercent: 0,
 				}))
 				.sort((a, b) => a.username.localeCompare(b.username));
-
 			console.log("[STATS] rows (sample):", rows0.slice(0, 5));
 			console.log("[STATS] done in ms:", Date.now() - t0);
 			return res.json({
@@ -163,7 +225,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 			});
 		}
 
-		// Load Day docs for those months (if any)
+		// Load Day docs for those months
 		const monthIdsToLoad = [
 			...monthsCurr.map((m) => m._id),
 			...monthsPrev.map((m) => m._id),
@@ -178,8 +240,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 			const dayIds = dayDocs.map((d) => d._id);
 			const dayById = new Map(dayDocs.map((d) => [String(d._id), d]));
 
-			// SUCCESS: a Check exists for that day with all five booleans true.
-			// IMPORTANT: do NOT filter by Check.user here; credit the Day's owner (d.userId).
+			// SUCCESS = exists a Check with all five true (credit to the Day.owner)
 			const successChecks = await Check.find({
 				day: { $in: dayIds },
 				checkone: true,
@@ -200,7 +261,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 				const d = dayById.get(String(c.day));
 				if (!d) continue;
 
-				const uid = String(d.userId); // derive owner from the Day itself
+				const uid = String(d.userId);
 				const r = rowsMap.get(uid);
 				if (!r) continue;
 
@@ -225,7 +286,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 			}
 		}
 
-		// Finalize percentages
+		// Finalize rows with TZ-safe denominators
 		const rows = Array.from(rowsMap.values())
 			.map((r) => {
 				const currentMonthPercent = r.hasCurrMonth
@@ -234,13 +295,13 @@ router.get("/admin-checks", auth, async (req, res) => {
 								(r.currSuccess / daysElapsedThisMonth) * 100
 						  )
 						: 0
-					: 0; // if no Month for current, show 0%
+					: 0;
 
 				const previousMonthPercent = r.hasPrevMonth
 					? daysInPrevMonth > 0
 						? Math.round((r.prevSuccess / daysInPrevMonth) * 100)
 						: 0
-					: 0; // if no Month for previous, show 0%
+					: 0;
 
 				return {
 					userId: r.userId,
@@ -251,7 +312,19 @@ router.get("/admin-checks", auth, async (req, res) => {
 			})
 			.sort((a, b) => a.username.localeCompare(b.username));
 
-		console.log("[STATS] rows (sample):", rows.slice(0, 5));
+		// Per-user debug (first few)
+		console.log("[STATS] sample tallies:");
+		for (const r of rows.slice(0, 5)) {
+			console.log(
+				`  - ${r.username}: currSuccess=${
+					rowsMap.get(r.userId).currSuccess
+				}/${daysElapsedThisMonth} (${
+					r.currentMonthPercent
+				}%), prevSuccess=${
+					rowsMap.get(r.userId).prevSuccess
+				}/${daysInPrevMonth} (${r.previousMonthPercent}%)`
+			);
+		}
 		console.log("[STATS] done in ms:", Date.now() - t0);
 
 		return res.json({
