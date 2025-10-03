@@ -5,6 +5,14 @@ import axios from "axios";
 
 function AdminDashboard({ user }) {
 	const [users, setUsers] = useState([]);
+	const sortedUsers = useMemo(() => {
+		return [...users].sort((a, b) => {
+			const av = (a?.username || "").toLowerCase();
+			const bv = (b?.username || "").toLowerCase();
+			return av.localeCompare(bv);
+		});
+	}, [users]);
+
 	const [months, setMonths] = useState([]);
 	const [loadingUsers, setLoadingUsers] = useState(true);
 	const [loadingMonths, setLoadingMonths] = useState(true);
@@ -240,7 +248,7 @@ function AdminDashboard({ user }) {
 					</tr>
 				</thead>
 				<tbody>
-					{users.map((u) => {
+					{sortedUsers.map((u) => {
 						const isEditing = editId === u._id;
 						return (
 							<tr key={u._id}>
