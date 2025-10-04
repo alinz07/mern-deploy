@@ -84,7 +84,10 @@ const App = () => {
 					</Routes>
 				</div>
 			) : (
-				<div id="public_page">
+				<div
+					id="public_page"
+					style={{ backgroundImage: "url(/gifted.png)" }} // image is reachable, absolute root works
+				>
 					<Register />
 					<Login setUser={setUser} />
 				</div>
