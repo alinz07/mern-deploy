@@ -73,8 +73,30 @@ body {
 	margin-left: 1rem;
 }
 
-.delete-todo {
+/* Public auth background: image bottom touches the fold, sides may letterbox */
+#public_page {
+	/* ensure we cover the full viewport area of the public page */
+	min-height: 100svh; /* better than 100vh on mobile */
 	display: flex;
-	justify-content: center;
 	align-items: center;
+	justify-content: center;
+	gap: 1.25rem;
+	padding: 2rem;
+
+	/* fallback background color for letterboxing and slow loads */
+	background-color: #000; /* or var(--light-alt) if you prefer */
+
+	/* key background settings */
+	background-image: url("/gifted.png"); /* put the image in /public */
+	background-repeat: no-repeat;
+	background-position: bottom center; /* bottom of the photo at the fold */
+	background-size: contain; /* show entire photo; allow side whitespace */
+	background-attachment: fixed; /* pin to viewport so it always hugs the fold */
+}
+
+/* iOS Safari fix: `fixed` can be glitchy — fall back to normal scrolling */
+@supports (-webkit-touch-callout: none) {
+	#public_page {
+		background-attachment: scroll;
+	}
 }

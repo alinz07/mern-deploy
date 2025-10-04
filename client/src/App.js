@@ -84,7 +84,7 @@ const App = () => {
 					</Routes>
 				</div>
 			) : (
-				<div>
+				<div id="public_page">
 					<Register />
 					<Login setUser={setUser} />
 				</div>
