@@ -160,6 +160,11 @@ router.patch("/:id", auth, async (req, res) => {
 			"checkthree",
 			"checkfour",
 			"checkfive",
+			"checksix",
+			"checkseven",
+			"checkeight",
+			"checknine",
+			"checkten",
 		].forEach((f) => {
 			if (typeof req.body[f] === "boolean") doc[f] = req.body[f];
 		});

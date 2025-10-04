@@ -1,4 +1,4 @@
-// backend/models/Day.js
+// models/Day.js
 const mongoose = require("mongoose");
 
 const DaySchema = new mongoose.Schema(
@@ -14,9 +14,21 @@ const DaySchema = new mongoose.Schema(
 			ref: "User",
 			required: true,
 		},
+
+		environment: {
+			type: String,
+			enum: ["online", "inperson"],
+			default: "online",
+			index: true,
+		},
 	},
 	{ timestamps: true }
 );
 
-DaySchema.index({ month: 1, dayNumber: 1 }, { unique: true }); // one doc per day per month
+// One Day per (month,user,dayNumber)
+DaySchema.index({ month: 1, userId: 1, dayNumber: 1 }, { unique: true });
+// Common filters
+DaySchema.index({ month: 1 });
+DaySchema.index({ userId: 1, month: 1 });
+
 module.exports = mongoose.model("Day", DaySchema);

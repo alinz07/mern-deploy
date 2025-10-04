@@ -240,7 +240,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 			const dayIds = dayDocs.map((d) => d._id);
 			const dayById = new Map(dayDocs.map((d) => [String(d._id), d]));
 
-			// SUCCESS = exists a Check with all five true (credit to the Day.owner)
+			// SUCCESS = exists a Check with all TEN true (credit Day.owner)
 			const successChecks = await Check.find({
 				day: { $in: dayIds },
 				checkone: true,
@@ -248,6 +248,11 @@ router.get("/admin-checks", auth, async (req, res) => {
 				checkthree: true,
 				checkfour: true,
 				checkfive: true,
+				checksix: true,
+				checkseven: true,
+				checkeight: true,
+				checknine: true,
+				checkten: true,
 			})
 				.select({ _id: 0, day: 1 })
 				.lean();

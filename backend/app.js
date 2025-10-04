@@ -40,6 +40,9 @@ app.use("/api/months", monthRoutes);
 app.use("/api/days", days);
 app.use("/api/checks", checkRoutes);
 app.use("/api/stats", statsRoutes);
+app.use("/api/equipment-checks", require("./routes/equipmentChecks"));
+app.use("/api/equipment", require("./routes/equipment"));
+app.use("/api/comments", require("./routes/comments"));
 
 // route
 app.get("/", async (req, res) => {
