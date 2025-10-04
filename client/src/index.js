@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import setAuthToken from "./utils/setAuthToken";
 import { BrowserRouter } from "react-router-dom";
+import "./index.css";
 
 // Rehydrate token BEFORE the app renders so the first request has the header
 const token = localStorage.getItem("token");
