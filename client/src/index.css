@@ -74,8 +74,16 @@ body {
 }
 
 #public_page {
-	background-image: url(%PUBLIC_URL%/gifted.png);
+	min-height: 100svh;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 1.25rem;
+	padding: 2rem;
+
+	/* background behavior (URL is set inline in App.js) */
 	background-repeat: no-repeat;
-	background-position: bottom center;
-	background-size: contain;
+	background-position: bottom center; /* bottom of photo at the fold */
+	background-size: contain; /* whole photo visible; side whitespace ok */
+	background-color: #000; /* letterbox color */
 }

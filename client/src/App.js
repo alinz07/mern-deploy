@@ -9,6 +9,7 @@ import UserDashboard from "./components/UserDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import DayList from "./components/DayList";
 import CheckPage from "./pages/CheckPage";
+import "./index.css";
 
 const App = () => {
 	const [user, setUser] = useState(null);
