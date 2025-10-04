@@ -203,3 +203,16 @@ body {
 #public_page .auth-form {
 	padding: 24px 22px;
 }
+/* Desktop: widen the space between Register and Login to reveal more of the hero text */
+@media (min-width: 1200px) {
+	#public_page {
+		gap: clamp(10rem, 20vw, 36rem); /* was ~clamp(4rem,12vw,20rem) */
+	}
+}
+
+/* Ultra-wide screens: open it up a bit more */
+@media (min-width: 1536px) {
+	#public_page {
+		gap: clamp(12rem, 24vw, 42rem);
+	}
+}
