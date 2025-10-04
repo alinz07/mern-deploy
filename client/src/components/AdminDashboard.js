@@ -212,8 +212,8 @@ function AdminDashboard({ user }) {
 				<thead>
 					<tr>
 						<th>User</th>
-						<th>% days all 5 checked (current)</th>
-						<th>% days all 5 checked (previous)</th>
+						<th>% days all 10 checked (current)</th>
+						<th>% days all 10 checked (previous)</th>
 					</tr>
 				</thead>
 				<tbody>

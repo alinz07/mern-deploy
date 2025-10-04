@@ -7,16 +7,13 @@ const CheckSchema = new mongoose.Schema(
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "Day",
 			required: true,
-			index: true,
 		},
 		user: {
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "User",
 			required: true,
-			index: true,
 		},
 
-		// 10 booleans
 		checkone: { type: Boolean, default: false },
 		checktwo: { type: Boolean, default: false },
 		checkthree: { type: Boolean, default: false },
@@ -34,7 +31,7 @@ const CheckSchema = new mongoose.Schema(
 // one Check per (day,user)
 CheckSchema.index({ day: 1, user: 1 }, { unique: true });
 // helpful secondaries
-CheckSchema.index({ user: 1 });
 CheckSchema.index({ day: 1 });
+CheckSchema.index({ user: 1 });
 
 module.exports = mongoose.model("Check", CheckSchema);
