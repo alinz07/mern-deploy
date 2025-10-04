@@ -86,7 +86,9 @@ const App = () => {
 			) : (
 				<div
 					id="public_page"
-					style={{ backgroundImage: "url(/gifted.png)" }} // image is reachable, absolute root works
+					style={{
+						backgroundImage: `url(${process.env.PUBLIC_URL}/gifted.png)`,
+					}}
 				>
 					<Register />
 					<Login setUser={setUser} />
