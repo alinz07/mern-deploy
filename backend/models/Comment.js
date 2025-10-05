@@ -8,6 +8,7 @@ const CommentSchema = new mongoose.Schema(
 			ref: "Check",
 			required: true,
 			index: true,
+			unique: true,
 		},
 		day: {
 			type: mongoose.Schema.Types.ObjectId,
@@ -38,6 +39,7 @@ const CommentSchema = new mongoose.Schema(
 	{ timestamps: true }
 );
 
-// fast fan-out: look up comments by check, or by (user,month,day)
+// keep this for optional filtered lookups
 CommentSchema.index({ user: 1, month: 1, day: 1 });
+
 module.exports = mongoose.model("Comment", CommentSchema);

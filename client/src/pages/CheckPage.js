@@ -15,11 +15,16 @@ export default function CheckPage() {
 	const [saving, setSaving] = useState({});
 	const [bulkSaving, setBulkSaving] = useState(false);
 
+	// single comment state
+	const [comment, setComment] = useState(null); // the doc or null
+	const [commentOpen, setCommentOpen] = useState(false);
+	const [commentText, setCommentText] = useState("");
+	const [commentSaving, setCommentSaving] = useState(false);
+
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
 	});
 
-	// All 10 fields in one place
 	const fields = useMemo(
 		() => [
 			["checkone", "Check One"],
@@ -51,8 +56,8 @@ export default function CheckPage() {
 				setMsg("");
 			} catch (err) {
 				const m =
-					err.response?.data?.msg ||
-					err.response?.data?.error ||
+					err?.response?.data?.msg ||
+					err?.response?.data?.error ||
 					"Unable to load or create check";
 				setMsg(m);
 			} finally {
@@ -62,7 +67,29 @@ export default function CheckPage() {
 		run();
 	}, [dayId, userId]);
 
-	// Toggle a single field (optimistic, with rollback)
+	// Load single comment once we have a check
+	useEffect(() => {
+		const loadComment = async () => {
+			if (!check?._id) return;
+			try {
+				const res = await axios.get(
+					`https://mern-deploy-i7u8.onrender.com/api/comments/by-check/${check._id}`,
+					tokenHeader()
+				);
+				setComment(res.data);
+				if (res.data) {
+					setCommentText(res.data.commentText || "");
+					setCommentOpen(true); // auto-open when existing
+				}
+			} catch {
+				// non-fatal
+			}
+		};
+		loadComment();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [check?._id]);
+
+	// Toggle a single field
 	const toggleField = useCallback(
 		async (field) => {
 			if (!check || saving[field] || bulkSaving) return;
@@ -79,11 +106,11 @@ export default function CheckPage() {
 				setMsg("");
 			} catch (err) {
 				const m =
-					err.response?.data?.msg ||
-					err.response?.data?.error ||
+					err?.response?.data?.msg ||
+					err?.response?.data?.error ||
 					"Update failed";
 				setMsg(m);
-				setCheck((c) => ({ ...c, [field]: prev })); // rollback on error
+				setCheck((c) => ({ ...c, [field]: prev }));
 			} finally {
 				setSaving((s) => ({ ...s, [field]: false }));
 			}
@@ -91,7 +118,7 @@ export default function CheckPage() {
 		[check, saving, bulkSaving]
 	);
 
-	// Bulk set all fields true/false in a single PATCH
+	// Bulk set all fields
 	const setAll = useCallback(
 		async (value) => {
 			if (!check || bulkSaving) return;
@@ -102,10 +129,7 @@ export default function CheckPage() {
 				{}
 			);
 			const prevState = { ...check };
-
-			// optimistic update
 			setCheck((c) => ({ ...c, ...payload }));
-
 			try {
 				const res = await axios.patch(
 					`https://mern-deploy-i7u8.onrender.com/api/checks/${check._id}`,
@@ -115,11 +139,11 @@ export default function CheckPage() {
 				setCheck(res.data);
 			} catch (err) {
 				const m =
-					err.response?.data?.msg ||
-					err.response?.data?.error ||
+					err?.response?.data?.msg ||
+					err?.response?.data?.error ||
 					"Bulk update failed";
 				setMsg(m);
-				setCheck(prevState); // rollback
+				setCheck(prevState);
 			} finally {
 				setBulkSaving(false);
 			}
@@ -127,14 +151,61 @@ export default function CheckPage() {
 		[check, fieldKeys, bulkSaving]
 	);
 
+	// Save (upsert) the single comment
+	const saveComment = async () => {
+		if (!check?._id || !commentText.trim()) return;
+		setCommentSaving(true);
+		try {
+			const res = await axios.put(
+				`https://mern-deploy-i7u8.onrender.com/api/comments/by-check/${check._id}`,
+				{ commentText },
+				tokenHeader()
+			);
+			setComment(res.data);
+			setCommentText(res.data.commentText || "");
+			setMsg("Comment saved.");
+		} catch (e) {
+			const m =
+				e?.response?.data?.msg ||
+				e?.response?.data?.error ||
+				"Failed to save comment";
+			setMsg(m);
+		} finally {
+			setCommentSaving(false);
+		}
+	};
+
+	// Delete the single comment
+	const deleteComment = async () => {
+		if (!check?._id) return;
+		setCommentSaving(true);
+		try {
+			await axios.delete(
+				`https://mern-deploy-i7u8.onrender.com/api/comments/by-check/${check._id}`,
+				tokenHeader()
+			);
+			setComment(null);
+			setCommentText("");
+			setMsg("Comment deleted.");
+			setCommentOpen(false);
+		} catch (e) {
+			const m =
+				e?.response?.data?.msg ||
+				e?.response?.data?.error ||
+				"Failed to delete comment";
+			setMsg(m);
+		} finally {
+			setCommentSaving(false);
+		}
+	};
+
 	if (loading) return <p>Loading check…</p>;
 	if (!check) return <p>{msg || "Check not found"}</p>;
 
-	// Derived: how many are checked?
 	const checkedCount = fieldKeys.reduce((n, k) => n + (check[k] ? 1 : 0), 0);
 
 	return (
-		<div style={{ maxWidth: 640 }}>
+		<div style={{ maxWidth: 700 }}>
 			<p style={{ marginBottom: 12 }}>
 				<Link to={monthId ? `/months/${monthId}` : `/`}>
 					← Back to DayList
@@ -163,7 +234,6 @@ export default function CheckPage() {
 					type="button"
 					onClick={() => setAll(true)}
 					disabled={bulkSaving}
-					title="Set all ten checkboxes to complete"
 				>
 					Mark all complete
 				</button>
@@ -171,7 +241,6 @@ export default function CheckPage() {
 					type="button"
 					onClick={() => setAll(false)}
 					disabled={bulkSaving}
-					title="Clear all ten checkboxes"
 				>
 					Clear all
 				</button>
@@ -182,6 +251,7 @@ export default function CheckPage() {
 				)}
 			</div>
 
+			{/* Checklist */}
 			<ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
 				{fields.map(([key, label]) => (
 					<li
@@ -221,6 +291,91 @@ export default function CheckPage() {
 					</li>
 				))}
 			</ul>
+
+			{/* Single Comment */}
+			<div
+				style={{
+					marginTop: 18,
+					borderTop: "1px solid #ddd",
+					paddingTop: 12,
+				}}
+			>
+				<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+					<h3 style={{ margin: 0 }}>Comment</h3>
+					{!commentOpen && !comment && (
+						<button
+							type="button"
+							onClick={() => setCommentOpen(true)}
+							title="Add a comment"
+						>
+							[ + ] Comment
+						</button>
+					)}
+					{commentOpen && !comment && (
+						<button
+							type="button"
+							onClick={() => setCommentOpen(false)}
+							title="Hide comment box"
+						>
+							[ – ] Hide
+						</button>
+					)}
+				</div>
+
+				{(commentOpen || comment) && (
+					<div style={{ marginTop: 10 }}>
+						<textarea
+							rows={4}
+							style={{ width: "100%", boxSizing: "border-box" }}
+							placeholder="Write a comment…"
+							value={commentText}
+							onChange={(e) => setCommentText(e.target.value)}
+						/>
+						<div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+							<button
+								type="button"
+								onClick={saveComment}
+								disabled={commentSaving || !commentText.trim()}
+							>
+								Save
+							</button>
+							{comment && (
+								<button
+									type="button"
+									onClick={deleteComment}
+									disabled={commentSaving}
+								>
+									Delete
+								</button>
+							)}
+							{commentSaving && (
+								<span
+									aria-live="polite"
+									style={{ fontSize: 12 }}
+								>
+									saving…
+								</span>
+							)}
+						</div>
+
+						{/* readback of current value */}
+						{comment && (
+							<div
+								style={{
+									marginTop: 10,
+									fontSize: 13,
+									opacity: 0.8,
+								}}
+							>
+								Last saved:{" "}
+								{new Date(
+									comment.updatedAt || comment.createdAt
+								).toLocaleString()}
+							</div>
+						)}
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }
