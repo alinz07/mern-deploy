@@ -17,6 +17,9 @@ export default function DayList() {
 	const [dateStr, setDateStr] = useState(""); // YYYY-MM-DD
 	const [submitting, setSubmitting] = useState(false);
 
+	// NEW: client-side filter (All / online / inperson)
+	const [filterEnv, setFilterEnv] = useState("all");
+
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
 	});
@@ -119,8 +122,6 @@ export default function DayList() {
 		}
 	};
 
-	// ...same imports & state as your current file...
-
 	const handleAddToday = async () => {
 		if (!monthId) return;
 		setSubmitting(true);
@@ -176,6 +177,12 @@ export default function DayList() {
 		createDay(dd);
 	};
 
+	// NEW: filtered view of days
+	const filteredDays = useMemo(() => {
+		if (filterEnv === "all") return [...days];
+		return days.filter((d) => (d.environment || "online") === filterEnv);
+	}, [days, filterEnv]);
+
 	if (loading) return <p>Loading days…</p>;
 
 	return (
@@ -183,7 +190,35 @@ export default function DayList() {
 			<p>
 				<Link to="/">← Back to Months</Link>
 			</p>
-			<h3>{monthName || "Days"}</h3>
+
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					gap: 12,
+					flexWrap: "wrap",
+				}}
+			>
+				<h3 style={{ margin: 0 }}>{monthName || "Days"}</h3>
+
+				{/* NEW: Environment filter */}
+				<label style={{ marginLeft: 8, fontSize: 14 }}>Filter:</label>
+				<select
+					value={filterEnv}
+					onChange={(e) => setFilterEnv(e.target.value)}
+					style={{ padding: "2px 6px" }}
+					aria-label="Filter days by environment"
+				>
+					<option value="all">All</option>
+					<option value="online">online</option>
+					<option value="inperson">inperson</option>
+				</select>
+
+				<span style={{ fontSize: 12, opacity: 0.7 }}>
+					showing {filteredDays.length}/{days.length}
+				</span>
+			</div>
+
 			{msg && <p className="message">{msg}</p>}
 
 			{/* Add Day Controls */}
@@ -235,11 +270,13 @@ export default function DayList() {
 			</div>
 
 			{/* Days list */}
-			{days.length === 0 ? (
-				<p>No days.</p>
+			{filteredDays.length === 0 ? (
+				<p>
+					No days{filterEnv !== "all" ? ` for '${filterEnv}'` : ""}.
+				</p>
 			) : (
 				<ul>
-					{[...days]
+					{[...filteredDays]
 						.sort((a, b) => a.dayNumber - b.dayNumber)
 						.map((d) => (
 							<li key={d._id}>
