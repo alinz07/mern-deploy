@@ -6,9 +6,11 @@ import axios from "axios";
 function AdminDashboard({ user }) {
 	const [users, setUsers] = useState([]);
 	const sortedUsers = useMemo(() => {
-		return [...users].sort((a, b) =>
-			(a?.username || "").localeCompare(b?.username || "")
-		);
+		return [...users].sort((a, b) => {
+			const av = (a?.username || "").toLowerCase();
+			const bv = (b?.username || "").toLowerCase();
+			return av.localeCompare(bv);
+		});
 	}, [users]);
 
 	const [months, setMonths] = useState([]);
@@ -16,19 +18,71 @@ function AdminDashboard({ user }) {
 	const [loadingMonths, setLoadingMonths] = useState(true);
 	const [error, setError] = useState("");
 
-	const [searchTerm, setSearchTerm] = useState("");
-	const [sortDir, setSortDir] = useState("desc");
+	// UI controls
+	const [searchTerm, setSearchTerm] = useState(""); // filter by username
+	const [sortDir, setSortDir] = useState("desc"); // "desc" = newest->oldest by parsed month/year
 	const [deletingId, setDeletingId] = useState(null);
 	const [editId, setEditId] = useState(null);
 	const [editForm, setEditForm] = useState({ username: "", email: "" });
 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+	// STATS state
 	const [stats, setStats] = useState({
 		rows: [],
 		currentMonthLabel: "",
 		previousMonthLabel: "",
 	});
 	const [loadingStats, setLoadingStats] = useState(true);
+
+	const startEdit = (u) => {
+		setEditId(u._id);
+		setEditForm({ username: u.username || "", email: u.email || "" });
+	};
+
+	const cancelEdit = () => {
+		setEditId(null);
+		setEditForm({ username: "", email: "" });
+	};
+
+	const saveEdit = async () => {
+		const username = (editForm.username || "").trim();
+		const email = (editForm.email || "").trim();
+
+		if (!username) {
+			alert("Username is required.");
+			return;
+		}
+		if (username.length < 3) {
+			alert("Username must be at least 3 characters.");
+			return;
+		}
+		if (username.length > 50) {
+			alert("Username must be at most 50 characters.");
+			return;
+		}
+		if (email && !emailRegex.test(email)) {
+			alert("Please enter a valid email or leave it blank.");
+			return;
+		}
+
+		try {
+			const res = await axios.put(
+				`https://mern-deploy-i7u8.onrender.com/api/users/${editId}`,
+				{ username, email },
+				tokenHeader()
+			);
+			setUsers((prev) =>
+				prev.map((x) => (x._id === editId ? res.data : x))
+			);
+			cancelEdit();
+		} catch (err) {
+			const msg =
+				err?.response?.data?.msg ||
+				err?.response?.data?.error ||
+				"Failed to update user";
+			alert(msg);
+		}
+	};
 
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
@@ -42,12 +96,13 @@ function AdminDashboard({ user }) {
 					tokenHeader()
 				);
 				setUsers(res.data);
-			} catch {
+			} catch (e) {
 				setError("Failed to load users");
 			} finally {
 				setLoadingUsers(false);
 			}
 		};
+
 		const fetchMonths = async () => {
 			try {
 				const res = await axios.get(
@@ -55,12 +110,13 @@ function AdminDashboard({ user }) {
 					tokenHeader()
 				);
 				setMonths(res.data);
-			} catch {
+			} catch (e) {
 				setError("Failed to load months");
 			} finally {
 				setLoadingMonths(false);
 			}
 		};
+
 		const fetchStats = async () => {
 			try {
 				const res = await axios.get(
@@ -70,6 +126,7 @@ function AdminDashboard({ user }) {
 				setStats(res.data);
 			} catch (e) {
 				console.error(e);
+				// keep users/months usable even if stats fails
 			} finally {
 				setLoadingStats(false);
 			}
@@ -80,34 +137,71 @@ function AdminDashboard({ user }) {
 		fetchStats();
 	}, []);
 
+	// ---- Sorting only by parsed Month Name (e.g., "September 2025") ----
 	const nameToDate = (name) => {
 		if (!name) return null;
 		const [mName, yStr] = name.split(" ");
 		const d = new Date(`${mName} 1, ${yStr}`);
 		return isNaN(d) ? null : d;
 	};
-	const monthRecencyTs = (m) => nameToDate(m?.name)?.getTime?.() ?? 0;
 
+	const monthRecencyTs = (m) => {
+		const d = nameToDate(m?.name);
+		return (d ? d : new Date(0)).getTime();
+	};
+
+	// Filter (by owner username) + sort (by parsed month/year)
 	const filteredSortedMonths = useMemo(() => {
 		const term = searchTerm.trim().toLowerCase();
-		const list = term
-			? months.filter((m) =>
-					(m?.userId?.username || "").toLowerCase().includes(term)
-			  )
-			: months.slice();
+		const byUser = (m) =>
+			(m?.userId?.username || "").toLowerCase().includes(term);
+
+		const list = term ? months.filter(byUser) : months.slice();
+
 		list.sort((x, y) => {
 			const dx = monthRecencyTs(x);
 			const dy = monthRecencyTs(y);
 			return sortDir === "desc" ? dy - dx : dx - dy;
 		});
+
 		return list;
 	}, [months, searchTerm, sortDir]);
 
+	// ---- Delete user (with confirmation) ----
+	const handleDeleteUser = async (u) => {
+		if (!u?._id) return;
+		const ok = window.confirm(
+			`Delete user "${u.username}" and their data? This cannot be undone.`
+		);
+		if (!ok) return;
+
+		try {
+			setDeletingId(u._id);
+			await axios.delete(
+				`https://mern-deploy-i7u8.onrender.com/api/users/${u._id}`,
+				tokenHeader()
+			);
+
+			// Remove from UI
+			setUsers((prev) => prev.filter((x) => x._id !== u._id));
+			setMonths((prev) => prev.filter((m) => m.userId?._id !== u._id));
+		} catch (err) {
+			alert(
+				err?.response?.data?.msg ||
+					err?.response?.data?.error ||
+					"Failed to delete user"
+			);
+		} finally {
+			setDeletingId(null);
+		}
+	};
+
 	if (loadingUsers || loadingMonths || loadingStats)
 		return <p>Loading admin data…</p>;
+
 	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
 
-	// helper to render a tooltip cell
+	// Tooltip cell helper
 	const StatCell = ({ pct, suc, den, label }) => {
 		const title = `${suc} of ${den} day${den === 1 ? "" : "s"} successful`;
 		return (
@@ -121,12 +215,12 @@ function AdminDashboard({ user }) {
 		<div>
 			<h2>Admin Dashboard</h2>
 
+			{/* ======= COMPLETION STATS (Updated to 5 columns with tooltips) ======= */}
 			<h3>Completion Stats</h3>
 			<p style={{ marginTop: -8, opacity: 0.8 }}>
 				Current month: {stats.currentMonthLabel || "—"} (to date) ·
 				Previous month: {stats.previousMonthLabel || "—"}
 			</p>
-
 			<table>
 				<thead>
 					<tr>
@@ -181,7 +275,8 @@ function AdminDashboard({ user }) {
 					)}
 				</tbody>
 			</table>
-			{/* USERS TABLE */}
+
+			{/* ======= USERS TABLE (unchanged) ======= */}
 			<h3>Users</h3>
 			<table>
 				<thead>
@@ -278,7 +373,8 @@ function AdminDashboard({ user }) {
 					})}
 				</tbody>
 			</table>
-			{/* MONTHS TABLE CONTROLS */}
+
+			{/* ======= MONTHS TABLE CONTROLS (unchanged) ======= */}
 			<div
 				style={{
 					marginTop: 24,
@@ -317,7 +413,8 @@ function AdminDashboard({ user }) {
 					/>
 				</div>
 			</div>
-			{/* MONTHS TABLE */}
+
+			{/* ======= MONTHS TABLE (unchanged) ======= */}
 			<table>
 				<thead>
 					<tr>
