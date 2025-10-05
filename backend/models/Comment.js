@@ -1,6 +1,19 @@
 // models/Comment.js
 const mongoose = require("mongoose");
 
+const VALID_FIELDS = [
+	"checkone",
+	"checktwo",
+	"checkthree",
+	"checkfour",
+	"checkfive",
+	"checksix",
+	"checkseven",
+	"checkeight",
+	"checknine",
+	"checkten",
+];
+
 const CommentSchema = new mongoose.Schema(
 	{
 		check: {
@@ -8,7 +21,6 @@ const CommentSchema = new mongoose.Schema(
 			ref: "Check",
 			required: true,
 			index: true,
-			unique: true,
 		},
 		day: {
 			type: mongoose.Schema.Types.ObjectId,
@@ -29,6 +41,9 @@ const CommentSchema = new mongoose.Schema(
 			index: true,
 		},
 
+		// NEW: which checkbox this comment is for
+		field: { type: String, enum: VALID_FIELDS, required: true },
+
 		commentText: {
 			type: String,
 			required: true,
@@ -39,7 +54,10 @@ const CommentSchema = new mongoose.Schema(
 	{ timestamps: true }
 );
 
-// keep this for optional filtered lookups
-CommentSchema.index({ user: 1, month: 1, day: 1 });
+// one comment per (check, field)
+CommentSchema.index({ check: 1, field: 1 }, { unique: true });
+
+// helpful lookup if you need it later
+CommentSchema.index({ user: 1, month: 1, day: 1, field: 1 });
 
 module.exports = mongoose.model("Comment", CommentSchema);

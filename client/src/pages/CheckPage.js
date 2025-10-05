@@ -3,6 +3,21 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import axios from "axios";
 
+const API = "https://mern-deploy-i7u8.onrender.com";
+
+const FIELD_MAP = [
+	["checkone", "Check One"],
+	["checktwo", "Check Two"],
+	["checkthree", "Check Three"],
+	["checkfour", "Check Four"],
+	["checkfive", "Check Five"],
+	["checksix", "Check Six"],
+	["checkseven", "Check Seven"],
+	["checkeight", "Check Eight"],
+	["checknine", "Check Nine"],
+	["checkten", "Check Ten"],
+];
+
 export default function CheckPage() {
 	const { dayId } = useParams();
 	const [searchParams] = useSearchParams();
@@ -15,32 +30,17 @@ export default function CheckPage() {
 	const [saving, setSaving] = useState({});
 	const [bulkSaving, setBulkSaving] = useState(false);
 
-	// single comment state
-	const [comment, setComment] = useState(null); // the doc or null
-	const [commentOpen, setCommentOpen] = useState(false);
-	const [commentText, setCommentText] = useState("");
-	const [commentSaving, setCommentSaving] = useState(false);
+	// per-field comment state
+	const [commentOpen, setCommentOpen] = useState({}); // { field: bool }
+	const [commentText, setCommentText] = useState({}); // { field: string }
+	const [commentDoc, setCommentDoc] = useState({}); // { field: commentDoc|null }
+	const [commentSaving, setCommentSaving] = useState({}); // { field: bool }
 
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
 	});
 
-	const fields = useMemo(
-		() => [
-			["checkone", "Check One"],
-			["checktwo", "Check Two"],
-			["checkthree", "Check Three"],
-			["checkfour", "Check Four"],
-			["checkfive", "Check Five"],
-			["checksix", "Check Six"],
-			["checkseven", "Check Seven"],
-			["checkeight", "Check Eight"],
-			["checknine", "Check Nine"],
-			["checkten", "Check Ten"],
-		],
-		[]
-	);
-	const fieldKeys = useMemo(() => fields.map(([k]) => k), [fields]);
+	const fieldKeys = useMemo(() => FIELD_MAP.map(([k]) => k), []);
 
 	// Ensure a Check exists for (dayId, [userId]) and load it
 	useEffect(() => {
@@ -48,7 +48,7 @@ export default function CheckPage() {
 			try {
 				const body = userId ? { dayId, userId } : { dayId };
 				const createRes = await axios.post(
-					"https://mern-deploy-i7u8.onrender.com/api/checks",
+					`${API}/api/checks`,
 					body,
 					tokenHeader()
 				);
@@ -67,29 +67,39 @@ export default function CheckPage() {
 		run();
 	}, [dayId, userId]);
 
-	// Load single comment once we have a check
+	// Load all per-field comments once we have a check
 	useEffect(() => {
-		const loadComment = async () => {
+		const loadAll = async () => {
 			if (!check?._id) return;
 			try {
 				const res = await axios.get(
-					`https://mern-deploy-i7u8.onrender.com/api/comments/by-check/${check._id}`,
+					`${API}/api/comments/by-check/${check._id}/all`,
 					tokenHeader()
 				);
-				setComment(res.data);
-				if (res.data) {
-					setCommentText(res.data.commentText || "");
-					setCommentOpen(true); // auto-open when existing
+				const map = res.data || {};
+				const openInit = {};
+				const textInit = {};
+				const docInit = {};
+				for (const [field] of FIELD_MAP) {
+					const doc = map[field] || null;
+					docInit[field] = doc;
+					// auto-open if comment exists with non-blank text
+					const hasText =
+						doc && (doc.commentText || "").trim().length > 0;
+					openInit[field] = hasText;
+					textInit[field] = hasText ? doc.commentText : "";
 				}
+				setCommentDoc(docInit);
+				setCommentOpen(openInit);
+				setCommentText(textInit);
 			} catch {
 				// non-fatal
 			}
 		};
-		loadComment();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+		loadAll();
 	}, [check?._id]);
 
-	// Toggle a single field
+	// Toggle a single checkbox field
 	const toggleField = useCallback(
 		async (field) => {
 			if (!check || saving[field] || bulkSaving) return;
@@ -98,7 +108,7 @@ export default function CheckPage() {
 			setCheck((c) => ({ ...c, [field]: !prev }));
 			try {
 				const res = await axios.patch(
-					`https://mern-deploy-i7u8.onrender.com/api/checks/${check._id}`,
+					`${API}/api/checks/${check._id}`,
 					{ [field]: !prev },
 					tokenHeader()
 				);
@@ -132,7 +142,7 @@ export default function CheckPage() {
 			setCheck((c) => ({ ...c, ...payload }));
 			try {
 				const res = await axios.patch(
-					`https://mern-deploy-i7u8.onrender.com/api/checks/${check._id}`,
+					`${API}/api/checks/${check._id}`,
 					payload,
 					tokenHeader()
 				);
@@ -151,18 +161,17 @@ export default function CheckPage() {
 		[check, fieldKeys, bulkSaving]
 	);
 
-	// Save (upsert) the single comment
-	const saveComment = async () => {
-		if (!check?._id || !commentText.trim()) return;
-		setCommentSaving(true);
+	// Save one field's comment
+	const saveComment = async (field) => {
+		if (!check?._id || !commentText[field]?.trim()) return;
+		setCommentSaving((s) => ({ ...s, [field]: true }));
 		try {
 			const res = await axios.put(
-				`https://mern-deploy-i7u8.onrender.com/api/comments/by-check/${check._id}`,
-				{ commentText },
+				`${API}/api/comments/by-check/${check._id}`,
+				{ field, commentText: commentText[field] },
 				tokenHeader()
 			);
-			setComment(res.data);
-			setCommentText(res.data.commentText || "");
+			setCommentDoc((d) => ({ ...d, [field]: res.data }));
 			setMsg("Comment saved.");
 		} catch (e) {
 			const m =
@@ -171,23 +180,23 @@ export default function CheckPage() {
 				"Failed to save comment";
 			setMsg(m);
 		} finally {
-			setCommentSaving(false);
+			setCommentSaving((s) => ({ ...s, [field]: false }));
 		}
 	};
 
-	// Delete the single comment
-	const deleteComment = async () => {
+	// Delete one field's comment
+	const deleteComment = async (field) => {
 		if (!check?._id) return;
-		setCommentSaving(true);
+		setCommentSaving((s) => ({ ...s, [field]: true }));
 		try {
-			await axios.delete(
-				`https://mern-deploy-i7u8.onrender.com/api/comments/by-check/${check._id}`,
-				tokenHeader()
-			);
-			setComment(null);
-			setCommentText("");
+			await axios.delete(`${API}/api/comments/by-check/${check._id}`, {
+				params: { field },
+				...tokenHeader(),
+			});
+			setCommentDoc((d) => ({ ...d, [field]: null }));
+			setCommentText((t) => ({ ...t, [field]: "" }));
+			setCommentOpen((o) => ({ ...o, [field]: false }));
 			setMsg("Comment deleted.");
-			setCommentOpen(false);
 		} catch (e) {
 			const m =
 				e?.response?.data?.msg ||
@@ -195,7 +204,7 @@ export default function CheckPage() {
 				"Failed to delete comment";
 			setMsg(m);
 		} finally {
-			setCommentSaving(false);
+			setCommentSaving((s) => ({ ...s, [field]: false }));
 		}
 	};
 
@@ -205,7 +214,7 @@ export default function CheckPage() {
 	const checkedCount = fieldKeys.reduce((n, k) => n + (check[k] ? 1 : 0), 0);
 
 	return (
-		<div style={{ maxWidth: 700 }}>
+		<div style={{ maxWidth: 760 }}>
 			<p style={{ marginBottom: 12 }}>
 				<Link to={monthId ? `/months/${monthId}` : `/`}>
 					← Back to DayList
@@ -251,131 +260,156 @@ export default function CheckPage() {
 				)}
 			</div>
 
-			{/* Checklist */}
+			{/* Checklist + per-field comments */}
 			<ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-				{fields.map(([key, label]) => (
-					<li
-						key={key}
-						style={{
-							display: "flex",
-							alignItems: "center",
-							gap: 10,
-							padding: "10px 0",
-							borderBottom: "1px solid #eee",
-						}}
-					>
-						<input
-							id={key}
-							type="checkbox"
-							checked={!!check[key]}
-							onChange={() => toggleField(key)}
-							disabled={!!saving[key] || bulkSaving}
-						/>
-						<label
-							htmlFor={key}
+				{FIELD_MAP.map(([field, label]) => {
+					const isSaving = !!saving[field] || bulkSaving;
+					const open = !!commentOpen[field];
+					const doc = commentDoc[field];
+					return (
+						<li
+							key={field}
 							style={{
-								userSelect: "none",
-								cursor:
-									saving[key] || bulkSaving
-										? "not-allowed"
-										: "pointer",
+								padding: "10px 0",
+								borderBottom: "1px solid #eee",
 							}}
 						>
-							{label}
-						</label>
-						{saving[key] && (
-							<span aria-live="polite" style={{ fontSize: 12 }}>
-								saving…
-							</span>
-						)}
-					</li>
-				))}
-			</ul>
-
-			{/* Single Comment */}
-			<div
-				style={{
-					marginTop: 18,
-					borderTop: "1px solid #ddd",
-					paddingTop: 12,
-				}}
-			>
-				<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-					<h3 style={{ margin: 0 }}>Comment</h3>
-					{!commentOpen && !comment && (
-						<button
-							type="button"
-							onClick={() => setCommentOpen(true)}
-							title="Add a comment"
-						>
-							[ + ] Comment
-						</button>
-					)}
-					{commentOpen && !comment && (
-						<button
-							type="button"
-							onClick={() => setCommentOpen(false)}
-							title="Hide comment box"
-						>
-							[ – ] Hide
-						</button>
-					)}
-				</div>
-
-				{(commentOpen || comment) && (
-					<div style={{ marginTop: 10 }}>
-						<textarea
-							rows={4}
-							style={{ width: "100%", boxSizing: "border-box" }}
-							placeholder="Write a comment…"
-							value={commentText}
-							onChange={(e) => setCommentText(e.target.value)}
-						/>
-						<div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-							<button
-								type="button"
-								onClick={saveComment}
-								disabled={commentSaving || !commentText.trim()}
-							>
-								Save
-							</button>
-							{comment && (
-								<button
-									type="button"
-									onClick={deleteComment}
-									disabled={commentSaving}
-								>
-									Delete
-								</button>
-							)}
-							{commentSaving && (
-								<span
-									aria-live="polite"
-									style={{ fontSize: 12 }}
-								>
-									saving…
-								</span>
-							)}
-						</div>
-
-						{/* readback of current value */}
-						{comment && (
 							<div
 								style={{
-									marginTop: 10,
-									fontSize: 13,
-									opacity: 0.8,
+									display: "flex",
+									alignItems: "center",
+									gap: 10,
 								}}
 							>
-								Last saved:{" "}
-								{new Date(
-									comment.updatedAt || comment.createdAt
-								).toLocaleString()}
+								<input
+									id={field}
+									type="checkbox"
+									checked={!!check[field]}
+									onChange={() => toggleField(field)}
+									disabled={isSaving}
+								/>
+								<label
+									htmlFor={field}
+									style={{
+										userSelect: "none",
+										cursor: isSaving
+											? "not-allowed"
+											: "pointer",
+									}}
+								>
+									{label}
+								</label>
+
+								{/* + / – toggle */}
+								{!open && !doc && (
+									<button
+										type="button"
+										onClick={() =>
+											setCommentOpen((o) => ({
+												...o,
+												[field]: true,
+											}))
+										}
+										title="Add a comment"
+										style={{ marginLeft: 8 }}
+									>
+										[ + ]
+									</button>
+								)}
+								{open && !doc && (
+									<button
+										type="button"
+										onClick={() =>
+											setCommentOpen((o) => ({
+												...o,
+												[field]: false,
+											}))
+										}
+										title="Hide comment box"
+										style={{ marginLeft: 8 }}
+									>
+										[ – ]
+									</button>
+								)}
 							</div>
-						)}
-					</div>
-				)}
-			</div>
+
+							{(open || doc) && (
+								<div style={{ marginTop: 8, marginLeft: 28 }}>
+									<textarea
+										rows={3}
+										style={{
+											width: "100%",
+											boxSizing: "border-box",
+										}}
+										placeholder="Write a comment…"
+										value={commentText[field] || ""}
+										onChange={(e) =>
+											setCommentText((t) => ({
+												...t,
+												[field]: e.target.value,
+											}))
+										}
+									/>
+									<div
+										style={{
+											display: "flex",
+											gap: 8,
+											marginTop: 6,
+										}}
+									>
+										<button
+											type="button"
+											onClick={() => saveComment(field)}
+											disabled={
+												commentSaving[field] ||
+												!(
+													commentText[field] || ""
+												).trim()
+											}
+										>
+											Save
+										</button>
+										{doc && (
+											<button
+												type="button"
+												onClick={() =>
+													deleteComment(field)
+												}
+												disabled={commentSaving[field]}
+											>
+												Delete
+											</button>
+										)}
+										{commentSaving[field] && (
+											<span
+												aria-live="polite"
+												style={{ fontSize: 12 }}
+											>
+												saving…
+											</span>
+										)}
+									</div>
+
+									{doc && (
+										<div
+											style={{
+												marginTop: 6,
+												fontSize: 12,
+												opacity: 0.75,
+											}}
+										>
+											Last saved:{" "}
+											{new Date(
+												doc.updatedAt || doc.createdAt
+											).toLocaleString()}
+										</div>
+									)}
+								</div>
+							)}
+						</li>
+					);
+				})}
+			</ul>
 		</div>
 	);
 }
