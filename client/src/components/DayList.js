@@ -51,7 +51,6 @@ export default function DayList() {
 				]);
 				setDays(daysRes.data || []);
 				setMonthName(monthRes.data?.name || "");
-				// monthRes returns the raw doc; userId is an ObjectId string
 				setMonthOwnerId(monthRes.data?.userId || null);
 			} catch (e) {
 				setMsg("Failed to load days");
@@ -62,18 +61,29 @@ export default function DayList() {
 		if (monthId) load();
 	}, [monthId]);
 
-	// compute min/max for the date input so it's constrained to this month
+	// compute min/max strings for the date input (no UTC conversion)
 	const dateBounds = useMemo(() => {
 		if (!monthName) return { min: undefined, max: undefined };
 		const [mName, yStr] = (monthName || "").split(" ");
 		const y = Number(yStr);
-		const tmp = new Date(`${mName} 1, ${y}`);
-		if (isNaN(tmp)) return { min: undefined, max: undefined };
-		const first = new Date(tmp.getFullYear(), tmp.getMonth(), 1);
-		const last = new Date(tmp.getFullYear(), tmp.getMonth() + 1, 0);
-		const toISO = (d) => d.toISOString().slice(0, 10);
-		return { min: toISO(first), max: toISO(last) };
+		const monthIndex = new Date(`${mName} 1, ${y}`).getMonth(); // safe
+		const first = new Date(y, monthIndex, 1);
+		const last = new Date(y, monthIndex + 1, 0);
+
+		const pad = (n) => String(n).padStart(2, "0");
+		const toYMD = (d) =>
+			`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+		return { min: toYMD(first), max: toYMD(last) };
 	}, [monthName]);
+
+	const refreshDays = async () => {
+		const res = await axios.get(
+			`https://mern-deploy-i7u8.onrender.com/api/days?monthId=${monthId}`,
+			tokenHeader()
+		);
+		setDays(res.data || []);
+	};
 
 	const createDay = async (dayNumber) => {
 		if (!monthId || !dayNumber) return;
@@ -84,21 +94,20 @@ export default function DayList() {
 				monthId,
 				dayNumber,
 				environment: env,
-				// Always include owner; backend will ignore for non-admins
-				userId: monthOwnerId,
+				userId: monthOwnerId, // safe to include; ignored for non-admins
 			};
-			await axios.post(
+			const res = await axios.post(
 				"https://mern-deploy-i7u8.onrender.com/api/days/add",
 				body,
 				tokenHeader()
 			);
-			// refresh
-			const res = await axios.get(
-				`https://mern-deploy-i7u8.onrender.com/api/days?monthId=${monthId}`,
-				tokenHeader()
-			);
-			setDays(res.data || []);
-			setMsg(`Added day ${dayNumber} (${env}).`);
+			await refreshDays();
+			const action = res.data?.action;
+			if (action === "updated") {
+				setMsg("Existing day updated.");
+			} else {
+				setMsg(`Added day ${dayNumber} (${env}).`);
+			}
 		} catch (e) {
 			const m =
 				e?.response?.data?.msg ||
@@ -115,7 +124,7 @@ export default function DayList() {
 		setSubmitting(true);
 		setMsg("");
 		try {
-			await axios.post(
+			const res = await axios.post(
 				"https://mern-deploy-i7u8.onrender.com/api/days/add-today",
 				{
 					monthId,
@@ -124,12 +133,13 @@ export default function DayList() {
 				},
 				tokenHeader()
 			);
-			const res = await axios.get(
-				`https://mern-deploy-i7u8.onrender.com/api/days?monthId=${monthId}`,
-				tokenHeader()
-			);
-			setDays(res.data || []);
-			setMsg(`Added today (${env}).`);
+			await refreshDays();
+			const action = res.data?.action;
+			if (action === "updated") {
+				setMsg("Existing day updated.");
+			} else {
+				setMsg(`Added today (${env}).`);
+			}
 		} catch (e) {
 			const m =
 				e?.response?.data?.msg ||
@@ -144,21 +154,26 @@ export default function DayList() {
 	const onSubmitAddDay = (e) => {
 		e.preventDefault();
 		if (!dateStr || !monthName) return;
-		// Parse selected date's day number
-		const d = new Date(dateStr);
-		if (isNaN(d)) {
+
+		// Parse YYYY-MM-DD WITHOUT UTC shift
+		const [yyyy, mm, dd] = dateStr.split("-").map((s) => parseInt(s, 10));
+		if (!yyyy || !mm || !dd) {
 			setMsg("Invalid date");
 			return;
 		}
+
 		const [mName, yStr] = monthName.split(" ");
+		const monthIndex = new Date(`${mName} 1, ${yStr}`).getMonth();
+		const selected = new Date(yyyy, mm - 1, dd); // local time construction
+
 		const sameMonth =
-			d.toLocaleString("default", { month: "long" }) === mName &&
-			d.getFullYear().toString() === yStr;
+			selected.getMonth() === monthIndex &&
+			selected.getFullYear().toString() === yStr;
 		if (!sameMonth) {
 			setMsg(`Please pick a date in ${monthName}.`);
 			return;
 		}
-		createDay(d.getDate());
+		createDay(dd);
 	};
 
 	if (loading) return <p>Loading days…</p>;
