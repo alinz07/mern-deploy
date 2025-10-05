@@ -152,6 +152,37 @@ export default function DayList() {
 		}
 	};
 
+	// NEW: force-add "today" with environment = 'inperson'
+	const handleAddTodayInperson = async () => {
+		if (!monthId) return;
+		setSubmitting(true);
+		setMsg("");
+		try {
+			const res = await axios.post(
+				`${API}/api/days/add-today`,
+				{ monthId, environment: "inperson", userId: monthOwnerId },
+				tokenHeader()
+			);
+			await refreshDays();
+			const action = res.data?.action;
+			if (action === "exists") {
+				setMsg("Today already exists.");
+			} else if (action === "updated") {
+				setMsg("Existing day updated.");
+			} else {
+				setMsg("Added today (inperson).");
+			}
+		} catch (e) {
+			const m =
+				e?.response?.data?.msg ||
+				e?.response?.data?.error ||
+				"Failed to add today";
+			setMsg(m);
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
 	const onSubmitAddDay = (e) => {
 		e.preventDefault();
 		if (!dateStr || !monthName) return;
@@ -177,7 +208,7 @@ export default function DayList() {
 		createDay(dd);
 	};
 
-	// NEW: delete a day (and cascade server-side)
+	// delete a day (and cascade server-side)
 	const handleDeleteDay = async (day) => {
 		if (!day?._id) return;
 		const ok = window.confirm(
@@ -290,13 +321,24 @@ export default function DayList() {
 
 				<span style={{ opacity: 0.6 }}>or</span>
 
-				<button
-					type="button"
-					onClick={handleAddToday}
-					disabled={submitting}
-				>
-					Add Today
-				</button>
+				<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+					<button
+						type="button"
+						onClick={handleAddToday}
+						disabled={submitting}
+					>
+						Add Today
+					</button>
+					{/* NEW quick action */}
+					<button
+						type="button"
+						onClick={handleAddTodayInperson}
+						disabled={submitting}
+						title="Add today as in-person"
+					>
+						Add Today (in-person)
+					</button>
+				</div>
 			</div>
 
 			{/* Days list */}
