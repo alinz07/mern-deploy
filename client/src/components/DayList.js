@@ -115,7 +115,7 @@ export default function DayList() {
 			const m =
 				e?.response?.data?.msg ||
 				e?.response?.data?.error ||
-				"Failed to add day";
+				"Failed to add/update day";
 			setMsg(m);
 		} finally {
 			setSubmitting(false);
@@ -235,7 +235,7 @@ export default function DayList() {
 					onSubmit={onSubmitAddDay}
 					style={{ display: "flex", gap: 8, alignItems: "center" }}
 				>
-					<label style={{ fontWeight: 600 }}>Add a day:</label>
+					<label style={{ fontWeight: 600 }}>Add/Update a day:</label>
 					<input
 						type="date"
 						value={dateStr}
@@ -254,7 +254,7 @@ export default function DayList() {
 						<option value="inperson">inperson</option>
 					</select>
 					<button type="submit" disabled={submitting}>
-						Add Day
+						Add/Update Day
 					</button>
 				</form>
 
