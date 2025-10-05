@@ -41,18 +41,19 @@ router.get("/", auth, async (req, res) => {
 	}
 });
 
-// ---- core upsert used by both /add and /add-today ----
-async function createOrUpdateDayAndCheck({
+// ---- core handler (used by both /add and /add-today) ----
+async function addOrUpdateDayAndCheck({
 	reqUser,
 	monthId,
 	dayNumber,
 	environment = "online",
-	targetUserId, // optional: admin can act for a student
+	targetUserId, // optional: admin acting for student
+	treatExistingAs = "updated", // "updated" or "exists" (for /add-today UX)
 }) {
 	const chk = await assertMonthTenant(monthId, reqUser.adminUser);
 	if (!chk.ok) return { error: { status: chk.status, msg: chk.msg } };
 
-	// owner: self unless admin impersonates same-tenant user
+	// Determine owner (self unless admin impersonates same-tenant user)
 	let ownerUserId = reqUser.id;
 	if (
 		reqUser.role === "admin" &&
@@ -71,54 +72,36 @@ async function createOrUpdateDayAndCheck({
 
 	const filter = { month: monthId, userId: ownerUserId, dayNumber };
 
-	try {
-		// Upsert Day and detect created vs updated
-		const result = await Day.findOneAndUpdate(
-			filter,
-			{
-				$setOnInsert: {
-					month: monthId,
-					userId: ownerUserId,
-					dayNumber,
-				},
-				$set: { environment },
-			},
-			{ new: true, upsert: true, rawResult: true }
-		);
-
-		const day = result.value;
-		const updatedExisting = !!result.lastErrorObject?.updatedExisting;
-		const action = updatedExisting ? "updated" : "created";
-
-		// Ensure Check exists for that (day,user)
+	// 1) Check first to avoid duplicate-key races
+	let day = await Day.findOne(filter);
+	if (day) {
+		// Existing: update environment if changed
+		if (day.environment !== environment) {
+			day.environment = environment;
+			await day.save();
+		}
+		// Ensure Check exists
 		const check = await Check.findOneAndUpdate(
 			{ day: day._id, user: ownerUserId },
 			{ $setOnInsert: { day: day._id, user: ownerUserId } },
 			{ new: true, upsert: true }
 		);
-
-		return { day, check, action };
-	} catch (e) {
-		// If another request created the same Day just before this one, treat it as "updated"
-		if (
-			e &&
-			(e.code === 11000 || String(e.message || "").includes("E11000"))
-		) {
-			const day = await Day.findOneAndUpdate(
-				filter,
-				{ $set: { environment } }, // update env if caller changed it
-				{ new: true }
-			);
-			const check = await Check.findOneAndUpdate(
-				{ day: day._id, user: ownerUserId },
-				{ $setOnInsert: { day: day._id, user: ownerUserId } },
-				{ new: true, upsert: true }
-			);
-			return { day, check, action: "updated" };
-		}
-		console.error("createOrUpdateDayAndCheck error:", e);
-		return { error: { status: 500, msg: "Server error" } };
+		return { day, check, action: treatExistingAs }; // "exists" for today, "updated" for add
 	}
+
+	// 2) Create new Day + Check
+	day = await Day.create({
+		month: monthId,
+		userId: ownerUserId,
+		dayNumber,
+		environment,
+	});
+	const check = await Check.findOneAndUpdate(
+		{ day: day._id, user: ownerUserId },
+		{ $setOnInsert: { day: day._id, user: ownerUserId } },
+		{ new: true, upsert: true }
+	);
+	return { day, check, action: "created" };
 }
 
 // POST /api/days/add
@@ -139,12 +122,13 @@ router.post("/add", auth, async (req, res) => {
 				.status(400)
 				.json({ msg: "environment must be 'online' or 'inperson'" });
 
-		const out = await createOrUpdateDayAndCheck({
+		const out = await addOrUpdateDayAndCheck({
 			reqUser: req.user,
 			monthId,
 			dayNumber,
 			environment,
 			targetUserId,
+			treatExistingAs: "updated",
 		});
 		if (out.error)
 			return res.status(out.error.status).json({ msg: out.error.msg });
@@ -166,7 +150,7 @@ router.post("/add-today", auth, async (req, res) => {
 				.status(400)
 				.json({ msg: "environment must be 'online' or 'inperson'" });
 
-		// Extract day-of-month in Pacific Time
+		// Day-of-month in Pacific Time
 		const parts = new Intl.DateTimeFormat("en-US", {
 			timeZone: APP_TZ,
 			day: "numeric",
@@ -177,12 +161,13 @@ router.post("/add-today", auth, async (req, res) => {
 			? parseInt(parts.value, 10)
 			: new Date().getDate();
 
-		const out = await createOrUpdateDayAndCheck({
+		const out = await addOrUpdateDayAndCheck({
 			reqUser: req.user,
 			monthId,
 			dayNumber,
 			environment,
 			targetUserId: userId,
+			treatExistingAs: "exists", // UX: "Today already exists."
 		});
 		if (out.error)
 			return res.status(out.error.status).json({ msg: out.error.msg });

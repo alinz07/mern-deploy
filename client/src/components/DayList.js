@@ -119,6 +119,8 @@ export default function DayList() {
 		}
 	};
 
+	// ...same imports & state as your current file...
+
 	const handleAddToday = async () => {
 		if (!monthId) return;
 		setSubmitting(true);
@@ -126,16 +128,14 @@ export default function DayList() {
 		try {
 			const res = await axios.post(
 				"https://mern-deploy-i7u8.onrender.com/api/days/add-today",
-				{
-					monthId,
-					environment: env,
-					userId: monthOwnerId, // safe to include for both roles
-				},
+				{ monthId, environment: env, userId: monthOwnerId },
 				tokenHeader()
 			);
 			await refreshDays();
 			const action = res.data?.action;
-			if (action === "updated") {
+			if (action === "exists") {
+				setMsg("Today already exists.");
+			} else if (action === "updated") {
 				setMsg("Existing day updated.");
 			} else {
 				setMsg(`Added today (${env}).`);
