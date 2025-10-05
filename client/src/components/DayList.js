@@ -327,7 +327,7 @@ export default function DayList() {
 						onClick={handleAddToday}
 						disabled={submitting}
 					>
-						Add Today
+						Add Today (online)
 					</button>
 					{/* NEW quick action */}
 					<button
