@@ -6,6 +6,7 @@ const Month = require("../models/Month");
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const Check = require("../models/Check");
+const Comment = require("../models/Comment"); // NEW: cascade delete comments
 
 const APP_TZ = "America/Los_Angeles";
 
@@ -174,6 +175,51 @@ router.post("/add-today", auth, async (req, res) => {
 		return res.status(out.action === "created" ? 201 : 200).json(out);
 	} catch (e) {
 		console.error("POST /days/add-today error:", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
+
+// DELETE /api/days/:dayId   <-- NEW (cascade delete checks + comments)
+router.delete("/:dayId", auth, async (req, res) => {
+	try {
+		const { dayId } = req.params;
+		if (!mongoose.isValidObjectId(dayId))
+			return res.status(400).json({ msg: "Invalid day id" });
+
+		// Load day + month to enforce tenant
+		const day = await Day.findById(dayId).lean();
+		if (!day) return res.status(404).json({ msg: "Day not found" });
+
+		const month = await Month.findById(day.month).lean();
+		if (!month) return res.status(404).json({ msg: "Month not found" });
+
+		if (String(month.adminUser) !== String(req.user.adminUser)) {
+			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
+		}
+
+		// Permission: owner or same-tenant admin
+		const isOwner = String(day.userId) === String(req.user.id);
+		const isAdmin = req.user.role === "admin";
+		if (!(isOwner || isAdmin)) {
+			return res.status(403).json({ msg: "Forbidden" });
+		}
+
+		// Gather all checks for this day (usually 1 per design, but be robust)
+		const checks = await Check.find({ day: dayId }).select("_id").lean();
+		const checkIds = checks.map((c) => c._id);
+
+		// Delete comments tied to those checks (safe even if none)
+		if (checkIds.length > 0) {
+			await Comment.deleteMany({ check: { $in: checkIds } });
+			await Check.deleteMany({ _id: { $in: checkIds } });
+		}
+
+		// Finally delete the day
+		await Day.deleteOne({ _id: dayId });
+
+		return res.json({ deleted: true });
+	} catch (e) {
+		console.error("DELETE /api/days/:dayId error:", e);
 		return res.status(500).json({ msg: "Server error" });
 	}
 });

@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
 
+const API = "https://mern-deploy-i7u8.onrender.com";
+
 export default function DayList() {
 	const { monthId } = useParams();
 
@@ -16,8 +18,9 @@ export default function DayList() {
 	const [env, setEnv] = useState("online");
 	const [dateStr, setDateStr] = useState(""); // YYYY-MM-DD
 	const [submitting, setSubmitting] = useState(false);
+	const [deleting, setDeleting] = useState({}); // { [dayId]: true }
 
-	// NEW: client-side filter (All / online / inperson)
+	// client-side filter (All / online / inperson)
 	const [filterEnv, setFilterEnv] = useState("all");
 
 	const tokenHeader = () => ({
@@ -44,13 +47,10 @@ export default function DayList() {
 			try {
 				const [daysRes, monthRes] = await Promise.all([
 					axios.get(
-						`https://mern-deploy-i7u8.onrender.com/api/days?monthId=${monthId}`,
+						`${API}/api/days?monthId=${monthId}`,
 						tokenHeader()
 					),
-					axios.get(
-						`https://mern-deploy-i7u8.onrender.com/api/months/${monthId}`,
-						tokenHeader()
-					),
+					axios.get(`${API}/api/months/${monthId}`, tokenHeader()),
 				]);
 				setDays(daysRes.data || []);
 				setMonthName(monthRes.data?.name || "");
@@ -82,7 +82,7 @@ export default function DayList() {
 
 	const refreshDays = async () => {
 		const res = await axios.get(
-			`https://mern-deploy-i7u8.onrender.com/api/days?monthId=${monthId}`,
+			`${API}/api/days?monthId=${monthId}`,
 			tokenHeader()
 		);
 		setDays(res.data || []);
@@ -100,7 +100,7 @@ export default function DayList() {
 				userId: monthOwnerId, // safe to include; ignored for non-admins
 			};
 			const res = await axios.post(
-				"https://mern-deploy-i7u8.onrender.com/api/days/add",
+				`${API}/api/days/add`,
 				body,
 				tokenHeader()
 			);
@@ -128,7 +128,7 @@ export default function DayList() {
 		setMsg("");
 		try {
 			const res = await axios.post(
-				"https://mern-deploy-i7u8.onrender.com/api/days/add-today",
+				`${API}/api/days/add-today`,
 				{ monthId, environment: env, userId: monthOwnerId },
 				tokenHeader()
 			);
@@ -177,7 +177,37 @@ export default function DayList() {
 		createDay(dd);
 	};
 
-	// NEW: filtered view of days
+	// NEW: delete a day (and cascade server-side)
+	const handleDeleteDay = async (day) => {
+		if (!day?._id) return;
+		const ok = window.confirm(
+			`Delete ${monthName} ${day.dayNumber} [${
+				day.environment || "online"
+			}]? This will remove its checks and comments.`
+		);
+		if (!ok) return;
+
+		setDeleting((d) => ({ ...d, [day._id]: true }));
+		setMsg("");
+		try {
+			await axios.delete(`${API}/api/days/${day._id}`, tokenHeader());
+			await refreshDays();
+			setMsg("Day deleted.");
+		} catch (e) {
+			const m =
+				e?.response?.data?.msg ||
+				e?.response?.data?.error ||
+				"Failed to delete day";
+			setMsg(m);
+		} finally {
+			setDeleting((d) => {
+				const { [day._id]: _omit, ...rest } = d;
+				return rest;
+			});
+		}
+	};
+
+	// filtered view of days
 	const filteredDays = useMemo(() => {
 		if (filterEnv === "all") return [...days];
 		return days.filter((d) => (d.environment || "online") === filterEnv);
@@ -201,7 +231,7 @@ export default function DayList() {
 			>
 				<h3 style={{ margin: 0 }}>{monthName || "Days"}</h3>
 
-				{/* NEW: Environment filter */}
+				{/* Environment filter */}
 				<label style={{ marginLeft: 8, fontSize: 14 }}>Filter:</label>
 				<select
 					value={filterEnv}
@@ -279,7 +309,14 @@ export default function DayList() {
 					{[...filteredDays]
 						.sort((a, b) => a.dayNumber - b.dayNumber)
 						.map((d) => (
-							<li key={d._id}>
+							<li
+								key={d._id}
+								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: 10,
+								}}
+							>
 								<Link
 									to={`/days/${d._id}/check?monthId=${monthId}&userId=${d.userId}`}
 								>
@@ -295,6 +332,15 @@ export default function DayList() {
 								>
 									[{d.environment || "online"}]
 								</span>
+								<button
+									type="button"
+									onClick={() => handleDeleteDay(d)}
+									disabled={!!deleting[d._id]}
+									title="Delete this day"
+									style={{ marginLeft: 8 }}
+								>
+									{deleting[d._id] ? "Deleting…" : "Delete"}
+								</button>
 							</li>
 						))}
 				</ul>
