@@ -36,6 +36,7 @@ router.get("/", auth, async (req, res) => {
 		const days = await Day.find(q).sort({ dayNumber: 1 });
 		return res.json(days);
 	} catch (e) {
+		console.error("GET /days error:", e);
 		res.status(500).json({ msg: "Server error", error: e.message });
 	}
 });
@@ -68,29 +69,56 @@ async function createOrUpdateDayAndCheck({
 		ownerUserId = targetUserId;
 	}
 
-	// Upsert Day and detect created vs updated
-	const result = await Day.findOneAndUpdate(
-		{ month: monthId, userId: ownerUserId, dayNumber },
-		{
-			$setOnInsert: { month: monthId, userId: ownerUserId, dayNumber },
-			$set: { environment },
-		},
-		{ new: true, upsert: true, rawResult: true } // rawResult => get lastErrorObject
-	);
+	const filter = { month: monthId, userId: ownerUserId, dayNumber };
 
-	// Mongoose returns { value, lastErrorObject, ok }
-	const day = result.value;
-	const updatedExisting = !!result.lastErrorObject?.updatedExisting;
-	const action = updatedExisting ? "updated" : "created";
+	try {
+		// Upsert Day and detect created vs updated
+		const result = await Day.findOneAndUpdate(
+			filter,
+			{
+				$setOnInsert: {
+					month: monthId,
+					userId: ownerUserId,
+					dayNumber,
+				},
+				$set: { environment },
+			},
+			{ new: true, upsert: true, rawResult: true }
+		);
 
-	// Ensure Check exists for that (day,user)
-	const check = await Check.findOneAndUpdate(
-		{ day: day._id, user: ownerUserId },
-		{ $setOnInsert: { day: day._id, user: ownerUserId } },
-		{ new: true, upsert: true }
-	);
+		const day = result.value;
+		const updatedExisting = !!result.lastErrorObject?.updatedExisting;
+		const action = updatedExisting ? "updated" : "created";
 
-	return { day, check, action };
+		// Ensure Check exists for that (day,user)
+		const check = await Check.findOneAndUpdate(
+			{ day: day._id, user: ownerUserId },
+			{ $setOnInsert: { day: day._id, user: ownerUserId } },
+			{ new: true, upsert: true }
+		);
+
+		return { day, check, action };
+	} catch (e) {
+		// If another request created the same Day just before this one, treat it as "updated"
+		if (
+			e &&
+			(e.code === 11000 || String(e.message || "").includes("E11000"))
+		) {
+			const day = await Day.findOneAndUpdate(
+				filter,
+				{ $set: { environment } }, // update env if caller changed it
+				{ new: true }
+			);
+			const check = await Check.findOneAndUpdate(
+				{ day: day._id, user: ownerUserId },
+				{ $setOnInsert: { day: day._id, user: ownerUserId } },
+				{ new: true, upsert: true }
+			);
+			return { day, check, action: "updated" };
+		}
+		console.error("createOrUpdateDayAndCheck error:", e);
+		return { error: { status: 500, msg: "Server error" } };
+	}
 }
 
 // POST /api/days/add
@@ -120,8 +148,6 @@ router.post("/add", auth, async (req, res) => {
 		});
 		if (out.error)
 			return res.status(out.error.status).json({ msg: out.error.msg });
-
-		// Always return explicit action
 		return res.status(out.action === "created" ? 201 : 200).json(out);
 	} catch (e) {
 		console.error("POST /days/add error:", e);
@@ -160,7 +186,6 @@ router.post("/add-today", auth, async (req, res) => {
 		});
 		if (out.error)
 			return res.status(out.error.status).json({ msg: out.error.msg });
-
 		return res.status(out.action === "created" ? 201 : 200).json(out);
 	} catch (e) {
 		console.error("POST /days/add-today error:", e);
