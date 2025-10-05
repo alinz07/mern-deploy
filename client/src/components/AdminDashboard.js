@@ -181,8 +181,184 @@ function AdminDashboard({ user }) {
 					)}
 				</tbody>
 			</table>
+			{/* USERS TABLE */}
+			<h3>Users</h3>
+			<table>
+				<thead>
+					<tr>
+						<th>Username</th>
+						<th>Email</th>
+						<th>Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					{sortedUsers.map((u) => {
+						const isEditing = editId === u._id;
+						return (
+							<tr key={u._id}>
+								<td>
+									{isEditing ? (
+										<input
+											type="text"
+											value={editForm.username}
+											onChange={(e) =>
+												setEditForm((f) => ({
+													...f,
+													username: e.target.value,
+												}))
+											}
+											placeholder="username"
+											style={{ padding: "4px 6px" }}
+										/>
+									) : (
+										u.username
+									)}
+								</td>
+								<td>
+									{isEditing ? (
+										<input
+											type="email"
+											value={editForm.email}
+											onChange={(e) =>
+												setEditForm((f) => ({
+													...f,
+													email: e.target.value,
+												}))
+											}
+											placeholder="email"
+											style={{ padding: "4px 6px" }}
+										/>
+									) : (
+										u.email || "N/A"
+									)}
+								</td>
+								<td>
+									{isEditing ? (
+										<>
+											<button
+												type="button"
+												onClick={saveEdit}
+												title="Save changes"
+											>
+												Save
+											</button>
+											<button
+												type="button"
+												onClick={cancelEdit}
+												title="Cancel edit"
+											>
+												Cancel
+											</button>
+										</>
+									) : (
+										<>
+											<button
+												type="button"
+												onClick={() => startEdit(u)}
+											>
+												Edit
+											</button>
+											<button
+												type="button"
+												onClick={() =>
+													handleDeleteUser(u)
+												}
+												disabled={deletingId === u._id}
+												title="Delete this user"
+											>
+												{deletingId === u._id
+													? "Deleting…"
+													: "Delete"}
+											</button>
+										</>
+									)}
+								</td>
+							</tr>
+						);
+					})}
+				</tbody>
+			</table>
+			{/* MONTHS TABLE CONTROLS */}
+			<div
+				style={{
+					marginTop: 24,
+					marginBottom: 12,
+					display: "flex",
+					gap: 12,
+					alignItems: "center",
+					flexWrap: "wrap",
+				}}
+			>
+				<h3 style={{ margin: 0 }}>Months</h3>
 
-			{/* …rest of your existing AdminDashboard (users table, etc.) stays unchanged … */}
+				<div>
+					<button
+						type="button"
+						onClick={() =>
+							setSortDir((d) => (d === "desc" ? "asc" : "desc"))
+						}
+						title="Toggle month/year sort"
+					>
+						Sort:{" "}
+						{sortDir === "desc"
+							? "Newest → Oldest"
+							: "Oldest → Newest"}
+					</button>
+				</div>
+				<div>or</div>
+				<div>
+					<input
+						type="text"
+						placeholder="search by username"
+						value={searchTerm}
+						onChange={(e) => setSearchTerm(e.target.value)}
+						style={{ padding: "6px 8px" }}
+						aria-label="search by username"
+					/>
+				</div>
+			</div>
+			{/* MONTHS TABLE */}
+			<table>
+				<thead>
+					<tr>
+						<th>Month</th>
+						<th>Owner</th>
+						<th>Month Start</th>
+					</tr>
+				</thead>
+				<tbody>
+					{filteredSortedMonths.map((m) => {
+						const parsed = nameToDate(m.name);
+						const label = parsed
+							? parsed.toLocaleDateString()
+							: "—";
+						return (
+							<tr key={m._id}>
+								<td>
+									<Link
+										to={`/months/${m._id}`}
+										title={`Open ${m.name}`}
+									>
+										{m.name}
+									</Link>
+								</td>
+								<td>{m.userId?.username || "Unknown"}</td>
+								<td>{label}</td>
+							</tr>
+						);
+					})}
+					{filteredSortedMonths.length === 0 && (
+						<tr>
+							<td
+								colSpan={3}
+								style={{ opacity: 0.7, fontStyle: "italic" }}
+							>
+								No months match your current filter.
+							</td>
+						</tr>
+					)}
+				</tbody>
+			</table>
 		</div>
 	);
 }
