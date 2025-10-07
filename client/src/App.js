@@ -1,6 +1,6 @@
 // client/src/App.js
 import React, { useState, useEffect } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Register from "./components/Register";
 import Login from "./components/Login";
 import axios from "axios";
@@ -84,6 +84,10 @@ const App = () => {
 							element={<CheckPage />}
 						/>
 						<Route path="/equipment" element={<EquipmentPage />} />
+						<Route
+							path="/admin"
+							element={<Navigate to="/" replace />}
+						/>
 					</Routes>
 				</div>
 			) : (
