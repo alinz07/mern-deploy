@@ -227,7 +227,21 @@ function AdminDashboard() {
 
 	return (
 		<div>
-			<h2>Admin Dashboard</h2>
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "space-between",
+					gap: 12,
+				}}
+			>
+				<h2 style={{ margin: 0 }}>Admin Dashboard</h2>
+				<a href="/equipment">
+					<button type="button" title="Manage Equipment Inventory">
+						Equipment
+					</button>
+				</a>
+			</div>
 
 			{/* ======= COMPLETION STATS: checks (existing) + equipment (new) ======= */}
 			<h3>Completion Stats</h3>

@@ -1,14 +1,16 @@
-// models/Equipment.js
+// backend/models/Equipment.js  (DROP-IN)
 const mongoose = require("mongoose");
 
 const EquipmentSchema = new mongoose.Schema(
 	{
-		user: {
+		// Owner tenant (admin)
+		adminUser: {
 			type: mongoose.Schema.Types.ObjectId,
-			ref: "User",
+			ref: "AdminUser",
 			required: true,
 			index: true,
 		},
+
 		part: {
 			type: String,
 			required: true,
@@ -23,7 +25,7 @@ const EquipmentSchema = new mongoose.Schema(
 	{ timestamps: true }
 );
 
-// helpful for admin overviews
-EquipmentSchema.index({ user: 1, part: 1 });
+// Helpful uniqueness & fast lookups for an admin's catalog
+EquipmentSchema.index({ adminUser: 1, part: 1 });
 
 module.exports = mongoose.model("Equipment", EquipmentSchema);

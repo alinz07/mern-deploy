@@ -9,6 +9,7 @@ import UserDashboard from "./components/UserDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import DayList from "./components/DayList";
 import CheckPage from "./pages/CheckPage";
+import EquipmentPage from "./pages/EquipmentPage";
 import "./index.css";
 
 const App = () => {
@@ -82,6 +83,7 @@ const App = () => {
 							path="/days/:dayId/check"
 							element={<CheckPage />}
 						/>
+						<Route path="/equipment" element={<EquipmentPage />} />
 					</Routes>
 				</div>
 			) : (
