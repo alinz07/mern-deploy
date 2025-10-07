@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 
-function AdminDashboard({ user }) {
+function AdminDashboard() {
 	const [users, setUsers] = useState([]);
 	const sortedUsers = useMemo(() => {
 		return [...users].sort((a, b) => {
@@ -19,39 +19,42 @@ function AdminDashboard({ user }) {
 	const [error, setError] = useState("");
 
 	// UI controls
-	const [searchTerm, setSearchTerm] = useState(""); // filter by username
-	const [sortDir, setSortDir] = useState("desc"); // "desc" = newest->oldest by parsed month/year
+	const [searchTerm, setSearchTerm] = useState("");
+	const [sortDir, setSortDir] = useState("desc");
 	const [deletingId, setDeletingId] = useState(null);
 	const [editId, setEditId] = useState(null);
 	const [editForm, setEditForm] = useState({ username: "", email: "" });
 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-	// STATS state
-	const [stats, setStats] = useState({
+	// STATS
+	const [checksStats, setChecksStats] = useState({
+		rows: [],
+		currentMonthLabel: "",
+		previousMonthLabel: "",
+	});
+	const [equipStats, setEquipStats] = useState({
 		rows: [],
 		currentMonthLabel: "",
 		previousMonthLabel: "",
 	});
 	const [loadingStats, setLoadingStats] = useState(true);
 
+	const tokenHeader = () => ({
+		headers: { "x-auth-token": localStorage.getItem("token") },
+	});
+
 	const startEdit = (u) => {
 		setEditId(u._id);
 		setEditForm({ username: u.username || "", email: u.email || "" });
 	};
-
 	const cancelEdit = () => {
 		setEditId(null);
 		setEditForm({ username: "", email: "" });
 	};
 
-	const tokenHeader = () => ({
-		headers: { "x-auth-token": localStorage.getItem("token") },
-	});
-
 	const saveEdit = async () => {
 		const username = (editForm.username || "").trim();
 		const email = (editForm.email || "").trim();
-
 		if (!username) return alert("Username is required.");
 		if (username.length < 3)
 			return alert("Username must be at least 3 characters.");
@@ -59,7 +62,6 @@ function AdminDashboard({ user }) {
 			return alert("Username must be at most 50 characters.");
 		if (email && !emailRegex.test(email))
 			return alert("Please enter a valid email or leave it blank.");
-
 		try {
 			const res = await axios.put(
 				`https://mern-deploy-i7u8.onrender.com/api/users/${editId}`,
@@ -87,7 +89,7 @@ function AdminDashboard({ user }) {
 					tokenHeader()
 				);
 				setUsers(res.data);
-			} catch (e) {
+			} catch {
 				setError("Failed to load users");
 			} finally {
 				setLoadingUsers(false);
@@ -101,7 +103,7 @@ function AdminDashboard({ user }) {
 					tokenHeader()
 				);
 				setMonths(res.data);
-			} catch (e) {
+			} catch {
 				setError("Failed to load months");
 			} finally {
 				setLoadingMonths(false);
@@ -110,14 +112,20 @@ function AdminDashboard({ user }) {
 
 		const fetchStats = async () => {
 			try {
-				const res = await axios.get(
-					"https://mern-deploy-i7u8.onrender.com/api/stats/admin-checks",
-					tokenHeader()
-				);
-				setStats(res.data);
+				const [checksRes, equipRes] = await Promise.all([
+					axios.get(
+						"https://mern-deploy-i7u8.onrender.com/api/stats/admin-checks",
+						tokenHeader()
+					),
+					axios.get(
+						"https://mern-deploy-i7u8.onrender.com/api/stats/admin-equip",
+						tokenHeader()
+					),
+				]);
+				setChecksStats(checksRes.data || { rows: [] });
+				setEquipStats(equipRes.data || { rows: [] });
 			} catch (e) {
 				console.error(e);
-				// keep users/months usable even if stats fails
 			} finally {
 				setLoadingStats(false);
 			}
@@ -128,73 +136,61 @@ function AdminDashboard({ user }) {
 		fetchStats();
 	}, []);
 
-	// ---- Sorting only by parsed Month Name (e.g., "September 2025") ----
 	const nameToDate = (name) => {
 		if (!name) return null;
 		const [mName, yStr] = name.split(" ");
 		const d = new Date(`${mName} 1, ${yStr}`);
 		return isNaN(d) ? null : d;
 	};
-
 	const monthRecencyTs = (m) => {
 		const d = nameToDate(m?.name);
 		return (d ? d : new Date(0)).getTime();
 	};
 
-	// Filter (by owner username) + sort (by parsed month/year)
 	const filteredSortedMonths = useMemo(() => {
 		const term = searchTerm.trim().toLowerCase();
 		const byUser = (m) =>
 			(m?.userId?.username || "").toLowerCase().includes(term);
-
 		const list = term ? months.filter(byUser) : months.slice();
-
 		list.sort((x, y) => {
 			const dx = monthRecencyTs(x);
 			const dy = monthRecencyTs(y);
 			return sortDir === "desc" ? dy - dx : dx - dy;
 		});
-
 		return list;
 	}, [months, searchTerm, sortDir]);
 
-	// ---- Delete user (with confirmation) ----
-	const handleDeleteUser = async (u) => {
-		if (!u?._id) return;
-		const ok = window.confirm(
-			`Delete user "${u.username}" and their data? This cannot be undone.`
+	// Merge equipment stats into checks rows by userId
+	const mergedRows = useMemo(() => {
+		const byId = new Map(
+			(checksStats.rows || []).map((r) => [r.userId, { ...r }])
 		);
-		if (!ok) return;
-
-		try {
-			setDeletingId(u._id);
-			await axios.delete(
-				`https://mern-deploy-i7u8.onrender.com/api/users/${u._id}`,
-				tokenHeader()
-			);
-
-			// Remove from UI
-			setUsers((prev) => prev.filter((x) => x._id !== u._id));
-			setMonths((prev) => prev.filter((m) => m.userId?._id !== u._id));
-		} catch (err) {
-			alert(
-				err?.response?.data?.msg ||
-					err?.response?.data?.error ||
-					"Failed to delete user"
-			);
-		} finally {
-			setDeletingId(null);
+		for (const er of equipStats.rows || []) {
+			const base = byId.get(er.userId) || {
+				userId: er.userId,
+				username: er.username,
+			};
+			byId.set(er.userId, {
+				...base,
+				currEquipPercent: er.currEquipPercent || 0,
+				currEquipDen: er.currEquipDen || 0,
+				prevEquipPercent: er.prevEquipPercent || 0,
+				prevEquipDen: er.prevEquipDen || 0,
+			});
 		}
-	};
+		return Array.from(byId.values()).sort((a, b) =>
+			(a.username || "").localeCompare(b.username || "")
+		);
+	}, [checksStats.rows, equipStats.rows]);
 
 	if (loadingUsers || loadingMonths || loadingStats)
 		return <p>Loading admin data…</p>;
 	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
 
-	// Cell helper: show "NN% of X days"
+	// ✨ Text tweak here
 	const StatCell = ({ pct, den }) => (
 		<td>
-			{pct}% of {den} day{den === 1 ? "" : "s"}
+			{pct}% out of {den} day{den === 1 ? "" : "s"}
 		</td>
 	);
 
@@ -202,52 +198,67 @@ function AdminDashboard({ user }) {
 		<div>
 			<h2>Admin Dashboard</h2>
 
-			{/* ======= COMPLETION STATS (5 columns, explicit counts) ======= */}
+			{/* ======= COMPLETION STATS: checks (existing) + equipment (new) ======= */}
 			<h3>Completion Stats</h3>
 			<p style={{ marginTop: -8, opacity: 0.8 }}>
-				Current month: {stats.currentMonthLabel || "—"} (to date) ·
-				Previous month: {stats.previousMonthLabel || "—"}
+				Current month:{" "}
+				{checksStats.currentMonthLabel ||
+					equipStats.currentMonthLabel ||
+					"—"}{" "}
+				(to date) · Previous month:{" "}
+				{checksStats.previousMonthLabel ||
+					equipStats.previousMonthLabel ||
+					"—"}
 			</p>
 			<table>
 				<thead>
 					<tr>
 						<th>User</th>
-						<th>Current Month — Online</th>
-						<th>Current Month — In-Person</th>
-						<th>Previous Month — Online</th>
-						<th>Previous Month — In-Person</th>
+						<th>Current — Online</th>
+						<th>Current — In-Person</th>
+						<th>Previous — Online</th>
+						<th>Previous — In-Person</th>
+						<th>Current — Equipment</th>
+						<th>Previous — Equipment</th>
 					</tr>
 				</thead>
 				<tbody>
-					{stats.rows.length === 0 ? (
+					{mergedRows.length === 0 ? (
 						<tr>
 							<td
-								colSpan={5}
+								colSpan={7}
 								style={{ opacity: 0.7, fontStyle: "italic" }}
 							>
 								No users to show.
 							</td>
 						</tr>
 					) : (
-						stats.rows.map((r) => (
+						mergedRows.map((r) => (
 							<tr key={r.userId}>
 								<td>{r.username}</td>
-
 								<StatCell
-									pct={r.currOnlinePercent}
-									den={r.currOnlineDen}
+									pct={r.currOnlinePercent ?? 0}
+									den={r.currOnlineDen ?? 0}
 								/>
 								<StatCell
-									pct={r.currInpersonPercent}
-									den={r.currInpersonDen}
+									pct={r.currInpersonPercent ?? 0}
+									den={r.currInpersonDen ?? 0}
 								/>
 								<StatCell
-									pct={r.prevOnlinePercent}
-									den={r.prevOnlineDen}
+									pct={r.prevOnlinePercent ?? 0}
+									den={r.prevOnlineDen ?? 0}
 								/>
 								<StatCell
-									pct={r.prevInpersonPercent}
-									den={r.prevInpersonDen}
+									pct={r.prevInpersonPercent ?? 0}
+									den={r.prevInpersonDen ?? 0}
+								/>
+								<StatCell
+									pct={r.currEquipPercent ?? 0}
+									den={r.currEquipDen ?? 0}
+								/>
+								<StatCell
+									pct={r.prevEquipPercent ?? 0}
+									den={r.prevEquipDen ?? 0}
 								/>
 							</tr>
 						))
@@ -255,7 +266,7 @@ function AdminDashboard({ user }) {
 				</tbody>
 			</table>
 
-			{/* ======= USERS TABLE (unchanged) ======= */}
+			{/* ======= USERS (unchanged) ======= */}
 			<h3>Users</h3>
 			<table>
 				<thead>
@@ -334,9 +345,49 @@ function AdminDashboard({ user }) {
 											</button>
 											<button
 												type="button"
-												onClick={() =>
-													handleDeleteUser(u)
-												}
+												onClick={() => {
+													if (
+														window.confirm(
+															`Delete user "${u.username}" and their data? This cannot be undone.`
+														)
+													) {
+														setDeletingId(u._id);
+														axios
+															.delete(
+																`https://mern-deploy-i7u8.onrender.com/api/users/${u._id}`,
+																tokenHeader()
+															)
+															.then(() => {
+																setUsers(
+																	(prev) =>
+																		prev.filter(
+																			(
+																				x
+																			) =>
+																				x._id !==
+																				u._id
+																		)
+																);
+																setMonths(
+																	(prev) =>
+																		prev.filter(
+																			(
+																				m
+																			) =>
+																				m
+																					.userId
+																					?._id !==
+																				u._id
+																		)
+																);
+															})
+															.finally(() =>
+																setDeletingId(
+																	null
+																)
+															);
+													}
+												}}
 												disabled={deletingId === u._id}
 												title="Delete this user"
 											>
@@ -353,7 +404,7 @@ function AdminDashboard({ user }) {
 				</tbody>
 			</table>
 
-			{/* ======= MONTHS TABLE CONTROLS (unchanged) ======= */}
+			{/* ======= MONTHS (unchanged) ======= */}
 			<div
 				style={{
 					marginTop: 24,
@@ -365,7 +416,6 @@ function AdminDashboard({ user }) {
 				}}
 			>
 				<h3 style={{ margin: 0 }}>Months</h3>
-
 				<div>
 					<button
 						type="button"
@@ -393,7 +443,6 @@ function AdminDashboard({ user }) {
 				</div>
 			</div>
 
-			{/* ======= MONTHS TABLE (unchanged) ======= */}
 			<table>
 				<thead>
 					<tr>
@@ -403,36 +452,45 @@ function AdminDashboard({ user }) {
 					</tr>
 				</thead>
 				<tbody>
-					{filteredSortedMonths.map((m) => {
-						const parsed = nameToDate(m.name);
-						const label = parsed
-							? parsed.toLocaleDateString()
-							: "—";
-						return (
-							<tr key={m._id}>
-								<td>
-									<Link
-										to={`/months/${m._id}`}
-										title={`Open ${m.name}`}
-									>
-										{m.name}
-									</Link>
+					{useMemo(() => {
+						const list = filteredSortedMonths;
+						return list.length ? (
+							list.map((m) => {
+								const parsed = nameToDate(m.name);
+								const label = parsed
+									? parsed.toLocaleDateString()
+									: "—";
+								return (
+									<tr key={m._id}>
+										<td>
+											<Link
+												to={`/months/${m._id}`}
+												title={`Open ${m.name}`}
+											>
+												{m.name}
+											</Link>
+										</td>
+										<td>
+											{m.userId?.username || "Unknown"}
+										</td>
+										<td>{label}</td>
+									</tr>
+								);
+							})
+						) : (
+							<tr>
+								<td
+									colSpan={3}
+									style={{
+										opacity: 0.7,
+										fontStyle: "italic",
+									}}
+								>
+									No months match your current filter.
 								</td>
-								<td>{m.userId?.username || "Unknown"}</td>
-								<td>{label}</td>
 							</tr>
 						);
-					})}
-					{filteredSortedMonths.length === 0 && (
-						<tr>
-							<td
-								colSpan={3}
-								style={{ opacity: 0.7, fontStyle: "italic" }}
-							>
-								No months match your current filter.
-							</td>
-						</tr>
-					)}
+					}, [filteredSortedMonths])}
 				</tbody>
 			</table>
 		</div>

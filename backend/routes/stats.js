@@ -8,6 +8,7 @@ const AdminUser = require("../models/AdminUser");
 const Month = require("../models/Month");
 const Day = require("../models/Day");
 const Check = require("../models/Check");
+const EquipmentCheck = require("../models/EquipmentCheck");
 const auth = require("../middleware/auth");
 
 const APP_TZ = "America/Los_Angeles";
@@ -60,6 +61,7 @@ function lastDayOfMonthTZ({ y, m }, tz = APP_TZ) {
 	return d;
 }
 
+/* ---------------- EXISTING STATS (unchanged) ---------------- */
 router.get("/admin-checks", auth, async (req, res) => {
 	const t0 = Date.now();
 	try {
@@ -68,7 +70,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 			return res.status(401).json({ error: "Unauthorized" });
 		}
 
-		const adminOrg = await AdminUser.findOne({ ownerUser: adminId }).lean();
+		const AdminOrg = await AdminUser.findOne({ ownerUser: adminId }).lean();
 		const nowTZ = tzParts(new Date(), APP_TZ);
 		const prevTZ = shiftMonth(nowTZ, -1);
 		const currLabel = monthLabelFromParts(nowTZ);
@@ -76,7 +78,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 		const daysElapsedThisMonth = nowTZ.d;
 		const daysInPrevMonth = lastDayOfMonthTZ(prevTZ, APP_TZ);
 
-		if (!adminOrg) {
+		if (!AdminOrg) {
 			return res.json({
 				rows: [],
 				currentMonthLabel: currLabel,
@@ -85,7 +87,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 		}
 
 		const childUsers = await User.find({
-			adminUser: adminOrg._id,
+			adminUser: AdminOrg._id,
 			role: { $ne: "admin" },
 		})
 			.select({ _id: 1, username: 1 })
@@ -166,10 +168,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 			const prevMonthId = prevByUser.get(uid);
 
 			if (currMonthId && String(d.month) === currMonthId) {
-				if (
-					typeof d.dayNumber === "number" &&
-					d.dayNumber <= daysElapsedThisMonth
-				) {
+				if (typeof d.dayNumber === "number" && d.dayNumber <= nowTZ.d) {
 					if (env === "online") r.currOnlineDen += 1;
 					else r.currInpersonDen += 1;
 				}
@@ -206,10 +205,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 			const prevMonthId = prevByUser.get(uid);
 
 			if (currMonthId && String(d.month) === currMonthId) {
-				if (
-					typeof d.dayNumber === "number" &&
-					d.dayNumber <= daysElapsedThisMonth
-				) {
+				if (typeof d.dayNumber === "number" && d.dayNumber <= nowTZ.d) {
 					if (env === "online") r.currOnlineSuc += 1;
 					else r.currInpersonSuc += 1;
 				}
@@ -225,8 +221,6 @@ router.get("/admin-checks", auth, async (req, res) => {
 			.map((r) => ({
 				userId: r.userId,
 				username: r.username,
-
-				// percents
 				currOnlinePercent: r.hasCurrMonth
 					? pct(r.currOnlineSuc, r.currOnlineDen)
 					: 0,
@@ -239,8 +233,6 @@ router.get("/admin-checks", auth, async (req, res) => {
 				prevInpersonPercent: r.hasPrevMonth
 					? pct(r.prevInpersonSuc, r.prevInpersonDen)
 					: 0,
-
-				// raw counts for tooltips
 				currOnlineSuc: r.currOnlineSuc,
 				currOnlineDen: r.currOnlineDen,
 				currInpersonSuc: r.currInpersonSuc,
@@ -262,6 +254,185 @@ router.get("/admin-checks", auth, async (req, res) => {
 		return res.status(500).json({ error: "Failed to compute stats" });
 	} finally {
 		console.log("[STATS] done in ms:", Date.now() - t0);
+	}
+});
+
+/* ---------------- NEW: Equipment completion stats ----------------
+Denominator:
+  - current month: number of EquipmentCheck docs whose Day.dayNumber ≤ today
+  - previous month: number of EquipmentCheck docs in that month
+Success:
+  - EquipmentCheck with all four booleans true
+-------------------------------------------------------------------*/
+router.get("/admin-equip", auth, async (req, res) => {
+	const t0 = Date.now();
+	try {
+		const adminId = req.user?.id;
+		if (!adminId || !mongoose.isValidObjectId(adminId)) {
+			return res.status(401).json({ error: "Unauthorized" });
+		}
+		const AdminOrg = await AdminUser.findOne({ ownerUser: adminId }).lean();
+
+		const nowTZ = tzParts(new Date(), APP_TZ);
+		const prevTZ = shiftMonth(nowTZ, -1);
+		const currLabel = monthLabelFromParts(nowTZ);
+		const prevLabel = monthLabelFromParts(prevTZ);
+
+		if (!AdminOrg) {
+			return res.json({
+				rows: [],
+				currentMonthLabel: currLabel,
+				previousMonthLabel: prevLabel,
+			});
+		}
+
+		const childUsers = await User.find({
+			adminUser: AdminOrg._id,
+			role: { $ne: "admin" },
+		})
+			.select({ _id: 1, username: 1 })
+			.lean();
+		if (childUsers.length === 0) {
+			return res.json({
+				rows: [],
+				currentMonthLabel: currLabel,
+				previousMonthLabel: prevLabel,
+			});
+		}
+		const userIds = childUsers.map((u) => u._id);
+
+		// Find months for curr & prev per user
+		const [monthsCurr, monthsPrev] = await Promise.all([
+			Month.find({ name: currLabel, userId: { $in: userIds } })
+				.select({ _id: 1, userId: 1 })
+				.lean(),
+			Month.find({ name: prevLabel, userId: { $in: userIds } })
+				.select({ _id: 1, userId: 1 })
+				.lean(),
+		]);
+		const currByUser = new Map(
+			monthsCurr.map((m) => [String(m.userId), String(m._id)])
+		);
+		const prevByUser = new Map(
+			monthsPrev.map((m) => [String(m.userId), String(m._id)])
+		);
+
+		// Pre-fill rows
+		const rowsMap = new Map(
+			childUsers.map((u) => [
+				String(u._id),
+				{
+					userId: String(u._id),
+					username: u.username || "(unknown)",
+					hasCurrMonth: currByUser.has(String(u._id)),
+					hasPrevMonth: prevByUser.has(String(u._id)),
+					currEquipDen: 0,
+					currEquipSuc: 0,
+					prevEquipDen: 0,
+					prevEquipSuc: 0,
+				},
+			])
+		);
+
+		// Query all equipment checks for those users in curr/prev months
+		const allMonthIds = [
+			...monthsCurr.map((m) => String(m._id)),
+			...monthsPrev.map((m) => String(m._id)),
+		];
+		if (allMonthIds.length === 0) {
+			return res.json({
+				rows: Array.from(rowsMap.values()).sort((a, b) =>
+					a.username.localeCompare(b.username)
+				),
+				currentMonthLabel: currLabel,
+				previousMonthLabel: prevLabel,
+			});
+		}
+
+		const echecks = await EquipmentCheck.find({
+			user: { $in: userIds },
+			month: { $in: allMonthIds },
+		})
+			.select({
+				_id: 1,
+				user: 1,
+				month: 1,
+				day: 1,
+				left: 1,
+				right: 1,
+				both: 1,
+				fmMic: 1,
+			})
+			.lean();
+
+		// Load Day numbers for "to date" filtering in current month
+		const dayIds = echecks.map((ec) => ec.day);
+		const dayDocs = await Day.find({ _id: { $in: dayIds } })
+			.select({ _id: 1, dayNumber: 1 })
+			.lean();
+		const dayNumById = new Map(
+			dayDocs.map((d) => [String(d._id), d.dayNumber || 0])
+		);
+
+		for (const ec of echecks) {
+			const uid = String(ec.user);
+			const r = rowsMap.get(uid);
+			if (!r) continue;
+
+			const ecMonthId = String(ec.month);
+			const isCurr =
+				currByUser.get(uid) && ecMonthId === currByUser.get(uid);
+			const isPrev =
+				prevByUser.get(uid) && ecMonthId === prevByUser.get(uid);
+			if (!isCurr && !isPrev) continue;
+
+			// Success if all 4 are true
+			const success = !!(ec.left && ec.right && ec.both && ec.fmMic);
+
+			if (isCurr) {
+				// to-date filter: include only if dayNumber ≤ today
+				const dn = dayNumById.get(String(ec.day)) || 0;
+				if (dn > 0 && dn <= nowTZ.d) {
+					r.currEquipDen += 1;
+					if (success) r.currEquipSuc += 1;
+				}
+			} else if (isPrev) {
+				r.prevEquipDen += 1;
+				if (success) r.prevEquipSuc += 1;
+			}
+		}
+
+		const pct = (s, den) => (den > 0 ? Math.round((s / den) * 100) : 0);
+
+		const rows = Array.from(rowsMap.values())
+			.map((r) => ({
+				userId: r.userId,
+				username: r.username,
+				currEquipPercent: r.hasCurrMonth
+					? pct(r.currEquipSuc, r.currEquipDen)
+					: 0,
+				prevEquipPercent: r.hasPrevMonth
+					? pct(r.prevEquipSuc, r.prevEquipDen)
+					: 0,
+				currEquipSuc: r.currEquipSuc,
+				currEquipDen: r.currEquipDen,
+				prevEquipSuc: r.prevEquipSuc,
+				prevEquipDen: r.prevEquipDen,
+			}))
+			.sort((a, b) => a.username.localeCompare(b.username));
+
+		return res.json({
+			rows,
+			currentMonthLabel: currLabel,
+			previousMonthLabel: prevLabel,
+		});
+	} catch (err) {
+		console.error("[STATS][EQUIP][ERROR]", err);
+		return res
+			.status(500)
+			.json({ error: "Failed to compute equipment stats" });
+	} finally {
+		console.log("[STATS][EQUIP] done in ms:", Date.now() - t0);
 	}
 });
 
