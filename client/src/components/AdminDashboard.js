@@ -183,11 +183,42 @@ function AdminDashboard() {
 		);
 	}, [checksStats.rows, equipStats.rows]);
 
+	// ✅ FIX: memoize month table rows OUTSIDE the JSX return
+	const monthsTableRows = useMemo(() => {
+		const list = filteredSortedMonths;
+		if (list.length === 0) {
+			return (
+				<tr>
+					<td
+						colSpan={3}
+						style={{ opacity: 0.7, fontStyle: "italic" }}
+					>
+						No months match your current filter.
+					</td>
+				</tr>
+			);
+		}
+		return list.map((m) => {
+			const parsed = nameToDate(m.name);
+			const label = parsed ? parsed.toLocaleDateString() : "—";
+			return (
+				<tr key={m._id}>
+					<td>
+						<Link to={`/months/${m._id}`} title={`Open ${m.name}`}>
+							{m.name}
+						</Link>
+					</td>
+					<td>{m.userId?.username || "Unknown"}</td>
+					<td>{label}</td>
+				</tr>
+			);
+		});
+	}, [filteredSortedMonths]);
+
 	if (loadingUsers || loadingMonths || loadingStats)
 		return <p>Loading admin data…</p>;
 	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
 
-	// ✨ Text tweak here
 	const StatCell = ({ pct, den }) => (
 		<td>
 			{pct}% out of {den} day{den === 1 ? "" : "s"}
@@ -266,7 +297,7 @@ function AdminDashboard() {
 				</tbody>
 			</table>
 
-			{/* ======= USERS (unchanged) ======= */}
+			{/* ======= USERS ======= */}
 			<h3>Users</h3>
 			<table>
 				<thead>
@@ -404,7 +435,7 @@ function AdminDashboard() {
 				</tbody>
 			</table>
 
-			{/* ======= MONTHS (unchanged) ======= */}
+			{/* ======= MONTHS ======= */}
 			<div
 				style={{
 					marginTop: 24,
@@ -451,47 +482,7 @@ function AdminDashboard() {
 						<th>Month Start</th>
 					</tr>
 				</thead>
-				<tbody>
-					{useMemo(() => {
-						const list = filteredSortedMonths;
-						return list.length ? (
-							list.map((m) => {
-								const parsed = nameToDate(m.name);
-								const label = parsed
-									? parsed.toLocaleDateString()
-									: "—";
-								return (
-									<tr key={m._id}>
-										<td>
-											<Link
-												to={`/months/${m._id}`}
-												title={`Open ${m.name}`}
-											>
-												{m.name}
-											</Link>
-										</td>
-										<td>
-											{m.userId?.username || "Unknown"}
-										</td>
-										<td>{label}</td>
-									</tr>
-								);
-							})
-						) : (
-							<tr>
-								<td
-									colSpan={3}
-									style={{
-										opacity: 0.7,
-										fontStyle: "italic",
-									}}
-								>
-									No months match your current filter.
-								</td>
-							</tr>
-						);
-					}, [filteredSortedMonths])}
-				</tbody>
+				<tbody>{monthsTableRows}</tbody>
 			</table>
 		</div>
 	);
