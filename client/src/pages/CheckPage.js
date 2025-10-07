@@ -88,7 +88,7 @@ export default function CheckPage() {
 		run();
 	}, [dayId, userId]);
 
-	// 2) Load all daily comments (auto-open when text exists)
+	// 2) Load all daily comments; auto-open initially if text exists
 	useEffect(() => {
 		const loadAll = async () => {
 			if (!check?._id) return;
@@ -106,7 +106,7 @@ export default function CheckPage() {
 					docInit[field] = doc;
 					const hasText =
 						doc && (doc.commentText || "").trim().length > 0;
-					openInit[field] = hasText; // auto-open populated
+					openInit[field] = hasText; // initial auto-open
 					textInit[field] = hasText ? doc.commentText : "";
 				}
 				setCommentDoc(docInit);
@@ -124,7 +124,6 @@ export default function CheckPage() {
 		const loadEquip = async () => {
 			if (!monthId || !dayId || !userId) return; // need all three to resolve row
 			try {
-				// Try read-by-day first
 				const r = await axios.get(
 					`${API}/api/equipment-checks/for-day`,
 					{
@@ -138,13 +137,11 @@ export default function CheckPage() {
 			} catch (e) {
 				const code = e?.response?.status;
 				if (code === 404) {
-					// show "Enable" button
 					setEcheck(null);
 					setEquipAllowed(true);
 					setEquipMsg("");
 				} else if (code === 403) {
-					// not admin or tenant mismatch -> hide panel
-					setEquipAllowed(false);
+					setEquipAllowed(false); // not admin or tenant mismatch
 				} else {
 					setEquipAllowed(true);
 					setEquipMsg("Failed to load equipment check.");
@@ -181,7 +178,7 @@ export default function CheckPage() {
 		}
 	};
 
-	// Load all equipComments when we have an echeck
+	// Load all equipComments when we have an echeck (auto-open initially if text exists)
 	useEffect(() => {
 		const loadECmts = async () => {
 			if (!echeck?._id) return;
@@ -199,7 +196,7 @@ export default function CheckPage() {
 					docInit[field] = doc;
 					const hasText =
 						doc && (doc.commentText || "").trim().length > 0;
-					openInit[field] = hasText; // auto-open populated
+					openInit[field] = hasText; // initial auto-open
 					textInit[field] = hasText ? doc.commentText : "";
 				}
 				setECmtDoc(docInit);
@@ -475,40 +472,27 @@ export default function CheckPage() {
 										{label}
 									</label>
 
-									{/* + / – toggle (even when populated, show minus to collapse) */}
-									{!open && !doc && (
-										<button
-											type="button"
-											onClick={() =>
-												setCommentOpen((o) => ({
-													...o,
-													[field]: true,
-												}))
-											}
-											title="Add a comment"
-											style={{ marginLeft: 8 }}
-										>
-											[ + ]
-										</button>
-									)}
-									{open || doc ? (
-										<button
-											type="button"
-											onClick={() =>
-												setCommentOpen((o) => ({
-													...o,
-													[field]: !open,
-												}))
-											}
-											title="Hide comment box"
-											style={{ marginLeft: 8 }}
-										>
-											{open ? "[ – ]" : "[ + ]"}
-										</button>
-									) : null}
+									{/* Always show toggle; now visibility depends only on `open` */}
+									<button
+										type="button"
+										onClick={() =>
+											setCommentOpen((o) => ({
+												...o,
+												[field]: !open,
+											}))
+										}
+										title={
+											open
+												? "Hide comment box"
+												: "Add a comment"
+										}
+										style={{ marginLeft: 8 }}
+									>
+										{open ? "[ – ]" : "[ + ]"}
+									</button>
 								</div>
 
-								{(open || doc) && (
+								{open && (
 									<div
 										style={{ marginTop: 8, marginLeft: 28 }}
 									>
@@ -646,49 +630,27 @@ export default function CheckPage() {
 													{label}
 												</label>
 
-												{!open && !doc && (
-													<button
-														type="button"
-														onClick={() =>
-															setECmtOpen(
-																(o) => ({
-																	...o,
-																	[f]: true,
-																})
-															)
-														}
-														title="Add a comment"
-														style={{
-															marginLeft: 8,
-														}}
-													>
-														[ + ]
-													</button>
-												)}
-												{open || doc ? (
-													<button
-														type="button"
-														onClick={() =>
-															setECmtOpen(
-																(o) => ({
-																	...o,
-																	[f]: !open,
-																})
-															)
-														}
-														title="Hide comment box"
-														style={{
-															marginLeft: 8,
-														}}
-													>
-														{open
-															? "[ – ]"
-															: "[ + ]"}
-													</button>
-												) : null}
+												{/* Always show toggle; visibility depends only on `open` */}
+												<button
+													type="button"
+													onClick={() =>
+														setECmtOpen((o) => ({
+															...o,
+															[f]: !open,
+														}))
+													}
+													title={
+														open
+															? "Hide comment box"
+															: "Add a comment"
+													}
+													style={{ marginLeft: 8 }}
+												>
+													{open ? "[ – ]" : "[ + ]"}
+												</button>
 											</div>
 
-											{(open || doc) && (
+											{open && (
 												<div
 													style={{
 														marginTop: 6,
