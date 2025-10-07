@@ -6,7 +6,11 @@ const Month = require("../models/Month");
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const Check = require("../models/Check");
-const Comment = require("../models/Comment"); // NEW: cascade delete comments
+const Comment = require("../models/Comment");
+
+// NEW: cascade equipment
+const EquipmentCheck = require("../models/EquipmentCheck");
+const EquipComment = require("../models/EquipComment");
 
 const APP_TZ = "America/Los_Angeles";
 
@@ -179,7 +183,7 @@ router.post("/add-today", auth, async (req, res) => {
 	}
 });
 
-// DELETE /api/days/:dayId   <-- NEW (cascade delete checks + comments)
+// DELETE /api/days/:dayId   <-- UPDATED: cascade EquipmentCheck + EquipComment too
 router.delete("/:dayId", auth, async (req, res) => {
 	try {
 		const { dayId } = req.params;
@@ -204,14 +208,24 @@ router.delete("/:dayId", auth, async (req, res) => {
 			return res.status(403).json({ msg: "Forbidden" });
 		}
 
-		// Gather all checks for this day (usually 1 per design, but be robust)
+		// ---- Cascade: Daily Checks + Comments ----
 		const checks = await Check.find({ day: dayId }).select("_id").lean();
 		const checkIds = checks.map((c) => c._id);
-
-		// Delete comments tied to those checks (safe even if none)
 		if (checkIds.length > 0) {
 			await Comment.deleteMany({ check: { $in: checkIds } });
 			await Check.deleteMany({ _id: { $in: checkIds } });
+		}
+
+		// ---- Cascade: EquipmentChecks + EquipComments (NEW) ----
+		const echecks = await EquipmentCheck.find({ day: dayId })
+			.select("_id")
+			.lean();
+		const echeckIds = echecks.map((e) => e._id);
+		if (echeckIds.length > 0) {
+			await EquipComment.deleteMany({
+				equipmentCheck: { $in: echeckIds },
+			});
+			await EquipmentCheck.deleteMany({ _id: { $in: echeckIds } });
 		}
 
 		// Finally delete the day

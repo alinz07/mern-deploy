@@ -1,4 +1,4 @@
-// client/src/pages/CheckPage.js (DROP-IN)
+// client/src/pages/CheckPage.js  (DROP-IN)
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import axios from "axios";
@@ -18,23 +18,44 @@ const FIELD_MAP = [
 	["checkten", "Check Ten"],
 ];
 
+const EQUIP_FIELDS = [
+	["left", "Left"],
+	["right", "Right"],
+	["both", "Both"],
+	["fmMic", "FM Mic"],
+];
+
 export default function CheckPage() {
 	const { dayId } = useParams();
 	const [searchParams] = useSearchParams();
 	const monthId = searchParams.get("monthId");
-	const userId = searchParams.get("userId"); // admin can act on behalf of student
+	const userId = searchParams.get("userId"); // student owner (when admin acts for user)
 
+	// Daily check
 	const [check, setCheck] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [msg, setMsg] = useState("");
 	const [saving, setSaving] = useState({});
 	const [bulkSaving, setBulkSaving] = useState(false);
 
-	// per-field comment state
-	const [commentOpen, setCommentOpen] = useState({}); // { field: bool }
-	const [commentText, setCommentText] = useState({}); // { field: string }
-	const [commentDoc, setCommentDoc] = useState({}); // { field: commentDoc|null }
-	const [commentSaving, setCommentSaving] = useState({}); // { field: bool }
+	// Daily comments
+	const [commentOpen, setCommentOpen] = useState({});
+	const [commentText, setCommentText] = useState({});
+	const [commentDoc, setCommentDoc] = useState({});
+	const [commentSaving, setCommentSaving] = useState({});
+
+	// Equipment panel visibility
+	const [equipAllowed, setEquipAllowed] = useState(true); // hide on 403
+	// Equipment check row
+	const [echeck, setEcheck] = useState(null);
+	const [equipSaving, setEquipSaving] = useState({});
+	const [equipMsg, setEquipMsg] = useState("");
+
+	// Equip comments
+	const [eCmtOpen, setECmtOpen] = useState({});
+	const [eCmtText, setECmtText] = useState({});
+	const [eCmtDoc, setECmtDoc] = useState({});
+	const [eCmtSaving, setECmtSaving] = useState({});
 
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
@@ -42,7 +63,7 @@ export default function CheckPage() {
 
 	const fieldKeys = useMemo(() => FIELD_MAP.map(([k]) => k), []);
 
-	// Ensure a Check exists for (dayId, [userId]) and load it
+	// 1) Ensure a Check exists and load it
 	useEffect(() => {
 		const run = async () => {
 			try {
@@ -67,7 +88,7 @@ export default function CheckPage() {
 		run();
 	}, [dayId, userId]);
 
-	// Load all per-field comments once we have a check
+	// 2) Load all daily comments (auto-open when text exists)
 	useEffect(() => {
 		const loadAll = async () => {
 			if (!check?._id) return;
@@ -77,29 +98,121 @@ export default function CheckPage() {
 					tokenHeader()
 				);
 				const map = res.data || {};
-				const openInit = {};
-				const textInit = {};
-				const docInit = {};
+				const openInit = {},
+					textInit = {},
+					docInit = {};
 				for (const [field] of FIELD_MAP) {
 					const doc = map[field] || null;
 					docInit[field] = doc;
-					// auto-open if comment exists with non-blank text
 					const hasText =
 						doc && (doc.commentText || "").trim().length > 0;
-					openInit[field] = hasText;
+					openInit[field] = hasText; // auto-open populated
 					textInit[field] = hasText ? doc.commentText : "";
 				}
 				setCommentDoc(docInit);
 				setCommentOpen(openInit);
 				setCommentText(textInit);
 			} catch {
-				// non-fatal
+				/* non-fatal */
 			}
 		};
 		loadAll();
 	}, [check?._id]);
 
-	// Toggle a single checkbox field
+	// 3) Try to load/create the EquipmentCheck (admin-only; hide if 403)
+	useEffect(() => {
+		const loadEquip = async () => {
+			if (!monthId || !dayId || !userId) return; // need all three to resolve row
+			try {
+				// Try read-by-day first
+				const r = await axios.get(
+					`${API}/api/equipment-checks/for-day`,
+					{
+						params: { month: monthId, day: dayId, user: userId },
+						...tokenHeader(),
+					}
+				);
+				setEcheck(r.data);
+				setEquipAllowed(true);
+				setEquipMsg("");
+			} catch (e) {
+				const code = e?.response?.status;
+				if (code === 404) {
+					// show "Enable" button
+					setEcheck(null);
+					setEquipAllowed(true);
+					setEquipMsg("");
+				} else if (code === 403) {
+					// not admin or tenant mismatch -> hide panel
+					setEquipAllowed(false);
+				} else {
+					setEquipAllowed(true);
+					setEquipMsg("Failed to load equipment check.");
+				}
+			}
+		};
+		loadEquip();
+	}, [monthId, dayId, userId]);
+
+	const enableEquipmentCheck = async () => {
+		try {
+			const res = await axios.post(
+				`${API}/api/equipment-checks`,
+				{
+					month: monthId,
+					day: dayId,
+					user: userId,
+					left: false,
+					right: false,
+					both: false,
+					fmMic: false,
+				},
+				tokenHeader()
+			);
+			setEcheck(res.data);
+			setEquipMsg("");
+		} catch (e) {
+			const code = e?.response?.status;
+			if (code === 403) setEquipAllowed(false);
+			else
+				setEquipMsg(
+					e?.response?.data?.msg || "Failed to enable equipment check"
+				);
+		}
+	};
+
+	// Load all equipComments when we have an echeck
+	useEffect(() => {
+		const loadECmts = async () => {
+			if (!echeck?._id) return;
+			try {
+				const res = await axios.get(
+					`${API}/api/equip-comments/by-echeck/${echeck._id}/all`,
+					tokenHeader()
+				);
+				const map = res.data || {};
+				const openInit = {},
+					textInit = {},
+					docInit = {};
+				for (const [field] of EQUIP_FIELDS) {
+					const doc = map[field] || null;
+					docInit[field] = doc;
+					const hasText =
+						doc && (doc.commentText || "").trim().length > 0;
+					openInit[field] = hasText; // auto-open populated
+					textInit[field] = hasText ? doc.commentText : "";
+				}
+				setECmtDoc(docInit);
+				setECmtOpen(openInit);
+				setECmtText(textInit);
+			} catch {
+				// ignore
+			}
+		};
+		loadECmts();
+	}, [echeck?._id]);
+
+	// --------- Daily check handlers ----------
 	const toggleField = useCallback(
 		async (field) => {
 			if (!check || saving[field] || bulkSaving) return;
@@ -128,7 +241,6 @@ export default function CheckPage() {
 		[check, saving, bulkSaving]
 	);
 
-	// Bulk set all fields
 	const setAll = useCallback(
 		async (value) => {
 			if (!check || bulkSaving) return;
@@ -161,7 +273,6 @@ export default function CheckPage() {
 		[check, fieldKeys, bulkSaving]
 	);
 
-	// Save one field's comment
 	const saveComment = async (field) => {
 		if (!check?._id || !commentText[field]?.trim()) return;
 		setCommentSaving((s) => ({ ...s, [field]: true }));
@@ -184,7 +295,6 @@ export default function CheckPage() {
 		}
 	};
 
-	// Delete one field's comment
 	const deleteComment = async (field) => {
 		if (!check?._id) return;
 		setCommentSaving((s) => ({ ...s, [field]: true }));
@@ -208,208 +318,483 @@ export default function CheckPage() {
 		}
 	};
 
+	// --------- Equipment handlers ----------
+	const toggleEquip = async (field) => {
+		if (!echeck?._id || equipSaving[field]) return;
+		setEquipSaving((s) => ({ ...s, [field]: true }));
+		const prev = !!echeck[field];
+		setEcheck((c) => ({ ...c, [field]: !prev }));
+		try {
+			const res = await axios.patch(
+				`${API}/api/equipment-checks/${echeck._id}`,
+				{ [field]: !prev },
+				tokenHeader()
+			);
+			setEcheck(res.data);
+			setEquipMsg("");
+		} catch (e) {
+			setEcheck((c) => ({ ...c, [field]: prev }));
+			setEquipMsg(e?.response?.data?.msg || "Update failed");
+		} finally {
+			setEquipSaving((s) => ({ ...s, [field]: false }));
+		}
+	};
+
+	const saveEquipComment = async (field) => {
+		if (!echeck?._id || !eCmtText[field]?.trim()) return;
+		setECmtSaving((s) => ({ ...s, [field]: true }));
+		try {
+			const res = await axios.put(
+				`${API}/api/equip-comments/by-echeck/${echeck._id}`,
+				{ field, commentText: eCmtText[field] },
+				tokenHeader()
+			);
+			setECmtDoc((d) => ({ ...d, [field]: res.data }));
+			setEquipMsg("Comment saved.");
+		} catch (e) {
+			setEquipMsg(e?.response?.data?.msg || "Failed to save comment");
+		} finally {
+			setECmtSaving((s) => ({ ...s, [field]: false }));
+		}
+	};
+
+	const deleteEquipComment = async (field) => {
+		if (!echeck?._id) return;
+		setECmtSaving((s) => ({ ...s, [field]: true }));
+		try {
+			await axios.delete(
+				`${API}/api/equip-comments/by-echeck/${echeck._id}`,
+				{ params: { field }, ...tokenHeader() }
+			);
+			setECmtDoc((d) => ({ ...d, [field]: null }));
+			setECmtText((t) => ({ ...t, [field]: "" }));
+			setECmtOpen((o) => ({ ...o, [field]: false }));
+			setEquipMsg("Comment deleted.");
+		} catch (e) {
+			setEquipMsg(e?.response?.data?.msg || "Failed to delete comment");
+		} finally {
+			setECmtSaving((s) => ({ ...s, [field]: false }));
+		}
+	};
+
 	if (loading) return <p>Loading check…</p>;
 	if (!check) return <p>{msg || "Check not found"}</p>;
 
 	const checkedCount = fieldKeys.reduce((n, k) => n + (check[k] ? 1 : 0), 0);
 
 	return (
-		<div style={{ maxWidth: 760 }}>
-			<p style={{ marginBottom: 12 }}>
-				<Link to={monthId ? `/months/${monthId}` : `/`}>
-					← Back to DayList
-				</Link>
-			</p>
+		<div
+			style={{
+				display: "grid",
+				gridTemplateColumns: equipAllowed ? "1fr 340px" : "1fr",
+				gap: 24,
+			}}
+		>
+			{/* LEFT: Daily Check */}
+			<div style={{ maxWidth: 760 }}>
+				<p style={{ marginBottom: 12 }}>
+					<Link to={monthId ? `/months/${monthId}` : `/`}>
+						← Back to DayList
+					</Link>
+				</p>
 
-			<div
-				style={{
-					display: "flex",
-					alignItems: "baseline",
-					gap: 12,
-					flexWrap: "wrap",
-				}}
-			>
-				<h2 style={{ margin: 0 }}>Daily Check</h2>
-				<span style={{ opacity: 0.7 }}>
-					({checkedCount} / 10 complete)
-				</span>
-			</div>
-
-			{msg && <p style={{ color: "crimson", marginTop: 8 }}>{msg}</p>}
-
-			{/* Bulk actions */}
-			<div style={{ display: "flex", gap: 8, margin: "12px 0 8px" }}>
-				<button
-					type="button"
-					onClick={() => setAll(true)}
-					disabled={bulkSaving}
+				<div
+					style={{
+						display: "flex",
+						alignItems: "baseline",
+						gap: 12,
+						flexWrap: "wrap",
+					}}
 				>
-					Mark all complete
-				</button>
-				<button
-					type="button"
-					onClick={() => setAll(false)}
-					disabled={bulkSaving}
-				>
-					Clear all
-				</button>
-				{bulkSaving && (
-					<span aria-live="polite" style={{ fontSize: 12 }}>
-						saving…
+					<h2 style={{ margin: 0 }}>Daily Check</h2>
+					<span style={{ opacity: 0.7 }}>
+						({checkedCount} / 10 complete)
 					</span>
-				)}
-			</div>
+				</div>
 
-			{/* Checklist + per-field comments */}
-			<ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-				{FIELD_MAP.map(([field, label]) => {
-					const isSaving = !!saving[field] || bulkSaving;
-					const open = !!commentOpen[field];
-					const doc = commentDoc[field];
-					return (
-						<li
-							key={field}
-							style={{
-								padding: "10px 0",
-								borderBottom: "1px solid #eee",
-							}}
-						>
-							<div
+				{msg && <p style={{ color: "crimson", marginTop: 8 }}>{msg}</p>}
+
+				<div style={{ display: "flex", gap: 8, margin: "12px 0 8px" }}>
+					<button
+						type="button"
+						onClick={() => setAll(true)}
+						disabled={bulkSaving}
+					>
+						Mark all complete
+					</button>
+					<button
+						type="button"
+						onClick={() => setAll(false)}
+						disabled={bulkSaving}
+					>
+						Clear all
+					</button>
+					{bulkSaving && (
+						<span aria-live="polite" style={{ fontSize: 12 }}>
+							saving…
+						</span>
+					)}
+				</div>
+
+				<ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+					{FIELD_MAP.map(([field, label]) => {
+						const isSaving = !!saving[field] || bulkSaving;
+						const open = !!commentOpen[field];
+						const doc = commentDoc[field];
+						return (
+							<li
+								key={field}
 								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: 10,
+									padding: "10px 0",
+									borderBottom: "1px solid #eee",
 								}}
 							>
-								<input
-									id={field}
-									type="checkbox"
-									checked={!!check[field]}
-									onChange={() => toggleField(field)}
-									disabled={isSaving}
-								/>
-								<label
-									htmlFor={field}
+								<div
 									style={{
-										userSelect: "none",
-										cursor: isSaving
-											? "not-allowed"
-											: "pointer",
+										display: "flex",
+										alignItems: "center",
+										gap: 10,
 									}}
 								>
-									{label}
-								</label>
-
-								{/* + / – toggle */}
-								{!open && !doc && (
-									<button
-										type="button"
-										onClick={() =>
-											setCommentOpen((o) => ({
-												...o,
-												[field]: true,
-											}))
-										}
-										title="Add a comment"
-										style={{ marginLeft: 8 }}
-									>
-										[ + ]
-									</button>
-								)}
-								{open && !doc && (
-									<button
-										type="button"
-										onClick={() =>
-											setCommentOpen((o) => ({
-												...o,
-												[field]: false,
-											}))
-										}
-										title="Hide comment box"
-										style={{ marginLeft: 8 }}
-									>
-										[ – ]
-									</button>
-								)}
-							</div>
-
-							{(open || doc) && (
-								<div style={{ marginTop: 8, marginLeft: 28 }}>
-									<textarea
-										rows={3}
-										style={{
-											width: "100%",
-											boxSizing: "border-box",
-										}}
-										placeholder="Write a comment…"
-										value={commentText[field] || ""}
-										onChange={(e) =>
-											setCommentText((t) => ({
-												...t,
-												[field]: e.target.value,
-											}))
-										}
+									<input
+										id={field}
+										type="checkbox"
+										checked={!!check[field]}
+										onChange={() => toggleField(field)}
+										disabled={isSaving}
 									/>
-									<div
+									<label
+										htmlFor={field}
 										style={{
-											display: "flex",
-											gap: 8,
-											marginTop: 6,
+											userSelect: "none",
+											cursor: isSaving
+												? "not-allowed"
+												: "pointer",
 										}}
 									>
+										{label}
+									</label>
+
+									{/* + / – toggle (even when populated, show minus to collapse) */}
+									{!open && !doc && (
 										<button
 											type="button"
-											onClick={() => saveComment(field)}
-											disabled={
-												commentSaving[field] ||
-												!(
-													commentText[field] || ""
-												).trim()
+											onClick={() =>
+												setCommentOpen((o) => ({
+													...o,
+													[field]: true,
+												}))
 											}
+											title="Add a comment"
+											style={{ marginLeft: 8 }}
 										>
-											Save
+											[ + ]
 										</button>
-										{doc && (
+									)}
+									{open || doc ? (
+										<button
+											type="button"
+											onClick={() =>
+												setCommentOpen((o) => ({
+													...o,
+													[field]: !open,
+												}))
+											}
+											title="Hide comment box"
+											style={{ marginLeft: 8 }}
+										>
+											{open ? "[ – ]" : "[ + ]"}
+										</button>
+									) : null}
+								</div>
+
+								{(open || doc) && (
+									<div
+										style={{ marginTop: 8, marginLeft: 28 }}
+									>
+										<textarea
+											rows={3}
+											style={{
+												width: "100%",
+												boxSizing: "border-box",
+											}}
+											placeholder="Write a comment…"
+											value={commentText[field] || ""}
+											onChange={(e) =>
+												setCommentText((t) => ({
+													...t,
+													[field]: e.target.value,
+												}))
+											}
+										/>
+										<div
+											style={{
+												display: "flex",
+												gap: 8,
+												marginTop: 6,
+											}}
+										>
 											<button
 												type="button"
 												onClick={() =>
-													deleteComment(field)
+													saveComment(field)
 												}
-												disabled={commentSaving[field]}
+												disabled={
+													commentSaving[field] ||
+													!(
+														commentText[field] || ""
+													).trim()
+												}
 											>
-												Delete
+												Save
 											</button>
-										)}
-										{commentSaving[field] && (
-											<span
-												aria-live="polite"
-												style={{ fontSize: 12 }}
+											{doc && (
+												<button
+													type="button"
+													onClick={() =>
+														deleteComment(field)
+													}
+													disabled={
+														commentSaving[field]
+													}
+												>
+													Delete
+												</button>
+											)}
+											{commentSaving[field] && (
+												<span
+													aria-live="polite"
+													style={{ fontSize: 12 }}
+												>
+													saving…
+												</span>
+											)}
+										</div>
+										{doc && (
+											<div
+												style={{
+													marginTop: 6,
+													fontSize: 12,
+													opacity: 0.75,
+												}}
 											>
-												saving…
-											</span>
+												Last saved:{" "}
+												{new Date(
+													doc.updatedAt ||
+														doc.createdAt
+												).toLocaleString()}
+											</div>
 										)}
 									</div>
+								)}
+							</li>
+						);
+					})}
+				</ul>
+			</div>
 
-									{doc && (
-										<div
+			{/* RIGHT: Equipment Check (admin-only) */}
+			{equipAllowed && (
+				<aside
+					style={{ borderLeft: "1px solid #ddd", paddingLeft: 16 }}
+				>
+					<h3 style={{ marginTop: 0 }}>Equipment Check</h3>
+					{equipMsg && <p style={{ color: "crimson" }}>{equipMsg}</p>}
+
+					{!echeck ? (
+						<button type="button" onClick={enableEquipmentCheck}>
+							Enable equipment check
+						</button>
+					) : (
+						<>
+							<ul
+								style={{
+									listStyle: "none",
+									padding: 0,
+									margin: 0,
+								}}
+							>
+								{EQUIP_FIELDS.map(([f, label]) => {
+									const saving = !!equipSaving[f];
+									const open = !!eCmtOpen[f];
+									const doc = eCmtDoc[f];
+									return (
+										<li
+											key={f}
 											style={{
-												marginTop: 6,
-												fontSize: 12,
-												opacity: 0.75,
+												padding: "8px 0",
+												borderBottom: "1px solid #eee",
 											}}
 										>
-											Last saved:{" "}
-											{new Date(
-												doc.updatedAt || doc.createdAt
-											).toLocaleString()}
-										</div>
-									)}
-								</div>
-							)}
-						</li>
-					);
-				})}
-			</ul>
+											<div
+												style={{
+													display: "flex",
+													alignItems: "center",
+													gap: 10,
+												}}
+											>
+												<input
+													id={`e_${f}`}
+													type="checkbox"
+													checked={!!echeck[f]}
+													onChange={() =>
+														toggleEquip(f)
+													}
+													disabled={saving}
+												/>
+												<label htmlFor={`e_${f}`}>
+													{label}
+												</label>
+
+												{!open && !doc && (
+													<button
+														type="button"
+														onClick={() =>
+															setECmtOpen(
+																(o) => ({
+																	...o,
+																	[f]: true,
+																})
+															)
+														}
+														title="Add a comment"
+														style={{
+															marginLeft: 8,
+														}}
+													>
+														[ + ]
+													</button>
+												)}
+												{open || doc ? (
+													<button
+														type="button"
+														onClick={() =>
+															setECmtOpen(
+																(o) => ({
+																	...o,
+																	[f]: !open,
+																})
+															)
+														}
+														title="Hide comment box"
+														style={{
+															marginLeft: 8,
+														}}
+													>
+														{open
+															? "[ – ]"
+															: "[ + ]"}
+													</button>
+												) : null}
+											</div>
+
+											{(open || doc) && (
+												<div
+													style={{
+														marginTop: 6,
+														marginLeft: 26,
+													}}
+												>
+													<textarea
+														rows={2}
+														style={{
+															width: "100%",
+															boxSizing:
+																"border-box",
+														}}
+														placeholder="Equipment comment…"
+														value={
+															eCmtText[f] || ""
+														}
+														onChange={(e) =>
+															setECmtText(
+																(t) => ({
+																	...t,
+																	[f]: e
+																		.target
+																		.value,
+																})
+															)
+														}
+													/>
+													<div
+														style={{
+															display: "flex",
+															gap: 8,
+															marginTop: 6,
+														}}
+													>
+														<button
+															type="button"
+															onClick={() =>
+																saveEquipComment(
+																	f
+																)
+															}
+															disabled={
+																eCmtSaving[f] ||
+																!(
+																	eCmtText[
+																		f
+																	] || ""
+																).trim()
+															}
+														>
+															Save
+														</button>
+														{doc && (
+															<button
+																type="button"
+																onClick={() =>
+																	deleteEquipComment(
+																		f
+																	)
+																}
+																disabled={
+																	eCmtSaving[
+																		f
+																	]
+																}
+															>
+																Delete
+															</button>
+														)}
+														{eCmtSaving[f] && (
+															<span
+																aria-live="polite"
+																style={{
+																	fontSize: 12,
+																}}
+															>
+																saving…
+															</span>
+														)}
+													</div>
+													{doc && (
+														<div
+															style={{
+																marginTop: 6,
+																fontSize: 12,
+																opacity: 0.75,
+															}}
+														>
+															Last saved:{" "}
+															{new Date(
+																doc.updatedAt ||
+																	doc.createdAt
+															).toLocaleString()}
+														</div>
+													)}
+												</div>
+											)}
+										</li>
+									);
+								})}
+							</ul>
+						</>
+					)}
+				</aside>
+			)}
 		</div>
 	);
 }

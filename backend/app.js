@@ -43,6 +43,7 @@ app.use("/api/stats", statsRoutes);
 app.use("/api/equipment-checks", require("./routes/equipmentChecks"));
 app.use("/api/equipment", require("./routes/equipment"));
 app.use("/api/comments", require("./routes/comments"));
+app.use("/api/equip-comments", require("./routes/equipComments"));
 
 // route
 app.get("/", async (req, res) => {

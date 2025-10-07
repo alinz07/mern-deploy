@@ -44,26 +44,21 @@ function AdminDashboard({ user }) {
 		setEditForm({ username: "", email: "" });
 	};
 
+	const tokenHeader = () => ({
+		headers: { "x-auth-token": localStorage.getItem("token") },
+	});
+
 	const saveEdit = async () => {
 		const username = (editForm.username || "").trim();
 		const email = (editForm.email || "").trim();
 
-		if (!username) {
-			alert("Username is required.");
-			return;
-		}
-		if (username.length < 3) {
-			alert("Username must be at least 3 characters.");
-			return;
-		}
-		if (username.length > 50) {
-			alert("Username must be at most 50 characters.");
-			return;
-		}
-		if (email && !emailRegex.test(email)) {
-			alert("Please enter a valid email or leave it blank.");
-			return;
-		}
+		if (!username) return alert("Username is required.");
+		if (username.length < 3)
+			return alert("Username must be at least 3 characters.");
+		if (username.length > 50)
+			return alert("Username must be at most 50 characters.");
+		if (email && !emailRegex.test(email))
+			return alert("Please enter a valid email or leave it blank.");
 
 		try {
 			const res = await axios.put(
@@ -83,10 +78,6 @@ function AdminDashboard({ user }) {
 			alert(msg);
 		}
 	};
-
-	const tokenHeader = () => ({
-		headers: { "x-auth-token": localStorage.getItem("token") },
-	});
 
 	useEffect(() => {
 		const fetchUsers = async () => {
@@ -198,24 +189,20 @@ function AdminDashboard({ user }) {
 
 	if (loadingUsers || loadingMonths || loadingStats)
 		return <p>Loading admin data…</p>;
-
 	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
 
-	// Tooltip cell helper
-	const StatCell = ({ pct, suc, den, label }) => {
-		const title = `${suc} of ${den} day${den === 1 ? "" : "s"} successful`;
-		return (
-			<td title={title} aria-label={`${label}: ${title}`}>
-				{pct}%
-			</td>
-		);
-	};
+	// Cell helper: show "NN% of X days"
+	const StatCell = ({ pct, den }) => (
+		<td>
+			{pct}% of {den} day{den === 1 ? "" : "s"}
+		</td>
+	);
 
 	return (
 		<div>
 			<h2>Admin Dashboard</h2>
 
-			{/* ======= COMPLETION STATS (Updated to 5 columns with tooltips) ======= */}
+			{/* ======= COMPLETION STATS (5 columns, explicit counts) ======= */}
 			<h3>Completion Stats</h3>
 			<p style={{ marginTop: -8, opacity: 0.8 }}>
 				Current month: {stats.currentMonthLabel || "—"} (to date) ·
@@ -248,27 +235,19 @@ function AdminDashboard({ user }) {
 
 								<StatCell
 									pct={r.currOnlinePercent}
-									suc={r.currOnlineSuc}
 									den={r.currOnlineDen}
-									label="Current Online"
 								/>
 								<StatCell
 									pct={r.currInpersonPercent}
-									suc={r.currInpersonSuc}
 									den={r.currInpersonDen}
-									label="Current In-Person"
 								/>
 								<StatCell
 									pct={r.prevOnlinePercent}
-									suc={r.prevOnlineSuc}
 									den={r.prevOnlineDen}
-									label="Previous Online"
 								/>
 								<StatCell
 									pct={r.prevInpersonPercent}
-									suc={r.prevInpersonSuc}
 									den={r.prevInpersonDen}
-									label="Previous In-Person"
 								/>
 							</tr>
 						))
