@@ -258,19 +258,11 @@ function AdminDashboard() {
 	};
 
 	return (
-		<div>
-			{/* Header row with join code + equipment button */}
-			<div
-				style={{
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "space-between",
-					gap: 12,
-				}}
-			>
-				<h2 style={{ margin: 0 }}>Admin Dashboard</h2>
+		<div className="admin-dashboard">
+			<div className="page-header">
+				<h2>Admin Dashboard</h2>
 
-				{/* 🔹 Join code chip */}
+				{/* Join code chip */}
 				<div
 					style={{
 						flex: 1,
@@ -278,19 +270,8 @@ function AdminDashboard() {
 						justifyContent: "center",
 					}}
 				>
-					<div
-						style={{
-							display: "inline-flex",
-							alignItems: "center",
-							gap: 8,
-							padding: "6px 10px",
-							borderRadius: 8,
-							background: "#f4f6fb",
-							border: "1px solid #dfe3ee",
-							fontSize: 14,
-						}}
-					>
-						<span style={{ opacity: 0.75 }}>Join code:</span>
+					<div className="join-chip">
+						<span className="muted">Join code:</span>
 						<strong style={{ letterSpacing: 0.5 }}>
 							{loadingJoin ? "…" : joinCode || "—"}
 						</strong>
@@ -299,7 +280,6 @@ function AdminDashboard() {
 							onClick={copy}
 							disabled={!joinCode}
 							title="Copy join code"
-							style={{ padding: "2px 8px" }}
 						>
 							Copy
 						</button>

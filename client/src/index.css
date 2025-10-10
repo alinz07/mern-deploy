@@ -1,188 +1,224 @@
+/* ---------------------------
+   Design tokens
+---------------------------- */
 :root {
-	--primary: #d81e5b;
-	--light: #eee;
-	--light-alt: #61759b;
-	--dark: #131a26;
+	--ink: #0f172a; /* dark text */
+	--muted: #64748b; /* slate-500 */
+	--bg: #f6f8fc; /* app background */
+	--card: #ffffff; /* card/table bg */
+	--line: #e5e7eb; /* separators */
+	--soft: #f8fafc; /* header rows */
+	--brand: #1d4ed8; /* primary */
+	--brand-ink: #ffffff; /* on brand */
 }
 
+/* Base reset */
 * {
-	margin: 0;
-	padding: 0;
 	box-sizing: border-box;
-	font-family: "Fira Sans", sans-serif;
 }
-
+html,
+body,
+#root {
+	height: 100%;
+}
 body {
-	background-color: var(--light-alt);
-	color: var(--light);
+	margin: 0;
+	background: var(--bg);
+	color: var(--ink);
+	font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue",
+		Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji",
+		"Segoe UI Symbol", "Noto Color Emoji", sans-serif;
+	line-height: 1.45;
 }
 
-.container {
-	max-width: 20rem;
-	padding: 32px;
+/* ---------------------------
+   Admin Dashboard styles
+---------------------------- */
+.admin-dashboard {
+	max-width: 1120px;
 	margin: 0 auto;
+	padding: 24px clamp(16px, 3vw, 32px);
 }
 
-.heading {
-	text-align: center;
+.admin-dashboard h2 {
+	font-size: clamp(20px, 2.2vw, 28px);
+	margin: 0;
 }
 
-.form {
-	margin-top: 2rem;
+.page-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
 }
 
-.form input {
-	width: 85%;
-	padding: 3px;
+/* Join code chip */
+.join-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	border-radius: 10px;
+	background: #eef2ff; /* readable on white */
+	color: #1e293b;
+	border: 1px solid #dbeafe;
+	font-size: 14px;
 }
 
-.form button {
-	padding: 3px;
-	border: none;
+/* Tables */
+.admin-dashboard table {
+	width: 100%;
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	border-collapse: separate;
+	border-spacing: 0;
+	background: var(--card);
+	overflow: hidden;
+	margin-top: 12px;
+}
+
+.admin-dashboard thead th {
+	background: var(--soft);
+	color: var(--ink);
+	font-weight: 700;
+	text-align: left;
+	padding: 12px;
+	border-bottom: 1px solid var(--line);
+}
+
+.admin-dashboard tbody td {
+	padding: 10px 12px;
+	border-top: 1px solid var(--line);
+}
+
+.admin-dashboard tbody tr:first-child td {
+	border-top: none;
+}
+
+/* Buttons (lightweight) */
+.admin-dashboard button,
+#public_page .auth-form button,
+button {
+	appearance: none;
+	border: 0;
+	border-radius: 10px;
+	background: var(--brand);
+	color: var(--brand-ink);
+	padding: 10px 12px;
+	font-weight: 600;
 	cursor: pointer;
 }
-
-.todo {
-	padding: 10px;
-	border-radius: 13px;
-	background-color: var(--dark);
-	margin-top: 2rem;
-	display: grid;
-	grid-template-columns: 3fr 0.3fr;
-	transition: 0.5s;
-	cursor: pointer;
+.admin-dashboard button[disabled] {
+	opacity: 0.6;
+	cursor: default;
+}
+.admin-dashboard button.secondary {
+	background: #fff;
+	color: var(--ink);
+	border: 1px solid var(--line);
 }
 
-.checkbox {
-	width: 20px;
-	height: 20px;
-	border-radius: 50%;
-	background-color: var(--light);
-	transition: 0.4s;
+/* Inputs */
+.admin-dashboard input[type="text"],
+.admin-dashboard input[type="email"],
+.admin-dashboard input[type="number"],
+.admin-dashboard select {
+	padding: 8px 10px;
+	border-radius: 10px;
+	border: 1px solid var(--line);
+	background: #fff;
+	color: var(--ink);
 }
 
-.check-complete .checkbox {
-	background-color: var(--primary);
+/* Utility */
+.muted {
+	color: var(--muted);
 }
 
-.check-complete .text {
-	text-decoration: line-through;
-}
-
-.text {
-	margin-left: 1rem;
-}
-
-/* Public auth background + layout */
+/* ---------------------------
+   Public auth page (Login/Register)
+   — keep the hero background styling here
+---------------------------- */
 #public_page {
 	min-height: 100svh;
-
-	/* layout */
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	flex-wrap: wrap;
-
-	/* spacing */
 	padding: 2rem;
 	padding-inline: clamp(1rem, 4vw, 6rem);
-
-	/* keep the center clear for the hero text */
-	gap: clamp(4rem, 12vw, 20rem);
-
-	/* background behavior (URL set inline in App.js) */
+	gap: clamp(10rem, 20vw, 36rem); /* wide gap to reveal hero text */
 	background-repeat: no-repeat;
-	background-position: bottom center; /* bottom of photo at the fold */
+	background-position: bottom center;
 	background-size: contain; /* whole photo visible; side whitespace ok */
-	background-color: #000; /* letterbox */
+	background-color: #000; /* letterbox fill */
 }
 
-/* Auth cards (Register & Login) */
+/* Auth cards */
 #public_page .auth-form {
 	width: clamp(300px, 32vw, 420px);
 	max-width: 100%;
-	padding: 22px 20px;
+	padding: 24px 22px;
 	border-radius: 16px;
-
-	/* Opaque card on top of the photo */
 	background: #fff;
 	color: #111;
-
-	/* Soft elevation */
 	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14), 0 8px 16px rgba(0, 0, 0, 0.12);
-
 	border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-/* Titles */
 #public_page .auth-form h2 {
 	margin: 2px 0 12px;
 	font-weight: 800;
 	font-size: 1.35rem;
 	letter-spacing: 0.2px;
-	color: #0f172a; /* slate-900 */
+	color: #0f172a;
 	text-align: left;
 }
 
-/* Form layout */
 #public_page .auth-form form {
 	display: grid;
 	gap: 12px;
 }
 
-/* Inputs */
 #public_page .auth-form input[type="text"],
 #public_page .auth-form input[type="password"],
 #public_page .auth-form input[type="email"] {
 	width: 100%;
 	padding: 12px 14px;
 	border-radius: 10px;
-	border: 1px solid rgba(2, 6, 23, 0.15); /* slate border */
+	border: 1px solid rgba(2, 6, 23, 0.15);
 	background: #fff;
 	color: #0f172a;
 	outline: none;
 	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 #public_page .auth-form input:focus {
-	border-color: #2563eb; /* blue-600 */
+	border-color: #2563eb;
 	box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
 }
 
-/* Buttons */
 #public_page .auth-form button[type="submit"] {
-	display: inline-block;
 	width: 100%;
 	padding: 12px 14px;
-	border: 0;
 	border-radius: 10px;
-	background: #1d4ed8; /* blue-700 */
+	background: #1d4ed8;
 	color: #fff;
 	font-weight: 700;
 	letter-spacing: 0.2px;
 	cursor: pointer;
-	transition: transform 0.05s ease, filter 0.15s ease;
-}
-#public_page .auth-form button[type="submit"]:hover {
-	filter: brightness(1.05);
-}
-#public_page .auth-form button[type="submit"]:active {
-	transform: translateY(1px);
 }
 
-/* Helper text */
 #public_page .auth-form .message {
 	margin-top: 8px;
 	font-size: 0.95rem;
-	color: #334155; /* slate-700 */
+	color: #334155;
 }
-
-/* Checkbox row in Register */
 #public_page .auth-form label > input[type="checkbox"] {
 	width: 16px;
 	height: 16px;
 }
 
-/* Responsive: stack cards on smaller screens */
+/* Responsive tuning */
 @media (max-width: 1024px) {
 	#public_page {
 		gap: 2rem;
@@ -192,27 +228,9 @@ body {
 	#public_page {
 		flex-direction: column;
 		gap: 1.25rem;
+		background-size: cover;
 	}
 	#public_page .auth-form {
 		width: min(520px, 92vw);
-	}
-	#public_page {
-		background-size: cover;
-	} /* nicer fill when stacked */
-}
-#public_page .auth-form {
-	padding: 24px 22px;
-}
-/* Desktop: widen the space between Register and Login to reveal more of the hero text */
-@media (min-width: 1200px) {
-	#public_page {
-		gap: clamp(10rem, 20vw, 36rem); /* was ~clamp(4rem,12vw,20rem) */
-	}
-}
-
-/* Ultra-wide screens: open it up a bit more */
-@media (min-width: 1536px) {
-	#public_page {
-		gap: clamp(12rem, 24vw, 42rem);
 	}
 }

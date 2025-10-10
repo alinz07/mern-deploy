@@ -1,7 +1,7 @@
 // client/src/components/Login.js
 import React, { useState } from "react";
 import axios from "axios";
-import "./style.css";
+import "../index.css";
 import setAuthToken from "../utils/setAuthToken";
 import { useNavigate } from "react-router-dom";
 
