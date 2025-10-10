@@ -39,6 +39,10 @@ function AdminDashboard() {
 	});
 	const [loadingStats, setLoadingStats] = useState(true);
 
+	// 🔹 Admin join code
+	const [joinCode, setJoinCode] = useState("");
+	const [loadingJoin, setLoadingJoin] = useState(true);
+
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
 	});
@@ -131,9 +135,26 @@ function AdminDashboard() {
 			}
 		};
 
+		// 🔹 fetch join code
+		const fetchJoinCode = async () => {
+			try {
+				const r = await axios.get(
+					"https://mern-deploy-i7u8.onrender.com/api/admin/join-code",
+					tokenHeader()
+				);
+				setJoinCode(r.data?.joinCode || "");
+			} catch (e) {
+				// if non-admin token hits this page somehow, ignore
+				setJoinCode("");
+			} finally {
+				setLoadingJoin(false);
+			}
+		};
+
 		fetchUsers();
 		fetchMonths();
 		fetchStats();
+		fetchJoinCode();
 	}, []);
 
 	const nameToDate = (name) => {
@@ -183,7 +204,7 @@ function AdminDashboard() {
 		);
 	}, [checksStats.rows, equipStats.rows]);
 
-	// ✅ FIX: memoize month table rows OUTSIDE the JSX return
+	// ✅ memoized month table rows
 	const monthsTableRows = useMemo(() => {
 		const list = filteredSortedMonths;
 		if (list.length === 0) {
@@ -225,8 +246,20 @@ function AdminDashboard() {
 		</td>
 	);
 
+	const copy = async () => {
+		if (!joinCode) return;
+		try {
+			await navigator.clipboard.writeText(joinCode);
+			alert("Join code copied!");
+		} catch {
+			// fallback UI if clipboard blocked
+			window.prompt("Copy this join code:", joinCode);
+		}
+	};
+
 	return (
 		<div>
+			{/* Header row with join code + equipment button */}
 			<div
 				style={{
 					display: "flex",
@@ -236,6 +269,43 @@ function AdminDashboard() {
 				}}
 			>
 				<h2 style={{ margin: 0 }}>Admin Dashboard</h2>
+
+				{/* 🔹 Join code chip */}
+				<div
+					style={{
+						flex: 1,
+						display: "flex",
+						justifyContent: "center",
+					}}
+				>
+					<div
+						style={{
+							display: "inline-flex",
+							alignItems: "center",
+							gap: 8,
+							padding: "6px 10px",
+							borderRadius: 8,
+							background: "#f4f6fb",
+							border: "1px solid #dfe3ee",
+							fontSize: 14,
+						}}
+					>
+						<span style={{ opacity: 0.75 }}>Join code:</span>
+						<strong style={{ letterSpacing: 0.5 }}>
+							{loadingJoin ? "…" : joinCode || "—"}
+						</strong>
+						<button
+							type="button"
+							onClick={copy}
+							disabled={!joinCode}
+							title="Copy join code"
+							style={{ padding: "2px 8px" }}
+						>
+							Copy
+						</button>
+					</div>
+				</div>
+
 				<a href="/equipment">
 					<button type="button" title="Manage Equipment Inventory">
 						Equipment
