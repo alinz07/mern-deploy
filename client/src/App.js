@@ -64,7 +64,7 @@ const App = () => {
 							element={
 								isAdmin ? (
 									<div>
-										<p>Welcome, Professor</p>
+										<h1>Welcome, Professor</h1>
 										<AdminDashboard user={user} />
 									</div>
 								) : (
