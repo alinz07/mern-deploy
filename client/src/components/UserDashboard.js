@@ -103,7 +103,6 @@ function UserDashboard({ userId, user }) {
 				</ul>
 
 				<div className="sp-16" />
-				<h3>Your Months</h3>
 				<MonthList user={user} />
 			</div>
 
