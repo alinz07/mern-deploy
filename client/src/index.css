@@ -4,7 +4,7 @@
 :root {
 	--ink: #0f172a; /* dark text */
 	--muted: #64748b; /* slate-500 */
-	--bg: #f6f8fc; /* app background */
+	--bg: #eaf9f1; /* app background */
 	--card: #ffffff; /* card/table bg */
 	--line: #e5e7eb; /* separators */
 	--soft: #f8fafc; /* header rows */
@@ -139,19 +139,28 @@ button {
    Public auth page (Login/Register)
    — keep the hero background styling here
 ---------------------------- */
+/* Public auth page layout */
 #public_page {
 	min-height: 100svh;
 	display: flex;
 	align-items: center;
-	justify-content: center;
+	justify-content: center; /* default: centered */
 	flex-wrap: wrap;
 	padding: 2rem;
 	padding-inline: clamp(1rem, 4vw, 6rem);
-	gap: clamp(10rem, 20vw, 36rem); /* wide gap to reveal hero text */
+	gap: clamp(14rem, 24vw, 44rem); /* ↑ bigger default gap */
 	background-repeat: no-repeat;
 	background-position: bottom center;
-	background-size: contain; /* whole photo visible; side whitespace ok */
-	background-color: #000; /* letterbox fill */
+	background-size: contain;
+	background-color: #000;
+}
+
+/* On wide desktops, push the cards outward to clear the hero text */
+@media (min-width: 1280px) {
+	#public_page {
+		justify-content: space-between; /* push to left/right edges (with padding) */
+		gap: clamp(24rem, 34vw, 60rem); /* allow even more center space */
+	}
 }
 
 /* Auth cards */
