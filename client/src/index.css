@@ -243,3 +243,81 @@ button {
 		width: min(520px, 92vw);
 	}
 }
+/* ===== User Dashboard layout ===== */
+.user-dashboard {
+	max-width: 1200px;
+	margin: 0 auto;
+	padding: 24px clamp(16px, 3vw, 32px);
+	display: grid;
+	grid-template-columns: 1fr 380px; /* left grows, right fixed */
+	gap: 24px;
+}
+.user-dashboard .user-main {
+	min-width: 0;
+} /* allow wrapping */
+
+.mail-card {
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	padding: 16px;
+	align-self: start;
+	position: sticky;
+	top: 18px; /* stays visible while scrolling */
+}
+.mail-card h4 {
+	margin: 0 0 6px;
+	font-size: 1.1rem;
+}
+
+.mail-form {
+	display: grid;
+	gap: 10px;
+}
+.mail-form input[type="text"],
+.mail-form input[type="email"],
+.mail-form textarea {
+	width: 100%;
+	padding: 10px 12px;
+	border-radius: 10px;
+	border: 1px solid var(--line);
+	background: #fff;
+	color: var(--ink);
+}
+.mail-form button {
+	border-radius: 10px;
+	background: var(--brand);
+	color: var(--brand-ink);
+	padding: 10px 12px;
+	font-weight: 700;
+	cursor: pointer;
+	border: 0;
+}
+.msg-ok {
+	color: #065f46;
+	background: #ecfdf5;
+	border: 1px solid #a7f3d0;
+	padding: 8px 10px;
+	border-radius: 8px;
+}
+.msg-err {
+	color: #7f1d1d;
+	background: #fef2f2;
+	border: 1px solid #fecaca;
+	padding: 8px 10px;
+	border-radius: 8px;
+}
+
+.sp-16 {
+	height: 16px;
+}
+
+/* Stack on small screens */
+@media (max-width: 980px) {
+	.user-dashboard {
+		grid-template-columns: 1fr;
+	}
+	.mail-card {
+		position: static;
+	}
+}
