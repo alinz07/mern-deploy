@@ -11,7 +11,7 @@ import DayList from "./components/DayList";
 import CheckPage from "./pages/CheckPage";
 import EquipmentPage from "./pages/EquipmentPage";
 import "./index.css";
-import UserDetails from "./components/UserDetails";
+import UserDetails from "./pages/UserDetails";
 
 const App = () => {
 	const [user, setUser] = useState(null);
