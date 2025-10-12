@@ -5,28 +5,25 @@ import axios from "axios";
 
 function AdminDashboard() {
 	const [users, setUsers] = useState([]);
-	const sortedUsers = useMemo(() => {
-		return [...users].sort((a, b) => {
-			const av = (a?.username || "").toLowerCase();
-			const bv = (b?.username || "").toLowerCase();
-			return av.localeCompare(bv);
-		});
-	}, [users]);
-
 	const [months, setMonths] = useState([]);
 	const [loadingUsers, setLoadingUsers] = useState(true);
 	const [loadingMonths, setLoadingMonths] = useState(true);
 	const [error, setError] = useState("");
 
-	// UI controls
+	// ===== UI controls (months) =====
 	const [searchTerm, setSearchTerm] = useState("");
 	const [sortDir, setSortDir] = useState("desc");
+
+	// ===== UI controls (users) — NEW =====
+	const [usersSearch, setUsersSearch] = useState("");
+	const [usersSortDir, setUsersSortDir] = useState("asc"); // A→Z by default
+
 	const [deletingId, setDeletingId] = useState(null);
 	const [editId, setEditId] = useState(null);
 	const [editForm, setEditForm] = useState({ username: "", email: "" });
 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-	// STATS
+	// ===== STATS =====
 	const [checksStats, setChecksStats] = useState({
 		rows: [],
 		currentMonthLabel: "",
@@ -135,7 +132,6 @@ function AdminDashboard() {
 			}
 		};
 
-		// 🔹 fetch join code
 		const fetchJoinCode = async () => {
 			try {
 				const r = await axios.get(
@@ -143,8 +139,7 @@ function AdminDashboard() {
 					tokenHeader()
 				);
 				setJoinCode(r.data?.joinCode || "");
-			} catch (e) {
-				// if non-admin token hits this page somehow, ignore
+			} catch {
 				setJoinCode("");
 			} finally {
 				setLoadingJoin(false);
@@ -157,6 +152,7 @@ function AdminDashboard() {
 		fetchJoinCode();
 	}, []);
 
+	// ===== Helpers for months table =====
 	const nameToDate = (name) => {
 		if (!name) return null;
 		const [mName, yStr] = name.split(" ");
@@ -181,7 +177,26 @@ function AdminDashboard() {
 		return list;
 	}, [months, searchTerm, sortDir]);
 
-	// Merge equipment stats into checks rows by userId
+	// ===== NEW: Users search + sort =====
+	const filteredSortedUsers = useMemo(() => {
+		const term = usersSearch.trim().toLowerCase();
+		const list = term
+			? users.filter((u) =>
+					(u?.username || "").toLowerCase().includes(term)
+			  )
+			: users.slice();
+
+		list.sort((a, b) => {
+			const av = (a?.username || "").toLowerCase();
+			const bv = (b?.username || "").toLowerCase();
+			const cmp = av.localeCompare(bv);
+			return usersSortDir === "asc" ? cmp : -cmp;
+		});
+
+		return list;
+	}, [users, usersSearch, usersSortDir]);
+
+	// Merge equipment stats into checks rows by userId (unchanged)
 	const mergedRows = useMemo(() => {
 		const byId = new Map(
 			(checksStats.rows || []).map((r) => [r.userId, { ...r }])
@@ -204,7 +219,7 @@ function AdminDashboard() {
 		);
 	}, [checksStats.rows, equipStats.rows]);
 
-	// ✅ memoized month table rows
+	// Render helpers
 	const monthsTableRows = useMemo(() => {
 		const list = filteredSortedMonths;
 		if (list.length === 0) {
@@ -252,7 +267,6 @@ function AdminDashboard() {
 			await navigator.clipboard.writeText(joinCode);
 			alert("Join code copied!");
 		} catch {
-			// fallback UI if clipboard blocked
 			window.prompt("Copy this join code:", joinCode);
 		}
 	};
@@ -293,7 +307,7 @@ function AdminDashboard() {
 				</a>
 			</div>
 
-			{/* ======= COMPLETION STATS: checks (existing) + equipment (new) ======= */}
+			{/* ======= COMPLETION STATS ======= */}
 			<h3>Completion Stats</h3>
 			<p style={{ marginTop: -8, opacity: 0.8 }}>
 				Current month:{" "}
@@ -362,7 +376,43 @@ function AdminDashboard() {
 			</table>
 
 			{/* ======= USERS ======= */}
-			<h3>Users</h3>
+			<div
+				style={{
+					marginTop: 24,
+					marginBottom: 12,
+					display: "flex",
+					gap: 12,
+					alignItems: "center",
+					flexWrap: "wrap",
+				}}
+			>
+				<h3 style={{ margin: 0 }}>Users</h3>
+				<div>
+					<button
+						type="button"
+						onClick={() =>
+							setUsersSortDir((d) =>
+								d === "asc" ? "desc" : "asc"
+							)
+						}
+						title="Toggle username sort"
+					>
+						Sort: {usersSortDir === "asc" ? "A → Z" : "Z → A"}
+					</button>
+				</div>
+				<div>or</div>
+				<div>
+					<input
+						type="text"
+						placeholder="search by username"
+						value={usersSearch}
+						onChange={(e) => setUsersSearch(e.target.value)}
+						style={{ padding: "6px 8px" }}
+						aria-label="search users by username"
+					/>
+				</div>
+			</div>
+
 			<table>
 				<thead>
 					<tr>
@@ -372,7 +422,7 @@ function AdminDashboard() {
 					</tr>
 				</thead>
 				<tbody>
-					{sortedUsers.map((u) => {
+					{filteredSortedUsers.map((u) => {
 						const isEditing = editId === u._id;
 						return (
 							<tr key={u._id}>
