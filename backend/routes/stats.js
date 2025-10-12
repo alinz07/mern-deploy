@@ -436,6 +436,7 @@ router.get("/admin-equip", auth, async (req, res) => {
    - Numerator: those with the boolean true
    - Current month is **to date**: only include Day.dayNumber <= today (Pacific)
 --------------------------------------------------------------------------- */
+// /api/stats/user/:userId/check-fields  (day-first, PT "to-date")
 router.get("/user/:userId/check-fields", auth, async (req, res) => {
 	try {
 		const { userId } = req.params;
@@ -443,12 +444,12 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			return res.status(400).json({ error: "Invalid userId" });
 		}
 
-		// Get current + previous month labels in Pacific time
+		// Pacific-time month labels + today's day-of-month (PT)
 		const nowTZ = tzParts(new Date(), APP_TZ);
 		const prevTZ = shiftMonth(nowTZ, -1);
-		const currentName = monthLabelFromParts(nowTZ); // e.g., "October 2025"
-		const previousName = monthLabelFromParts(prevTZ); // e.g., "September 2025"
-		const daysElapsed = nowTZ.d; // today's day-of-month in PT
+		const currentName = monthLabelFromParts(nowTZ);
+		const previousName = monthLabelFromParts(prevTZ);
+		const daysElapsed = nowTZ.d;
 
 		const CHECK_FIELDS = [
 			"checkone",
@@ -463,37 +464,27 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			"checkten",
 		];
 
-		// sum per-field trues
-		const groupSums = CHECK_FIELDS.reduce((acc, f) => {
-			acc[`${f}True`] = { $sum: { $cond: [`$${f}`, 1, 0] } };
+		// Build per-field true counters
+		const fieldSums = CHECK_FIELDS.reduce((acc, f) => {
+			acc[`${f}True`] = { $sum: { $cond: [`$check.${f}`, 1, 0] } };
 			return acc;
 		}, {});
 
-		const results = await Check.aggregate([
-			{ $match: { user: new mongoose.Types.ObjectId(userId) } },
-			{
-				$lookup: {
-					from: "days",
-					localField: "day",
-					foreignField: "_id",
-					as: "day",
-				},
-			},
-			{ $unwind: "$day" },
+		// Start from Day (like your admin endpoints), limit to PT "to date" for current month,
+		// then left-join to this user's Check for that Day, and only keep rows where it exists.
+		const results = await Day.aggregate([
+			{ $match: { userId: new mongoose.Types.ObjectId(userId) } },
 			{
 				$lookup: {
 					from: "months",
-					localField: "day.month",
+					localField: "month",
 					foreignField: "_id",
 					as: "month",
 				},
 			},
 			{ $unwind: "$month" },
 
-			// #### KEY CHANGE: make current month "to date"
-			// Include:
-			//  - ALL of previous month, OR
-			//  - current month rows where Day.dayNumber <= today (Pacific)
+			// Previous: keep all. Current: keep only dayNumber <= today (PT)
 			{
 				$match: {
 					$or: [
@@ -501,18 +492,63 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 						{
 							$and: [
 								{ "month.name": currentName },
-								{ "day.dayNumber": { $lte: daysElapsed } },
+								{ dayNumber: { $lte: daysElapsed } },
 							],
 						},
 					],
 				},
 			},
 
+			// Join the specific user's Check for this Day
+			{
+				$lookup: {
+					from: "checks",
+					let: { dayId: "$._id" },
+					pipeline: [
+						{
+							$match: {
+								$expr: {
+									$and: [
+										{ $eq: ["$day", "$$dayId"] },
+										{
+											$eq: [
+												"$user",
+												new mongoose.Types.ObjectId(
+													userId
+												),
+											],
+										},
+									],
+								},
+							},
+						},
+						{
+							$project: {
+								// only need booleans
+								checkone: 1,
+								checktwo: 1,
+								checkthree: 1,
+								checkfour: 1,
+								checkfive: 1,
+								checksix: 1,
+								checkseven: 1,
+								checkeight: 1,
+								checknine: 1,
+								checkten: 1,
+							},
+						},
+					],
+					as: "check",
+				},
+			},
+			{ $unwind: { path: "$check", preserveNullAndEmptyArrays: false } },
+
+			// Group by month name; denominator = number of Days (to-date for current) that HAVE a Check
 			{
 				$group: {
 					_id: "$month.name",
 					total: { $sum: 1 },
-					...groupSums,
+					...fieldSums,
 				},
 			},
 		]);
