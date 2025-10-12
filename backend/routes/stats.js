@@ -1,4 +1,4 @@
-// backend/routes/stats.js  (DROP-IN)
+// backend/routes/stats.js  (DROP-IN, no luxon)
 const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
@@ -62,6 +62,7 @@ function lastDayOfMonthTZ({ y, m }, tz = APP_TZ) {
 }
 
 /* ---------------- EXISTING STATS (unchanged) ---------------- */
+// /api/stats/admin-checks
 router.get("/admin-checks", auth, async (req, res) => {
 	const t0 = Date.now();
 	try {
@@ -257,13 +258,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 	}
 });
 
-/* ---------------- NEW: Equipment completion stats ----------------
-Denominator:
-  - current month: number of EquipmentCheck docs whose Day.dayNumber ≤ today
-  - previous month: number of EquipmentCheck docs in that month
-Success:
-  - EquipmentCheck with all four booleans true
--------------------------------------------------------------------*/
+/* ---------------- Equipment completion stats (unchanged) ---------------- */
 router.get("/admin-equip", auth, async (req, res) => {
 	const t0 = Date.now();
 	try {
@@ -301,7 +296,6 @@ router.get("/admin-equip", auth, async (req, res) => {
 		}
 		const userIds = childUsers.map((u) => u._id);
 
-		// Find months for curr & prev per user
 		const [monthsCurr, monthsPrev] = await Promise.all([
 			Month.find({ name: currLabel, userId: { $in: userIds } })
 				.select({ _id: 1, userId: 1 })
@@ -317,7 +311,6 @@ router.get("/admin-equip", auth, async (req, res) => {
 			monthsPrev.map((m) => [String(m.userId), String(m._id)])
 		);
 
-		// Pre-fill rows
 		const rowsMap = new Map(
 			childUsers.map((u) => [
 				String(u._id),
@@ -334,7 +327,6 @@ router.get("/admin-equip", auth, async (req, res) => {
 			])
 		);
 
-		// Query all equipment checks for those users in curr/prev months
 		const allMonthIds = [
 			...monthsCurr.map((m) => String(m._id)),
 			...monthsPrev.map((m) => String(m._id)),
@@ -365,7 +357,6 @@ router.get("/admin-equip", auth, async (req, res) => {
 			})
 			.lean();
 
-		// Load Day numbers for "to date" filtering in current month
 		const dayIds = echecks.map((ec) => ec.day);
 		const dayDocs = await Day.find({ _id: { $in: dayIds } })
 			.select({ _id: 1, dayNumber: 1 })
@@ -386,11 +377,9 @@ router.get("/admin-equip", auth, async (req, res) => {
 				prevByUser.get(uid) && ecMonthId === prevByUser.get(uid);
 			if (!isCurr && !isPrev) continue;
 
-			// Success if all 4 are true
 			const success = !!(ec.left && ec.right && ec.both && ec.fmMic);
 
 			if (isCurr) {
-				// to-date filter: include only if dayNumber ≤ today
 				const dn = dayNumById.get(String(ec.day)) || 0;
 				if (dn > 0 && dn <= nowTZ.d) {
 					r.currEquipDen += 1;
@@ -436,14 +425,17 @@ router.get("/admin-equip", auth, async (req, res) => {
 	}
 });
 
-// === ADD TO backend/routes/stats.js ===
-const { DateTime } = require("luxon"); // if not installed: npm i luxon
-
-// Utility: month name like 'October 2025' in Pacific time (to match your Month.name)
-function monthNamePT(date = DateTime.now().setZone("America/Los_Angeles")) {
-	return date.toFormat("LLLL yyyy"); // e.g., 'October 2025'
-}
-
+/* ---------------- NEW: per-field success by month (no luxon) ----------------
+   For each check field (checkone..checkten):
+   - Denominator (per month): number of Check docs for that user in that Month
+   - Numerator: those with the boolean true
+--------------------------------------------------------------------------- */
+/* ---------------- NEW: per-field success by month (no luxon) ----------------
+   For each check field (checkone..checkten):
+   - Denominator (per month): number of Check docs for that user in that Month
+   - Numerator: those with the boolean true
+   - Current month is **to date**: only include Day.dayNumber <= today (Pacific)
+--------------------------------------------------------------------------- */
 router.get("/user/:userId/check-fields", auth, async (req, res) => {
 	try {
 		const { userId } = req.params;
@@ -451,12 +443,13 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			return res.status(400).json({ error: "Invalid userId" });
 		}
 
-		// Current and previous month names (Pacific time), to match Month.name
-		const nowPT = DateTime.now().setZone("America/Los_Angeles");
-		const currentName = monthNamePT(nowPT);
-		const previousName = monthNamePT(nowPT.minus({ months: 1 }));
+		// Get current + previous month labels in Pacific time
+		const nowTZ = tzParts(new Date(), APP_TZ);
+		const prevTZ = shiftMonth(nowTZ, -1);
+		const currentName = monthLabelFromParts(nowTZ); // e.g., "October 2025"
+		const previousName = monthLabelFromParts(prevTZ); // e.g., "September 2025"
+		const daysElapsed = nowTZ.d; // today's day-of-month in PT
 
-		// The 10 boolean fields we’ll report on
 		const CHECK_FIELDS = [
 			"checkone",
 			"checktwo",
@@ -470,7 +463,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			"checkten",
 		];
 
-		// Build $group sums dynamically
+		// sum per-field trues
 		const groupSums = CHECK_FIELDS.reduce((acc, f) => {
 			acc[`${f}True`] = { $sum: { $cond: [`$${f}`, 1, 0] } };
 			return acc;
@@ -496,21 +489,34 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 				},
 			},
 			{ $unwind: "$month" },
+
+			// #### KEY CHANGE: make current month "to date"
+			// Include:
+			//  - ALL of previous month, OR
+			//  - current month rows where Day.dayNumber <= today (Pacific)
 			{
 				$match: {
-					"month.name": { $in: [currentName, previousName] },
+					$or: [
+						{ "month.name": previousName },
+						{
+							$and: [
+								{ "month.name": currentName },
+								{ "day.dayNumber": { $lte: daysElapsed } },
+							],
+						},
+					],
 				},
 			},
+
 			{
 				$group: {
 					_id: "$month.name",
-					total: { $sum: 1 }, // one Check per Day → denominator per-field = total checks present
+					total: { $sum: 1 },
 					...groupSums,
 				},
 			},
 		]);
 
-		// Shape into { currentMonth, previousMonth } with pct calculations
 		const byName = Object.fromEntries(results.map((r) => [r._id, r]));
 		function shape(name) {
 			const row = byName[name] || { total: 0 };
@@ -533,7 +539,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			previousMonth: shape(previousName),
 		});
 	} catch (err) {
-		console.error(err);
+		console.error("[STATS][USER-FIELDS][ERROR]", err);
 		return res
 			.status(500)
 			.json({ error: "Failed to compute user field stats" });

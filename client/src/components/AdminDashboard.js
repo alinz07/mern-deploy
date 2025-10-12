@@ -440,14 +440,15 @@ function AdminDashboard() {
 											placeholder="username"
 											style={{ padding: "4px 6px" }}
 										/>
-									) : (
+									) : u.role !== "admin" ? (
 										<Link
 											to={`/admin/users/${u._id}`}
-											state={{ user: u }} // handy for header on the details page
-											className="table-link" // optional style hook; safe no-op if not defined
+											state={{ user: u }}
 										>
 											{u.username}
 										</Link>
+									) : (
+										u.username
 									)}
 								</td>
 								<td>
