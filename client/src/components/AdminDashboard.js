@@ -441,7 +441,13 @@ function AdminDashboard() {
 											style={{ padding: "4px 6px" }}
 										/>
 									) : (
-										u.username
+										<Link
+											to={`/admin/users/${u._id}`}
+											state={{ user: u }} // handy for header on the details page
+											className="table-link" // optional style hook; safe no-op if not defined
+										>
+											{u.username}
+										</Link>
 									)}
 								</td>
 								<td>

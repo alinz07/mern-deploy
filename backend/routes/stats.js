@@ -436,4 +436,108 @@ router.get("/admin-equip", auth, async (req, res) => {
 	}
 });
 
+// === ADD TO backend/routes/stats.js ===
+const { DateTime } = require("luxon"); // if not installed: npm i luxon
+
+// Utility: month name like 'October 2025' in Pacific time (to match your Month.name)
+function monthNamePT(date = DateTime.now().setZone("America/Los_Angeles")) {
+	return date.toFormat("LLLL yyyy"); // e.g., 'October 2025'
+}
+
+router.get("/user/:userId/check-fields", auth, async (req, res) => {
+	try {
+		const { userId } = req.params;
+		if (!mongoose.isValidObjectId(userId)) {
+			return res.status(400).json({ error: "Invalid userId" });
+		}
+
+		// Current and previous month names (Pacific time), to match Month.name
+		const nowPT = DateTime.now().setZone("America/Los_Angeles");
+		const currentName = monthNamePT(nowPT);
+		const previousName = monthNamePT(nowPT.minus({ months: 1 }));
+
+		// The 10 boolean fields we’ll report on
+		const CHECK_FIELDS = [
+			"checkone",
+			"checktwo",
+			"checkthree",
+			"checkfour",
+			"checkfive",
+			"checksix",
+			"checkseven",
+			"checkeight",
+			"checknine",
+			"checkten",
+		];
+
+		// Build $group sums dynamically
+		const groupSums = CHECK_FIELDS.reduce((acc, f) => {
+			acc[`${f}True`] = { $sum: { $cond: [`$${f}`, 1, 0] } };
+			return acc;
+		}, {});
+
+		const results = await Check.aggregate([
+			{ $match: { user: new mongoose.Types.ObjectId(userId) } },
+			{
+				$lookup: {
+					from: "days",
+					localField: "day",
+					foreignField: "_id",
+					as: "day",
+				},
+			},
+			{ $unwind: "$day" },
+			{
+				$lookup: {
+					from: "months",
+					localField: "day.month",
+					foreignField: "_id",
+					as: "month",
+				},
+			},
+			{ $unwind: "$month" },
+			{
+				$match: {
+					"month.name": { $in: [currentName, previousName] },
+				},
+			},
+			{
+				$group: {
+					_id: "$month.name",
+					total: { $sum: 1 }, // one Check per Day → denominator per-field = total checks present
+					...groupSums,
+				},
+			},
+		]);
+
+		// Shape into { currentMonth, previousMonth } with pct calculations
+		const byName = Object.fromEntries(results.map((r) => [r._id, r]));
+		function shape(name) {
+			const row = byName[name] || { total: 0 };
+			const total = row.total || 0;
+			const fields = {};
+			for (const f of CHECK_FIELDS) {
+				const t = row[`${f}True`] || 0;
+				fields[f] = {
+					true: t,
+					total,
+					pct: total ? Math.round((t / total) * 100) : 0,
+				};
+			}
+			return { name, fields, total };
+		}
+
+		return res.json({
+			userId,
+			currentMonth: shape(currentName),
+			previousMonth: shape(previousName),
+		});
+	} catch (err) {
+		console.error(err);
+		return res
+			.status(500)
+			.json({ error: "Failed to compute user field stats" });
+	}
+});
+
 module.exports = router;
