@@ -503,7 +503,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			{
 				$lookup: {
 					from: "checks",
-					let: { dayId: "$._id" },
+					let: { dayId: "$_id" },
 					pipeline: [
 						{
 							$match: {
@@ -575,7 +575,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			previousMonth: shape(previousName),
 		});
 	} catch (err) {
-		console.error("[STATS][USER-FIELDS][ERROR]", err);
+		console.error("[STATS][USER-FIELDS][ERROR]", err?.message, err?.stack);
 		return res
 			.status(500)
 			.json({ error: "Failed to compute user field stats" });
