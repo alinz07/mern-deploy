@@ -1,9 +1,9 @@
 // client/pages/UserDetails.js
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import axios from "axios";
 
-const API = "https://mern-deploy-i7u8.onrender.com"; // matches your other files
+const API = "https://mern-deploy-i7u8.onrender.com"; // matches your pattern
 const tokenHeader = () => ({
 	headers: { "x-auth-token": localStorage.getItem("token") },
 });
@@ -35,34 +35,37 @@ export default function UserDetails() {
 
 	const [user, setUser] = useState(userFromState);
 	const [stats, setStats] = useState(null);
+	const [commentsMap, setCommentsMap] = useState(null); // { field: [{dayNumber, commentText}], ...}
+	const [open, setOpen] = useState({}); // which field is expanded
 	const [error, setError] = useState("");
+
+	// toggle “expand all comments” for a field
+	const toggle = useCallback((field) => {
+		setOpen((p) => ({ ...p, [field]: !p[field] }));
+	}, []);
 
 	useEffect(() => {
 		let alive = true;
 
 		const fetchUser = async () => {
-			if (userFromState) return; // already have it from Link state
+			if (userFromState) return;
 			try {
-				// Try the more specific path first (if your server exposes it):
-				//   GET /api/users/:id/data
 				const u1 = await axios.get(
 					`${API}/api/users/${userId}/data`,
 					tokenHeader()
 				);
 				if (!alive) return;
 				setUser(u1.data);
-			} catch (e1) {
+			} catch {
 				try {
-					// Fallback to GET /api/users/:id
 					const u2 = await axios.get(
 						`${API}/api/users/${userId}`,
 						tokenHeader()
 					);
 					if (!alive) return;
 					setUser(u2.data);
-				} catch (e2) {
+				} catch {
 					try {
-						// Last-resort: GET /api/users then find by id
 						const list = await axios.get(
 							`${API}/api/users`,
 							tokenHeader()
@@ -73,7 +76,7 @@ export default function UserDetails() {
 						);
 						setUser(found || null);
 						if (!found) setError("User not found.");
-					} catch (e3) {
+					} catch {
 						if (alive) setError("Failed to load user.");
 					}
 				}
@@ -88,20 +91,36 @@ export default function UserDetails() {
 				);
 				if (!alive) return;
 				setStats(s.data);
-			} catch (e) {
+			} catch {
 				if (alive) setError("Failed to load user stats.");
+			}
+		};
+
+		// NEW: fetch comments grouped by field for the current month (Pacific “to date”)
+		const fetchComments = async () => {
+			try {
+				const r = await axios.get(
+					`${API}/api/comments/by-user/${userId}/by-field?scope=current`,
+					tokenHeader()
+				);
+				if (!alive) return;
+				setCommentsMap(r.data || {});
+			} catch {
+				// non-fatal; table will show “no comments …”
+				if (alive) setCommentsMap({});
 			}
 		};
 
 		fetchUser();
 		fetchStats();
+		fetchComments();
 
 		return () => {
 			alive = false;
 		};
 	}, [userId, userFromState]);
 
-	const rows = useMemo(() => {
+	const statRows = useMemo(() => {
 		if (!stats) return null;
 		const cm = stats.currentMonth;
 		const pm = stats.previousMonth;
@@ -117,6 +136,92 @@ export default function UserDetails() {
 			);
 		});
 	}, [stats]);
+
+	const commentRows = useMemo(() => {
+		const map = commentsMap || {};
+		return CHECK_FIELDS.map((f) => {
+			const list = map[f] || []; // [{dayNumber, commentText}]
+			const has = list.length > 0;
+
+			return (
+				<tr key={f}>
+					<td>{labelize(f)}</td>
+					<td>
+						{has ? (
+							<>
+								<button
+									className="linklike"
+									onClick={() => toggle(f)}
+								>
+									{open[f]
+										? "collapse"
+										: "expand all comments"}
+								</button>
+								{open[f] && (
+									<ul
+										style={{
+											margin: "8px 0 0 16px",
+											padding: 0,
+										}}
+									>
+										{list
+											.slice() // shallow copy
+											.sort(
+												(a, b) =>
+													(a.dayNumber || 0) -
+													(b.dayNumber || 0)
+											)
+											.map((c, idx) => (
+												<li
+													key={idx}
+													style={{ marginBottom: 4 }}
+												>
+													+{" "}
+													{c.dayId ? (
+														<Link
+															to={`/days/${
+																c.dayId
+															}/check?userId=${userId}${
+																c.monthId
+																	? `&monthId=${c.monthId}`
+																	: ""
+															}`}
+															title="Open this day's check"
+														>
+															<strong>
+																Day{" "}
+																{c.dayNumber ??
+																	"?"}
+																:
+															</strong>{" "}
+															{c.commentText}
+														</Link>
+													) : (
+														<>
+															<strong>
+																Day{" "}
+																{c.dayNumber ??
+																	"?"}
+																:
+															</strong>{" "}
+															{c.commentText}
+														</>
+													)}
+												</li>
+											))}
+									</ul>
+								)}
+							</>
+						) : (
+							<span className="muted">
+								no comments for {labelize(f)}
+							</span>
+						)}
+					</td>
+				</tr>
+			);
+		});
+	}, [commentsMap, open, toggle]);
 
 	if (error)
 		return (
@@ -142,23 +247,44 @@ export default function UserDetails() {
 				</p>
 			)}
 
-			<h3 style={{ marginTop: 24 }}>
-				Check Field Success{" "}
-				<small>
-					({stats.currentMonth?.name} vs {stats.previousMonth?.name})
-				</small>
-			</h3>
+			<div className="udetails-grid">
+				{/* Left: per-field success */}
+				<div>
+					<h3 style={{ marginTop: 8 }}>
+						Check Field Success{" "}
+						<small>
+							({stats.currentMonth?.name} vs{" "}
+							{stats.previousMonth?.name})
+						</small>
+					</h3>
+					<table className="table grid">
+						<thead>
+							<tr>
+								<th>Field</th>
+								<th>Current Month</th>
+								<th>Previous Month</th>
+							</tr>
+						</thead>
+						<tbody>{statRows}</tbody>
+					</table>
+				</div>
 
-			<table className="table">
-				<thead>
-					<tr>
-						<th>Field</th>
-						<th>Current Month</th>
-						<th>Previous Month</th>
-					</tr>
-				</thead>
-				<tbody>{rows}</tbody>
-			</table>
+				{/* Right: per-field comments */}
+				<div>
+					<h3 style={{ marginTop: 8 }}>
+						Comments by Field <small>(current month)</small>
+					</h3>
+					<table className="table grid">
+						<thead>
+							<tr>
+								<th>Field</th>
+								<th>Comments</th>
+							</tr>
+						</thead>
+						<tbody>{commentRows}</tbody>
+					</table>
+				</div>
+			</div>
 		</div>
 	);
 }

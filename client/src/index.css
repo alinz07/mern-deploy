@@ -321,3 +321,52 @@ button {
 		position: static;
 	}
 }
+/* ===== UserDetails layout + table grids ===== */
+.udetails-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr; /* stats | comments */
+	gap: 16px;
+	align-items: start;
+	margin-top: 8px;
+}
+
+@media (max-width: 980px) {
+	.udetails-grid {
+		grid-template-columns: 1fr; /* stack on mobile */
+	}
+}
+
+/* generic table styling with gridlines */
+.table.grid {
+	width: 100%;
+	border-collapse: collapse; /* ensures single gridline */
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 12px; /* visual match to admin tables */
+	overflow: hidden;
+}
+
+.table.grid th,
+.table.grid td {
+	padding: 10px 12px;
+	border: 1px solid var(--line); /* ← gridlines */
+	text-align: left;
+}
+
+.table.grid thead th {
+	background: var(--soft);
+	font-weight: 700;
+}
+
+/* link-like button for “expand all comments” */
+.linklike {
+	background: transparent;
+	border: 0;
+	padding: 0;
+	color: var(--brand);
+	font-weight: 700;
+	cursor: pointer;
+}
+.linklike:hover {
+	text-decoration: underline;
+}
