@@ -28,6 +28,20 @@ function labelize(key) {
 	return `Check ${w[0].toUpperCase()}${w.slice(1)}`;
 }
 
+// Format ISO date coming from backend as PT “October 12, 2025”
+const fmtPTDate = (iso) => {
+	try {
+		return new Date(iso).toLocaleDateString("en-US", {
+			timeZone: "America/Los_Angeles",
+			month: "long",
+			day: "numeric",
+			year: "numeric",
+		});
+	} catch {
+		return null;
+	}
+};
+
 export default function UserDetails() {
 	const { userId } = useParams();
 	const location = useLocation();
@@ -36,11 +50,11 @@ export default function UserDetails() {
 	const [user, setUser] = useState(userFromState);
 	const [stats, setStats] = useState(null);
 
-	// NEW: two separate maps for comments
-	const [commentsCurrent, setCommentsCurrent] = useState(null); // scope=current
-	const [commentsPrev, setCommentsPrev] = useState(null); // scope=previous
+	// separate maps for current/previous comments
+	const [commentsCurrent, setCommentsCurrent] = useState(null);
+	const [commentsPrev, setCommentsPrev] = useState(null);
 
-	// separate expand/collapse state for each column
+	// expand/collapse per column
 	const [openCur, setOpenCur] = useState({});
 	const [openPrev, setOpenPrev] = useState({});
 
@@ -105,7 +119,6 @@ export default function UserDetails() {
 			}
 		};
 
-		// Pull current-month comments (PT, to-date)
 		const fetchCommentsCurrent = async () => {
 			try {
 				const r = await axios.get(
@@ -119,7 +132,6 @@ export default function UserDetails() {
 			}
 		};
 
-		// Pull previous-month comments
 		const fetchCommentsPrev = async () => {
 			try {
 				const r = await axios.get(
@@ -160,39 +172,43 @@ export default function UserDetails() {
 		});
 	}, [stats]);
 
-	const renderCommentList = (list, isPrev) => {
-		return (
-			<ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
-				{list
-					.slice()
-					.sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
-					.map((c, idx) => (
-						<li key={idx} style={{ marginBottom: 4 }}>
-							{c.dayId ? (
-								<Link
-									to={`/days/${
-										c.dayId
-									}/check?userId=${userId}${
-										c.monthId ? `&monthId=${c.monthId}` : ""
-									}`}
-									title="Open this day's check"
-									target="_blank" // ← open in new tab
-									rel="noopener noreferrer" // ← security
-								>
-									<strong>Day {c.dayNumber ?? "?"}:</strong>{" "}
-									{c.commentText}
-								</Link>
-							) : (
-								<>
-									<strong>Day {c.dayNumber ?? "?"}:</strong>{" "}
-									{c.commentText}
-								</>
-							)}
-						</li>
-					))}
-			</ul>
-		);
-	};
+	const renderCommentList = (list) => (
+		<ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
+			{list
+				.slice()
+				.sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
+				.map((c, idx) => (
+					<li key={idx} style={{ marginBottom: 4 }}>
+						{c.dayId ? (
+							<Link
+								to={`/days/${c.dayId}/check?userId=${userId}${
+									c.monthId ? `&monthId=${c.monthId}` : ""
+								}`}
+								title="Open this day's check"
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								<strong>
+									{fmtPTDate(c.dateISO) ||
+										`Day ${c.dayNumber ?? "?"}`}
+									:
+								</strong>{" "}
+								{c.commentText}
+							</Link>
+						) : (
+							<>
+								<strong>
+									{fmtPTDate(c.dateISO) ||
+										`Day ${c.dayNumber ?? "?"}`}
+									:
+								</strong>{" "}
+								{c.commentText}
+							</>
+						)}
+					</li>
+				))}
+		</ul>
+	);
 
 	const commentsRows = useMemo(() => {
 		const curMap = commentsCurrent || {};
@@ -219,8 +235,7 @@ export default function UserDetails() {
 										? "collapse"
 										: "expand all comments"}
 								</button>
-								{openCur[f] &&
-									renderCommentList(curList, false)}
+								{openCur[f] && renderCommentList(curList)}
 							</>
 						) : (
 							<span className="muted">
@@ -241,8 +256,7 @@ export default function UserDetails() {
 										? "collapse"
 										: "expand all comments"}
 								</button>
-								{openPrev[f] &&
-									renderCommentList(prevList, true)}
+								{openPrev[f] && renderCommentList(prevList)}
 							</>
 						) : (
 							<span className="muted">
@@ -309,7 +323,7 @@ export default function UserDetails() {
 					</table>
 				</div>
 
-				{/* Right: per-field comments (now 2 columns: current & previous) */}
+				{/* Right: per-field comments (current & previous) */}
 				<div>
 					<h3 style={{ marginTop: 8 }}>
 						Comments by Field{" "}

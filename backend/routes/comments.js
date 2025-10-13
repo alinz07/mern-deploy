@@ -1,4 +1,4 @@
-// routes/comments.js
+// backend/routes/comments.js
 const router = require("express").Router();
 const mongoose = require("mongoose");
 const auth = require("../middleware/auth");
@@ -77,6 +77,7 @@ function shiftMonth({ y, m, d }, delta) {
 	m2 += 1;
 	return { y: y2, m: m2, d };
 }
+
 // BULK: get all fields’ comments for a check
 router.get("/by-check/:checkId/all", auth, async (req, res) => {
 	try {
@@ -101,7 +102,7 @@ router.get("/by-check/:checkId/all", auth, async (req, res) => {
 });
 
 // GET /api/comments/by-user/:userId/by-field?scope=current|previous|both
-// Returns { field: [{ dayNumber, commentText }], ... } for PT "to-date" when scope=current
+// Returns { field: [{ dayNumber, commentText, dayId, monthId, dateISO }], ... }
 router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 	try {
 		const { userId } = req.params;
@@ -123,14 +124,8 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 		const wantCurrent = scope === "current" || scope === "both";
 		const wantPrevious = scope === "previous" || scope === "both";
 
-		// Start from Day (user scope), join Month → name, filter by month(s) & to-date for current
-		const monthMatch = [];
-		if (wantPrevious) monthMatch.push({ "month.name": previousName });
-		if (wantCurrent) monthMatch.push({ "month.name": currentName });
-
-		if (monthMatch.length === 0) {
-			return res.json({}); // nothing requested
-		}
+		// Nothing requested? return empty
+		if (!wantCurrent && !wantPrevious) return res.json({});
 
 		const pipeline = [
 			{ $match: { userId: new mongoose.Types.ObjectId(userId) } },
@@ -142,6 +137,8 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 					as: "month",
 				},
 			},
+			{ $unwind: "$month" },
+			// tenant guard (optional but recommended)
 			{
 				$match: {
 					"month.adminUser": new mongoose.Types.ObjectId(
@@ -149,6 +146,7 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 					),
 				},
 			},
+			// Month filtering with PT "to-date" for current month
 			{
 				$match: {
 					$or: [
@@ -172,7 +170,35 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 					],
 				},
 			},
-			// For these days, look up the specific user's Check to know which check doc to filter comments by
+
+			// Derive a real PT date from Month.name + dayNumber
+			{
+				$addFields: {
+					_monthParsed: {
+						$dateFromString: {
+							dateString: "$month.name",
+							format: "%B %Y",
+							timezone: APP_TZ,
+						},
+					},
+				},
+			},
+			{
+				$addFields: {
+					_year: { $year: "$_monthParsed" },
+					_monthNum: { $month: "$_monthParsed" },
+					dateISO: {
+						$dateFromParts: {
+							year: "$_year",
+							month: "$_monthNum",
+							day: "$dayNumber",
+							timezone: APP_TZ,
+						},
+					},
+				},
+			},
+
+			// find the user's Check for this Day
 			{
 				$lookup: {
 					from: "checks",
@@ -218,28 +244,10 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 				},
 			},
 
-			// Keep only valid fields
-			{
-				$match: {
-					"comments.field": {
-						$in: [
-							"checkone",
-							"checktwo",
-							"checkthree",
-							"checkfour",
-							"checkfive",
-							"checksix",
-							"checkseven",
-							"checkeight",
-							"checknine",
-							"checkten",
-						],
-					},
-				},
-			},
+			// Only valid fields
+			{ $match: { "comments.field": { $in: VALID_FIELDS } } },
 
-			// Project minimal data we need
-			// Project minimal data we need (+ dayId, monthId)
+			// Project minimal data (+ IDs + computed date)
 			{
 				$project: {
 					field: "$comments.field",
@@ -247,10 +255,11 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 					dayNumber: "$dayNumber",
 					dayId: "$_id",
 					monthId: "$month._id",
+					dateISO: "$dateISO",
 				},
 			},
 
-			// Group by field, collect comments (now with dayId/monthId)
+			// Group by field → collect comment items
 			{
 				$group: {
 					_id: "$field",
@@ -260,6 +269,7 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 							commentText: "$commentText",
 							dayId: "$dayId",
 							monthId: "$monthId",
+							dateISO: "$dateISO",
 						},
 					},
 				},
@@ -270,21 +280,8 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 			await mongoose.connection.collection("days").aggregate(pipeline)
 		).toArray();
 
-		// shape into { field: [ ... ] }
-		const out = Object.fromEntries(
-			[
-				"checkone",
-				"checktwo",
-				"checkthree",
-				"checkfour",
-				"checkfive",
-				"checksix",
-				"checkseven",
-				"checkeight",
-				"checknine",
-				"checkten",
-			].map((f) => [f, []])
-		);
+		// shape into a predictable object with all fields
+		const out = Object.fromEntries(VALID_FIELDS.map((f) => [f, []]));
 		for (const g of grouped) out[g._id] = g.items || [];
 
 		return res.json(out);
