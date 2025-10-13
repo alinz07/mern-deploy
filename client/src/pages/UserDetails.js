@@ -35,13 +35,22 @@ export default function UserDetails() {
 
 	const [user, setUser] = useState(userFromState);
 	const [stats, setStats] = useState(null);
-	const [commentsMap, setCommentsMap] = useState(null); // { field: [{dayNumber, commentText}], ...}
-	const [open, setOpen] = useState({}); // which field is expanded
+
+	// NEW: two separate maps for comments
+	const [commentsCurrent, setCommentsCurrent] = useState(null); // scope=current
+	const [commentsPrev, setCommentsPrev] = useState(null); // scope=previous
+
+	// separate expand/collapse state for each column
+	const [openCur, setOpenCur] = useState({});
+	const [openPrev, setOpenPrev] = useState({});
+
 	const [error, setError] = useState("");
 
-	// toggle “expand all comments” for a field
-	const toggle = useCallback((field) => {
-		setOpen((p) => ({ ...p, [field]: !p[field] }));
+	const toggleCur = useCallback((field) => {
+		setOpenCur((p) => ({ ...p, [field]: !p[field] }));
+	}, []);
+	const togglePrev = useCallback((field) => {
+		setOpenPrev((p) => ({ ...p, [field]: !p[field] }));
 	}, []);
 
 	useEffect(() => {
@@ -96,24 +105,38 @@ export default function UserDetails() {
 			}
 		};
 
-		// NEW: fetch comments grouped by field for the current month (Pacific “to date”)
-		const fetchComments = async () => {
+		// Pull current-month comments (PT, to-date)
+		const fetchCommentsCurrent = async () => {
 			try {
 				const r = await axios.get(
 					`${API}/api/comments/by-user/${userId}/by-field?scope=current`,
 					tokenHeader()
 				);
 				if (!alive) return;
-				setCommentsMap(r.data || {});
+				setCommentsCurrent(r.data || {});
 			} catch {
-				// non-fatal; table will show “no comments …”
-				if (alive) setCommentsMap({});
+				if (alive) setCommentsCurrent({});
+			}
+		};
+
+		// Pull previous-month comments
+		const fetchCommentsPrev = async () => {
+			try {
+				const r = await axios.get(
+					`${API}/api/comments/by-user/${userId}/by-field?scope=previous`,
+					tokenHeader()
+				);
+				if (!alive) return;
+				setCommentsPrev(r.data || {});
+			} catch {
+				if (alive) setCommentsPrev({});
 			}
 		};
 
 		fetchUser();
 		fetchStats();
-		fetchComments();
+		fetchCommentsCurrent();
+		fetchCommentsPrev();
 
 		return () => {
 			alive = false;
@@ -137,80 +160,89 @@ export default function UserDetails() {
 		});
 	}, [stats]);
 
-	const commentRows = useMemo(() => {
-		const map = commentsMap || {};
+	const renderCommentList = (list, isPrev) => {
+		return (
+			<ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
+				{list
+					.slice()
+					.sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
+					.map((c, idx) => (
+						<li key={idx} style={{ marginBottom: 4 }}>
+							{c.dayId ? (
+								<Link
+									to={`/days/${
+										c.dayId
+									}/check?userId=${userId}${
+										c.monthId ? `&monthId=${c.monthId}` : ""
+									}`}
+									title="Open this day's check"
+									target="_blank" // ← open in new tab
+									rel="noopener noreferrer" // ← security
+								>
+									<strong>Day {c.dayNumber ?? "?"}:</strong>{" "}
+									{c.commentText}
+								</Link>
+							) : (
+								<>
+									<strong>Day {c.dayNumber ?? "?"}:</strong>{" "}
+									{c.commentText}
+								</>
+							)}
+						</li>
+					))}
+			</ul>
+		);
+	};
+
+	const commentsRows = useMemo(() => {
+		const curMap = commentsCurrent || {};
+		const prevMap = commentsPrev || {};
 		return CHECK_FIELDS.map((f) => {
-			const list = map[f] || []; // [{dayNumber, commentText}]
-			const has = list.length > 0;
+			const curList = curMap[f] || [];
+			const prevList = prevMap[f] || [];
+			const hasCur = curList.length > 0;
+			const hasPrev = prevList.length > 0;
 
 			return (
 				<tr key={f}>
 					<td>{labelize(f)}</td>
+
+					{/* Current month column */}
 					<td>
-						{has ? (
+						{hasCur ? (
 							<>
 								<button
 									className="linklike"
-									onClick={() => toggle(f)}
+									onClick={() => toggleCur(f)}
 								>
-									{open[f]
+									{openCur[f]
 										? "collapse"
 										: "expand all comments"}
 								</button>
-								{open[f] && (
-									<ul
-										style={{
-											margin: "8px 0 0 16px",
-											padding: 0,
-										}}
-									>
-										{list
-											.slice() // shallow copy
-											.sort(
-												(a, b) =>
-													(a.dayNumber || 0) -
-													(b.dayNumber || 0)
-											)
-											.map((c, idx) => (
-												<li
-													key={idx}
-													style={{ marginBottom: 4 }}
-												>
-													+{" "}
-													{c.dayId ? (
-														<Link
-															to={`/days/${
-																c.dayId
-															}/check?userId=${userId}${
-																c.monthId
-																	? `&monthId=${c.monthId}`
-																	: ""
-															}`}
-															title="Open this day's check"
-														>
-															<strong>
-																Day{" "}
-																{c.dayNumber ??
-																	"?"}
-																:
-															</strong>{" "}
-															{c.commentText}
-														</Link>
-													) : (
-														<>
-															<strong>
-																Day{" "}
-																{c.dayNumber ??
-																	"?"}
-																:
-															</strong>{" "}
-															{c.commentText}
-														</>
-													)}
-												</li>
-											))}
-									</ul>
-								)}
+								{openCur[f] &&
+									renderCommentList(curList, false)}
+							</>
+						) : (
+							<span className="muted">
+								no comments for {labelize(f)}
+							</span>
+						)}
+					</td>
+
+					{/* Previous month column */}
+					<td>
+						{hasPrev ? (
+							<>
+								<button
+									className="linklike"
+									onClick={() => togglePrev(f)}
+								>
+									{openPrev[f]
+										? "collapse"
+										: "expand all comments"}
+								</button>
+								{openPrev[f] &&
+									renderCommentList(prevList, true)}
 							</>
 						) : (
 							<span className="muted">
@@ -221,7 +253,15 @@ export default function UserDetails() {
 				</tr>
 			);
 		});
-	}, [commentsMap, open, toggle]);
+	}, [
+		commentsCurrent,
+		commentsPrev,
+		openCur,
+		openPrev,
+		toggleCur,
+		togglePrev,
+		userId,
+	]);
 
 	if (error)
 		return (
@@ -269,19 +309,21 @@ export default function UserDetails() {
 					</table>
 				</div>
 
-				{/* Right: per-field comments */}
+				{/* Right: per-field comments (now 2 columns: current & previous) */}
 				<div>
 					<h3 style={{ marginTop: 8 }}>
-						Comments by Field <small>(current month)</small>
+						Comments by Field{" "}
+						<small>(current & previous month)</small>
 					</h3>
 					<table className="table grid">
 						<thead>
 							<tr>
 								<th>Field</th>
-								<th>Comments</th>
+								<th>Current Month</th>
+								<th>Previous Month</th>
 							</tr>
 						</thead>
-						<tbody>{commentRows}</tbody>
+						<tbody>{commentsRows}</tbody>
 					</table>
 				</div>
 			</div>
