@@ -42,23 +42,41 @@ const fmtPTDateISO = (iso) => {
 	}
 };
 
-// Format from monthName like "October 2025" + dayNumber
+// Robust: "October 2025" + dayNumber -> Pacific date
 const fmtFromMonthName = (monthName, dayNumber) => {
-	if (!monthName || !dayNumber) return null;
-	// e.g., "October 2025" + 12 => "October 12, 2025"
-	const parts = String(monthName).split(" ");
-	if (parts.length !== 2) return null;
-	const [mName, yStr] = parts;
-	const d = new Date(`${mName} ${dayNumber}, ${yStr} 00:00:00`);
-	if (isNaN(d)) return null;
-	return d.toLocaleDateString("en-US", {
+	if (monthName == null || dayNumber == null) return null;
+	const m = String(monthName)
+		.trim()
+		.match(/^([A-Za-z]+)\s+(\d{4})$/);
+	if (!m) return null;
+	const MONTHS = {
+		January: 0,
+		February: 1,
+		March: 2,
+		April: 3,
+		May: 4,
+		June: 5,
+		July: 6,
+		August: 7,
+		September: 8,
+		October: 9,
+		November: 10,
+		December: 11,
+	};
+	const mi = MONTHS[m[1]];
+	if (mi == null) return null;
+	const y = Number(m[2]);
+	const dnum = Number(dayNumber);
+	if (!Number.isFinite(dnum) || dnum <= 0) return null;
+	// build in UTC then render in PT to avoid locale quirks
+	const dt = new Date(Date.UTC(y, mi, dnum));
+	return dt.toLocaleDateString("en-US", {
 		timeZone: "America/Los_Angeles",
 		month: "long",
 		day: "numeric",
 		year: "numeric",
 	});
 };
-
 export default function UserDetails() {
 	const { userId } = useParams();
 	const location = useLocation();

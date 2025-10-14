@@ -227,10 +227,10 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 					dayNumber: "$dayNumber",
 					dayId: "$_id",
 					monthId: "$month._id",
-					monthName: "$month.name", // ← new
+					// Trim whitespace so client parser is happy
+					monthName: { $trim: { input: "$month.name" } },
 				},
 			},
-
 			// Group by field → collect comment items
 			{
 				$group: {
