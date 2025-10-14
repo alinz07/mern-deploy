@@ -30,16 +30,15 @@ function labelize(key) {
 
 // Format from real ISO (if present)
 const fmtPTDateISO = (iso) => {
-	try {
-		return new Date(iso).toLocaleDateString("en-US", {
-			timeZone: "America/Los_Angeles",
-			month: "long",
-			day: "numeric",
-			year: "numeric",
-		});
-	} catch {
-		return null;
-	}
+	if (iso == null) return null;
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return null;
+	return d.toLocaleDateString("en-US", {
+		timeZone: "America/Los_Angeles",
+		month: "long",
+		day: "numeric",
+		year: "numeric",
+	});
 };
 
 // Robust: "October 2025" + dayNumber -> Pacific date
@@ -68,8 +67,8 @@ const fmtFromMonthName = (monthName, dayNumber) => {
 	const y = Number(m[2]);
 	const dnum = Number(dayNumber);
 	if (!Number.isFinite(dnum) || dnum <= 0) return null;
-	// build in UTC then render in PT to avoid locale quirks
 	const dt = new Date(Date.UTC(y, mi, dnum));
+	if (Number.isNaN(dt.getTime())) return null;
 	return dt.toLocaleDateString("en-US", {
 		timeZone: "America/Los_Angeles",
 		month: "long",
@@ -77,6 +76,7 @@ const fmtFromMonthName = (monthName, dayNumber) => {
 		year: "numeric",
 	});
 };
+
 export default function UserDetails() {
 	const { userId } = useParams();
 	const location = useLocation();
@@ -216,8 +216,8 @@ export default function UserDetails() {
 				.sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
 				.map((c, idx) => {
 					const niceDate =
-						fmtPTDateISO(c.dateISO) ||
-						fmtFromMonthName(c.monthName, c.dayNumber) ||
+						fmtFromMonthName(c.monthName, c.dayNumber) || // prefer monthName/dayNumber
+						fmtPTDateISO(c.dateISO) || // only if it parses
 						(typeof c.dayNumber === "number"
 							? `Day ${c.dayNumber}`
 							: "Day ?");
