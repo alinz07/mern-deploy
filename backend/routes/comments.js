@@ -101,8 +101,8 @@ router.get("/by-check/:checkId/all", auth, async (req, res) => {
 	}
 });
 
-// GET /api/comments/by-user/:userId/by-field?scope=current|previous|both
-// Returns { field: [{ dayNumber, commentText, dayId, monthId, dateISO }], ... }
+// backend/routes/comments.js  (only this handler needs changing)
+
 router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 	try {
 		const { userId } = req.params;
@@ -123,9 +123,33 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 
 		const wantCurrent = scope === "current" || scope === "both";
 		const wantPrevious = scope === "previous" || scope === "both";
-
-		// Nothing requested? return empty
 		if (!wantCurrent && !wantPrevious) return res.json({});
+
+		// Tenant guard only if adminUser is a valid ObjectId
+		const haveTenant = mongoose.isValidObjectId(req.user?.adminUser);
+		const tenantMatch = haveTenant
+			? {
+					"month.adminUser": new mongoose.Types.ObjectId(
+						req.user.adminUser
+					),
+			  }
+			: null;
+
+		const monthFilter = {
+			$or: [
+				...(wantPrevious ? [{ "month.name": previousName }] : []),
+				...(wantCurrent
+					? [
+							{
+								$and: [
+									{ "month.name": currentName },
+									{ dayNumber: { $lte: daysElapsed } },
+								],
+							},
+					  ]
+					: []),
+			],
+		};
 
 		const pipeline = [
 			{ $match: { userId: new mongoose.Types.ObjectId(userId) } },
@@ -138,65 +162,13 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 				},
 			},
 			{ $unwind: "$month" },
-			// tenant guard (optional but recommended)
-			{
-				$match: {
-					"month.adminUser": new mongoose.Types.ObjectId(
-						req.user.adminUser
-					),
-				},
-			},
-			// Month filtering with PT "to-date" for current month
-			{
-				$match: {
-					$or: [
-						...(wantPrevious
-							? [{ "month.name": previousName }]
-							: []),
-						...(wantCurrent
-							? [
-									{
-										$and: [
-											{ "month.name": currentName },
-											{
-												dayNumber: {
-													$lte: daysElapsed,
-												},
-											},
-										],
-									},
-							  ]
-							: []),
-					],
-				},
-			},
+			...(tenantMatch ? [{ $match: tenantMatch }] : []),
 
-			// Derive a real PT date from Month.name + dayNumber
-			{
-				$addFields: {
-					_monthParsed: {
-						$dateFromString: {
-							dateString: "$month.name",
-							format: "%B %Y",
-							timezone: APP_TZ,
-						},
-					},
-				},
-			},
-			{
-				$addFields: {
-					_year: { $year: "$_monthParsed" },
-					_monthNum: { $month: "$_monthParsed" },
-					dateISO: {
-						$dateFromParts: {
-							year: "$_year",
-							month: "$_monthNum",
-							day: "$dayNumber",
-							timezone: APP_TZ,
-						},
-					},
-				},
-			},
+			// Only consider normal month docs; avoid null/odd names
+			{ $match: { "month.name": { $type: "string" } } },
+
+			// Month filtering with PT "to-date" for current month
+			{ $match: monthFilter },
 
 			// find the user's Check for this Day
 			{
@@ -247,7 +219,7 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 			// Only valid fields
 			{ $match: { "comments.field": { $in: VALID_FIELDS } } },
 
-			// Project minimal data (+ IDs + computed date)
+			// Project minimal data (+ IDs + monthName for client-side formatting)
 			{
 				$project: {
 					field: "$comments.field",
@@ -255,7 +227,7 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 					dayNumber: "$dayNumber",
 					dayId: "$_id",
 					monthId: "$month._id",
-					dateISO: "$dateISO",
+					monthName: "$month.name", // ← new
 				},
 			},
 
@@ -269,7 +241,7 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 							commentText: "$commentText",
 							dayId: "$dayId",
 							monthId: "$monthId",
-							dateISO: "$dateISO",
+							monthName: "$monthName", // ← keep it on each item
 						},
 					},
 				},

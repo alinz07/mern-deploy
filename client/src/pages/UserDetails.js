@@ -28,8 +28,8 @@ function labelize(key) {
 	return `Check ${w[0].toUpperCase()}${w.slice(1)}`;
 }
 
-// Format ISO date coming from backend as PT “October 12, 2025”
-const fmtPTDate = (iso) => {
+// Format from real ISO (if present)
+const fmtPTDateISO = (iso) => {
 	try {
 		return new Date(iso).toLocaleDateString("en-US", {
 			timeZone: "America/Los_Angeles",
@@ -40,6 +40,23 @@ const fmtPTDate = (iso) => {
 	} catch {
 		return null;
 	}
+};
+
+// Format from monthName like "October 2025" + dayNumber
+const fmtFromMonthName = (monthName, dayNumber) => {
+	if (!monthName || !dayNumber) return null;
+	// e.g., "October 2025" + 12 => "October 12, 2025"
+	const parts = String(monthName).split(" ");
+	if (parts.length !== 2) return null;
+	const [mName, yStr] = parts;
+	const d = new Date(`${mName} ${dayNumber}, ${yStr} 00:00:00`);
+	if (isNaN(d)) return null;
+	return d.toLocaleDateString("en-US", {
+		timeZone: "America/Los_Angeles",
+		month: "long",
+		day: "numeric",
+		year: "numeric",
+	});
 };
 
 export default function UserDetails() {
@@ -57,7 +74,6 @@ export default function UserDetails() {
 	// expand/collapse per column
 	const [openCur, setOpenCur] = useState({});
 	const [openPrev, setOpenPrev] = useState({});
-
 	const [error, setError] = useState("");
 
 	const toggleCur = useCallback((field) => {
@@ -115,7 +131,10 @@ export default function UserDetails() {
 				if (!alive) return;
 				setStats(s.data);
 			} catch {
-				if (alive) setError("Failed to load user stats.");
+				if (alive) {
+					setError("Session expired. Please sign in again.");
+					localStorage.removeItem("token");
+				}
 			}
 		};
 
@@ -177,36 +196,36 @@ export default function UserDetails() {
 			{list
 				.slice()
 				.sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
-				.map((c, idx) => (
-					<li key={idx} style={{ marginBottom: 4 }}>
-						{c.dayId ? (
-							<Link
-								to={`/days/${c.dayId}/check?userId=${userId}${
-									c.monthId ? `&monthId=${c.monthId}` : ""
-								}`}
-								title="Open this day's check"
-								target="_blank"
-								rel="noopener noreferrer"
-							>
-								<strong>
-									{fmtPTDate(c.dateISO) ||
-										`Day ${c.dayNumber ?? "?"}`}
-									:
-								</strong>{" "}
-								{c.commentText}
-							</Link>
-						) : (
-							<>
-								<strong>
-									{fmtPTDate(c.dateISO) ||
-										`Day ${c.dayNumber ?? "?"}`}
-									:
-								</strong>{" "}
-								{c.commentText}
-							</>
-						)}
-					</li>
-				))}
+				.map((c, idx) => {
+					const niceDate =
+						fmtPTDateISO(c.dateISO) ||
+						fmtFromMonthName(c.monthName, c.dayNumber) ||
+						(typeof c.dayNumber === "number"
+							? `Day ${c.dayNumber}`
+							: "Day ?");
+					return (
+						<li key={idx} style={{ marginBottom: 4 }}>
+							{c.dayId ? (
+								<Link
+									to={`/days/${
+										c.dayId
+									}/check?userId=${userId}${
+										c.monthId ? `&monthId=${c.monthId}` : ""
+									}`}
+									title="Open this day's check"
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									<strong>{niceDate}:</strong> {c.commentText}
+								</Link>
+							) : (
+								<>
+									<strong>{niceDate}:</strong> {c.commentText}
+								</>
+							)}
+						</li>
+					);
+				})}
 		</ul>
 	);
 
