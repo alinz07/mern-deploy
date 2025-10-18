@@ -45,6 +45,7 @@ app.use("/api/equipment", require("./routes/equipment"));
 app.use("/api/comments", require("./routes/comments"));
 app.use("/api/equip-comments", require("./routes/equipComments"));
 app.use("/api/admin", require("./routes/admin"));
+app.use("/api/user-equipment", require("./routes/userEquipment"));
 
 // route
 app.get("/", async (req, res) => {

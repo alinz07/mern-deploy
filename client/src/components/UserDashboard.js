@@ -101,7 +101,13 @@ function UserDashboard({ userId, user }) {
 					<li>Email: {data.email}</li>
 					<li>Username: {data.username}</li>
 				</ul>
-
+				<p style={{ marginTop: 8 }}>
+					<a href="/my-equipment">
+						<button type="button" title="Manage your equipment">
+							My Equipment
+						</button>
+					</a>
+				</p>
 				<div className="sp-16" />
 				<MonthList user={user} />
 			</div>

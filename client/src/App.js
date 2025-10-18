@@ -10,6 +10,7 @@ import AdminDashboard from "./components/AdminDashboard";
 import DayList from "./components/DayList";
 import CheckPage from "./pages/CheckPage";
 import EquipmentPage from "./pages/EquipmentPage";
+import UserEquipmentPage from "./pages/UserEquipmentPage";
 import "./index.css";
 import UserDetails from "./pages/UserDetails";
 
@@ -92,6 +93,10 @@ const App = () => {
 						<Route
 							path="/admin/users/:userId"
 							element={<UserDetails />}
+						/>
+						<Route
+							path="/my-equipment"
+							element={<UserEquipmentPage />}
 						/>
 					</Routes>
 				</div>
