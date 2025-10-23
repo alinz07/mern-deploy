@@ -1,0 +1,29 @@
+# Dockerfile (at repo root)
+FROM node:20-bullseye
+
+# System deps for audio + phonemizer
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+    python3 python3-pip espeak-ng ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+
+# App files
+WORKDIR /app
+
+# Install backend deps first (better layer caching)
+COPY backend/package*.json ./backend/
+RUN cd backend && npm ci
+
+# Copy backend source
+COPY backend ./backend
+
+# Python deps for transcription
+COPY backend/utils/requirements.txt ./backend/utils/requirements.txt
+RUN pip3 install --no-cache-dir -r backend/utils/requirements.txt
+
+# Environment
+ENV PORT=10000
+EXPOSE 10000
+
+# Start your existing server entry; adjust if your entry file differs
+CMD ["node", "backend/app.js"]
