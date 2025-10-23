@@ -404,6 +404,17 @@ export default function CheckPage() {
 					}}
 				>
 					<h2 style={{ margin: 0 }}>Daily Check</h2>
+					{/* under your <h2>Daily Check …> header controls */}
+					<Link
+						to={`/record?day=${dayId}&user=${
+							userId || check?.user
+						}&month=${monthId || ""}`}
+					>
+						<button type="button" title="Open recording page">
+							Record Sound
+						</button>
+					</Link>
+
 					<span style={{ opacity: 0.7 }}>
 						({checkedCount} / 10 complete)
 					</span>

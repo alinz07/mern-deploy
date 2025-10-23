@@ -1,0 +1,2 @@
+faster-whisper==1.0.3
+phonemizer==3.2.1

@@ -13,6 +13,7 @@ import EquipmentPage from "./pages/EquipmentPage";
 import UserEquipmentPage from "./pages/UserEquipmentPage";
 import "./index.css";
 import UserDetails from "./pages/UserDetails";
+import RecordingPage from "./pages/RecordingPage";
 
 const App = () => {
 	const [user, setUser] = useState(null);
@@ -98,6 +99,7 @@ const App = () => {
 							path="/my-equipment"
 							element={<UserEquipmentPage />}
 						/>
+						<Route path="/record" element={<RecordingPage />} />
 					</Routes>
 				</div>
 			) : (
