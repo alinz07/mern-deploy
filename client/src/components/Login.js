@@ -20,7 +20,7 @@ const Login = ({ setUser }) => {
 		setMessage("");
 		try {
 			const res = await axios.post(
-				"https://mern-deploy-i7u8.onrender.com/api/auth/login",
+				"https://mern-deploy-docker.onrender.com/api/auth/login",
 				{ username, password }
 			);
 
@@ -31,7 +31,7 @@ const Login = ({ setUser }) => {
 
 				// 2) Get the current user
 				const me = await axios.get(
-					"https://mern-deploy-i7u8.onrender.com/api/auth/me"
+					"https://mern-deploy-docker.onrender.com/api/auth/me"
 				);
 
 				if (typeof setUser === "function") {

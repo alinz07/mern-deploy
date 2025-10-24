@@ -65,7 +65,7 @@ function AdminDashboard() {
 			return alert("Please enter a valid email or leave it blank.");
 		try {
 			const res = await axios.put(
-				`https://mern-deploy-i7u8.onrender.com/api/users/${editId}`,
+				`https://mern-deploy-docker.onrender.com/api/users/${editId}`,
 				{ username, email },
 				tokenHeader()
 			);
@@ -86,7 +86,7 @@ function AdminDashboard() {
 		const fetchUsers = async () => {
 			try {
 				const res = await axios.get(
-					"https://mern-deploy-i7u8.onrender.com/api/users",
+					"https://mern-deploy-docker.onrender.com/api/users",
 					tokenHeader()
 				);
 				setUsers(res.data);
@@ -100,7 +100,7 @@ function AdminDashboard() {
 		const fetchMonths = async () => {
 			try {
 				const res = await axios.get(
-					"https://mern-deploy-i7u8.onrender.com/api/months",
+					"https://mern-deploy-docker.onrender.com/api/months",
 					tokenHeader()
 				);
 				setMonths(res.data);
@@ -115,11 +115,11 @@ function AdminDashboard() {
 			try {
 				const [checksRes, equipRes] = await Promise.all([
 					axios.get(
-						"https://mern-deploy-i7u8.onrender.com/api/stats/admin-checks",
+						"https://mern-deploy-docker.onrender.com/api/stats/admin-checks",
 						tokenHeader()
 					),
 					axios.get(
-						"https://mern-deploy-i7u8.onrender.com/api/stats/admin-equip",
+						"https://mern-deploy-docker.onrender.com/api/stats/admin-equip",
 						tokenHeader()
 					),
 				]);
@@ -135,7 +135,7 @@ function AdminDashboard() {
 		const fetchJoinCode = async () => {
 			try {
 				const r = await axios.get(
-					"https://mern-deploy-i7u8.onrender.com/api/admin/join-code",
+					"https://mern-deploy-docker.onrender.com/api/admin/join-code",
 					tokenHeader()
 				);
 				setJoinCode(r.data?.joinCode || "");
@@ -506,7 +506,7 @@ function AdminDashboard() {
 														setDeletingId(u._id);
 														axios
 															.delete(
-																`https://mern-deploy-i7u8.onrender.com/api/users/${u._id}`,
+																`https://mern-deploy-docker.onrender.com/api/users/${u._id}`,
 																tokenHeader()
 															)
 															.then(() => {

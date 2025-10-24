@@ -19,7 +19,7 @@ function UserDashboard({ userId, user }) {
 			try {
 				const token = localStorage.getItem("token");
 				const r = await axios.get(
-					"https://mern-deploy-i7u8.onrender.com/api/admin/contact-email",
+					"https://mern-deploy-docker.onrender.com/api/admin/contact-email",
 					{ headers: { "x-auth-token": token } }
 				);
 				setAdminEmail(r.data?.toEmail || "");
@@ -38,7 +38,7 @@ function UserDashboard({ userId, user }) {
 			try {
 				const token = localStorage.getItem("token");
 				const res = await axios.get(
-					`https://mern-deploy-i7u8.onrender.com/api/users/${userId}/data`,
+					`https://mern-deploy-docker.onrender.com/api/users/${userId}/data`,
 					{ headers: { "x-auth-token": token } }
 				);
 				setData(res.data);

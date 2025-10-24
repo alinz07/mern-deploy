@@ -29,7 +29,7 @@ function MonthList({ user }) {
 		const fetchMonths = async () => {
 			try {
 				const res = await axios.get(
-					"https://mern-deploy-i7u8.onrender.com/api/months",
+					"https://mern-deploy-docker.onrender.com/api/months",
 					tokenHeader()
 				);
 				setMonths(res.data || []);
@@ -72,7 +72,7 @@ function MonthList({ user }) {
 		setMessage("");
 		try {
 			const res = await axios.post(
-				"https://mern-deploy-i7u8.onrender.com/api/months/new",
+				"https://mern-deploy-docker.onrender.com/api/months/new",
 				{ name: monthToAdd },
 				tokenHeader()
 			);

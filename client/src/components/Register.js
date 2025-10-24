@@ -60,7 +60,7 @@ const Register = () => {
 				  };
 
 			const res = await axios.post(
-				"https://mern-deploy-i7u8.onrender.com/api/auth/register",
+				"https://mern-deploy-docker.onrender.com/api/auth/register",
 				payload
 			);
 

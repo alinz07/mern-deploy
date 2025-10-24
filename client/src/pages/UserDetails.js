@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import axios from "axios";
 
-const API = "https://mern-deploy-i7u8.onrender.com"; // matches your pattern
+const API = "https://mern-deploy-docker.onrender.com"; // matches your pattern
 const tokenHeader = () => ({
 	headers: { "x-auth-token": localStorage.getItem("token") },
 });

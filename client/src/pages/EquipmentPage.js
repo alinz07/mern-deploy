@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 
-const API = "https://mern-deploy-i7u8.onrender.com";
+const API = "https://mern-deploy-docker.onrender.com";
 
 export default function EquipmentPage() {
 	const nav = useNavigate();
