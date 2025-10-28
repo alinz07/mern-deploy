@@ -1,4 +1,4 @@
-// client/src/pages/CheckPage.js  (DROP-IN)
+// client/src/pages/CheckPage.js
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import axios from "axios";
@@ -29,29 +29,31 @@ export default function CheckPage() {
 	const { dayId } = useParams();
 	const [searchParams] = useSearchParams();
 	const monthId = searchParams.get("monthId");
-	const userId = searchParams.get("userId"); // student owner (when admin acts for user)
+	const userId = searchParams.get("userId"); // student id (present when admin is acting for a user)
 
-	// Daily check
+	// who is viewing this page?
+	const [isAdmin, setIsAdmin] = useState(null); // null until loaded
+
+	// daily check
 	const [check, setCheck] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [msg, setMsg] = useState("");
 	const [saving, setSaving] = useState({});
 	const [bulkSaving, setBulkSaving] = useState(false);
 
-	// Daily comments
+	// per-field comments
 	const [commentOpen, setCommentOpen] = useState({});
 	const [commentText, setCommentText] = useState({});
 	const [commentDoc, setCommentDoc] = useState({});
 	const [commentSaving, setCommentSaving] = useState({});
 
-	// Equipment panel visibility
-	const [equipAllowed, setEquipAllowed] = useState(true); // hide on 403
-	// Equipment check row
+	// equipment check (admin-only)
+	const [equipAllowed, setEquipAllowed] = useState(false);
 	const [echeck, setEcheck] = useState(null);
 	const [equipSaving, setEquipSaving] = useState({});
 	const [equipMsg, setEquipMsg] = useState("");
 
-	// Equip comments
+	// equip comments
 	const [eCmtOpen, setECmtOpen] = useState({});
 	const [eCmtText, setECmtText] = useState({});
 	const [eCmtDoc, setECmtDoc] = useState({});
@@ -63,17 +65,31 @@ export default function CheckPage() {
 
 	const fieldKeys = useMemo(() => FIELD_MAP.map(([k]) => k), []);
 
-	// 1) Ensure a Check exists and load it
+	// 0) Find out if current viewer is admin; this gates admin-only requests
 	useEffect(() => {
 		const run = async () => {
 			try {
+				const me = await axios.get(`${API}/api/auth/me`, tokenHeader());
+				setIsAdmin(me?.data?.role === "admin");
+			} catch {
+				setIsAdmin(false);
+			}
+		};
+		run();
+	}, []);
+
+	// 1) Ensure a Check exists for this day (and user when admin is acting for someone)
+	useEffect(() => {
+		const run = async () => {
+			setLoading(true);
+			try {
 				const body = userId ? { dayId, userId } : { dayId };
-				const createRes = await axios.post(
+				const res = await axios.post(
 					`${API}/api/checks`,
 					body,
 					tokenHeader()
 				);
-				setCheck(createRes.data);
+				setCheck(res.data);
 				setMsg("");
 			} catch (err) {
 				const m =
@@ -88,9 +104,9 @@ export default function CheckPage() {
 		run();
 	}, [dayId, userId]);
 
-	// 2) Load all daily comments; auto-open initially if text exists
+	// 2) Load all per-field comments; auto-open if a field already has text
 	useEffect(() => {
-		const loadAll = async () => {
+		const load = async () => {
 			if (!check?._id) return;
 			try {
 				const res = await axios.get(
@@ -106,23 +122,31 @@ export default function CheckPage() {
 					docInit[field] = doc;
 					const hasText =
 						doc && (doc.commentText || "").trim().length > 0;
-					openInit[field] = hasText; // initial auto-open
+					openInit[field] = hasText;
 					textInit[field] = hasText ? doc.commentText : "";
 				}
 				setCommentDoc(docInit);
 				setCommentOpen(openInit);
 				setCommentText(textInit);
 			} catch {
-				/* non-fatal */
+				/* ignore */
 			}
 		};
-		loadAll();
+		load();
 	}, [check?._id]);
 
-	// 3) Try to load/create the EquipmentCheck (admin-only; hide if 403)
+	// 3) Load equipment check — **admin only** to avoid 403 for regular users
 	useEffect(() => {
+		if (isAdmin !== true) {
+			setEquipAllowed(false);
+			setEcheck(null);
+			setEquipMsg("");
+			return;
+		}
+		// admin needs monthId, dayId, userId to resolve the row
+		if (!monthId || !dayId || !userId) return;
+
 		const loadEquip = async () => {
-			if (!monthId || !dayId || !userId) return; // need all three to resolve row
 			try {
 				const r = await axios.get(
 					`${API}/api/equipment-checks/for-day`,
@@ -137,11 +161,12 @@ export default function CheckPage() {
 			} catch (e) {
 				const code = e?.response?.status;
 				if (code === 404) {
-					setEcheck(null);
+					setEcheck(null); // not created yet
 					setEquipAllowed(true);
 					setEquipMsg("");
 				} else if (code === 403) {
-					setEquipAllowed(false); // not admin or tenant mismatch
+					// role/tenant guard on backend — hide the panel entirely
+					setEquipAllowed(false);
 				} else {
 					setEquipAllowed(true);
 					setEquipMsg("Failed to load equipment check.");
@@ -149,38 +174,11 @@ export default function CheckPage() {
 			}
 		};
 		loadEquip();
-	}, [monthId, dayId, userId]);
+	}, [isAdmin, monthId, dayId, userId]);
 
-	const enableEquipmentCheck = async () => {
-		try {
-			const res = await axios.post(
-				`${API}/api/equipment-checks`,
-				{
-					month: monthId,
-					day: dayId,
-					user: userId,
-					left: false,
-					right: false,
-					both: false,
-					fmMic: false,
-				},
-				tokenHeader()
-			);
-			setEcheck(res.data);
-			setEquipMsg("");
-		} catch (e) {
-			const code = e?.response?.status;
-			if (code === 403) setEquipAllowed(false);
-			else
-				setEquipMsg(
-					e?.response?.data?.msg || "Failed to enable equipment check"
-				);
-		}
-	};
-
-	// Load all equipComments when we have an echeck (auto-open initially if text exists)
+	// when equipment check is present, load per-field equipment comments
 	useEffect(() => {
-		const loadECmts = async () => {
+		const load = async () => {
 			if (!echeck?._id) return;
 			try {
 				const res = await axios.get(
@@ -196,20 +194,20 @@ export default function CheckPage() {
 					docInit[field] = doc;
 					const hasText =
 						doc && (doc.commentText || "").trim().length > 0;
-					openInit[field] = hasText; // initial auto-open
+					openInit[field] = hasText;
 					textInit[field] = hasText ? doc.commentText : "";
 				}
 				setECmtDoc(docInit);
 				setECmtOpen(openInit);
 				setECmtText(textInit);
 			} catch {
-				// ignore
+				/* ignore */
 			}
 		};
-		loadECmts();
+		load();
 	}, [echeck?._id]);
 
-	// --------- Daily check handlers ----------
+	// --- Daily check handlers ---
 	const toggleField = useCallback(
 		async (field) => {
 			if (!check || saving[field] || bulkSaving) return;
@@ -270,6 +268,7 @@ export default function CheckPage() {
 		[check, fieldKeys, bulkSaving]
 	);
 
+	// --- Comment handlers ---
 	const saveComment = async (field) => {
 		if (!check?._id || !commentText[field]?.trim()) return;
 		setCommentSaving((s) => ({ ...s, [field]: true }));
@@ -315,7 +314,34 @@ export default function CheckPage() {
 		}
 	};
 
-	// --------- Equipment handlers ----------
+	// --- Equipment (admin only) ---
+	const enableEquipmentCheck = async () => {
+		try {
+			const res = await axios.post(
+				`${API}/api/equipment-checks`,
+				{
+					month: monthId,
+					day: dayId,
+					user: userId,
+					left: false,
+					right: false,
+					both: false,
+					fmMic: false,
+				},
+				tokenHeader()
+			);
+			setEcheck(res.data);
+			setEquipMsg("");
+		} catch (e) {
+			const code = e?.response?.status;
+			if (code === 403) setEquipAllowed(false);
+			else
+				setEquipMsg(
+					e?.response?.data?.msg || "Failed to enable equipment check"
+				);
+		}
+	};
+
 	const toggleEquip = async (field) => {
 		if (!echeck?._id || equipSaving[field]) return;
 		setEquipSaving((s) => ({ ...s, [field]: true }));
@@ -361,7 +387,10 @@ export default function CheckPage() {
 		try {
 			await axios.delete(
 				`${API}/api/equip-comments/by-echeck/${echeck._id}`,
-				{ params: { field }, ...tokenHeader() }
+				{
+					params: { field },
+					...tokenHeader(),
+				}
 			);
 			setECmtDoc((d) => ({ ...d, [field]: null }));
 			setECmtText((t) => ({ ...t, [field]: "" }));
@@ -404,7 +433,6 @@ export default function CheckPage() {
 					}}
 				>
 					<h2 style={{ margin: 0 }}>Daily Check</h2>
-					{/* under your <h2>Daily Check …> header controls */}
 					<Link
 						to={`/record?day=${dayId}&user=${
 							userId || check?.user
@@ -414,7 +442,6 @@ export default function CheckPage() {
 							Record Sound
 						</button>
 					</Link>
-
 					<span style={{ opacity: 0.7 }}>
 						({checkedCount} / 10 complete)
 					</span>
@@ -422,170 +449,124 @@ export default function CheckPage() {
 
 				{msg && <p style={{ color: "crimson", marginTop: 8 }}>{msg}</p>}
 
-				<div style={{ display: "flex", gap: 8, margin: "12px 0 8px" }}>
-					<button
-						type="button"
-						onClick={() => setAll(true)}
-						disabled={bulkSaving}
-					>
-						Mark all complete
-					</button>
-					<button
-						type="button"
-						onClick={() => setAll(false)}
-						disabled={bulkSaving}
-					>
-						Clear all
-					</button>
-					{bulkSaving && (
-						<span aria-live="polite" style={{ fontSize: 12 }}>
-							saving…
-						</span>
-					)}
-				</div>
-
-				<ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-					{FIELD_MAP.map(([field, label]) => {
-						const isSaving = !!saving[field] || bulkSaving;
-						const open = !!commentOpen[field];
-						const doc = commentDoc[field];
-						return (
-							<li
-								key={field}
-								style={{
-									padding: "10px 0",
-									borderBottom: "1px solid #eee",
-								}}
-							>
-								<div
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: 10,
-									}}
-								>
-									<input
-										id={field}
-										type="checkbox"
-										checked={!!check[field]}
-										onChange={() => toggleField(field)}
-										disabled={isSaving}
-									/>
-									<label
-										htmlFor={field}
+				<table className="table">
+					<thead>
+						<tr>
+							<th style={{ width: 180 }}>Field</th>
+							<th style={{ width: 120 }}>Status</th>
+							<th>Comments</th>
+						</tr>
+					</thead>
+					<tbody>
+						{FIELD_MAP.map(([field, label]) => (
+							<tr key={field}>
+								<td>{label}</td>
+								<td>
+									<button
+										onClick={() => toggleField(field)}
+										disabled={saving[field] || bulkSaving}
+									>
+										{check[field]
+											? "✓ True (click to clear)"
+											: "Mark True"}
+									</button>
+								</td>
+								<td>
+									<div
 										style={{
-											userSelect: "none",
-											cursor: isSaving
-												? "not-allowed"
-												: "pointer",
+											display: "flex",
+											gap: 8,
+											alignItems: "center",
+											flexWrap: "wrap",
 										}}
 									>
-										{label}
-									</label>
-
-									{/* Always show toggle; now visibility depends only on `open` */}
-									<button
-										type="button"
-										onClick={() =>
-											setCommentOpen((o) => ({
-												...o,
-												[field]: !open,
-											}))
-										}
-										title={
-											open
-												? "Hide comment box"
-												: "Add a comment"
-										}
-										style={{ marginLeft: 8 }}
-									>
-										{open ? "[ – ]" : "[ + ]"}
-									</button>
-								</div>
-
-								{open && (
-									<div
-										style={{ marginTop: 8, marginLeft: 28 }}
-									>
-										<textarea
-											rows={3}
-											style={{
-												width: "100%",
-												boxSizing: "border-box",
-											}}
-											placeholder="Write a comment…"
-											value={commentText[field] || ""}
-											onChange={(e) =>
-												setCommentText((t) => ({
-													...t,
-													[field]: e.target.value,
+										<button
+											onClick={() =>
+												setCommentOpen((o) => ({
+													...o,
+													[field]: !o[field],
 												}))
 											}
-										/>
-										<div
-											style={{
-												display: "flex",
-												gap: 8,
-												marginTop: 6,
-											}}
+											type="button"
 										>
-											<button
-												type="button"
-												onClick={() =>
-													saveComment(field)
-												}
-												disabled={
-													commentSaving[field] ||
-													!(
-														commentText[field] || ""
-													).trim()
-												}
-											>
-												Save
-											</button>
-											{doc && (
-												<button
-													type="button"
-													onClick={() =>
-														deleteComment(field)
-													}
-													disabled={
-														commentSaving[field]
-													}
-												>
-													Delete
-												</button>
-											)}
-											{commentSaving[field] && (
-												<span
-													aria-live="polite"
-													style={{ fontSize: 12 }}
-												>
-													saving…
-												</span>
-											)}
-										</div>
-										{doc && (
+											{commentOpen[field]
+												? "Hide"
+												: "Add/Show"}
+										</button>
+										{commentOpen[field] && (
 											<div
 												style={{
-													marginTop: 6,
-													fontSize: 12,
-													opacity: 0.75,
+													display: "grid",
+													gap: 6,
+													width: "100%",
 												}}
 											>
-												Last saved:{" "}
-												{new Date(
-													doc.updatedAt ||
-														doc.createdAt
-												).toLocaleString()}
+												<textarea
+													rows={2}
+													placeholder={`Comment for ${label}`}
+													value={
+														commentText[field] || ""
+													}
+													onChange={(e) =>
+														setCommentText((t) => ({
+															...t,
+															[field]:
+																e.target.value,
+														}))
+													}
+												/>
+												<div
+													style={{
+														display: "flex",
+														gap: 8,
+													}}
+												>
+													<button
+														onClick={() =>
+															saveComment(field)
+														}
+														disabled={
+															commentSaving[field]
+														}
+														type="button"
+													>
+														Save
+													</button>
+													{commentDoc[field] && (
+														<button
+															onClick={() =>
+																deleteComment(
+																	field
+																)
+															}
+															disabled={
+																commentSaving[
+																	field
+																]
+															}
+															type="button"
+														>
+															Delete
+														</button>
+													)}
+												</div>
 											</div>
 										)}
 									</div>
-								)}
-							</li>
-						);
-					})}
-				</ul>
+								</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+
+				<div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+					<button onClick={() => setAll(true)} disabled={bulkSaving}>
+						Mark all
+					</button>
+					<button onClick={() => setAll(false)} disabled={bulkSaving}>
+						Clear all
+					</button>
+				</div>
 			</div>
 
 			{/* RIGHT: Equipment Check (admin-only) */}
@@ -602,168 +583,155 @@ export default function CheckPage() {
 						</button>
 					) : (
 						<>
-							<ul
-								style={{
-									listStyle: "none",
-									padding: 0,
-									margin: 0,
-								}}
-							>
-								{EQUIP_FIELDS.map(([f, label]) => {
-									const saving = !!equipSaving[f];
-									const open = !!eCmtOpen[f];
-									const doc = eCmtDoc[f];
-									return (
-										<li
-											key={f}
-											style={{
-												padding: "8px 0",
-												borderBottom: "1px solid #eee",
-											}}
-										>
-											<div
-												style={{
-													display: "flex",
-													alignItems: "center",
-													gap: 10,
-												}}
-											>
-												<input
-													id={`e_${f}`}
-													type="checkbox"
-													checked={!!echeck[f]}
-													onChange={() =>
-														toggleEquip(f)
-													}
-													disabled={saving}
-												/>
-												<label htmlFor={`e_${f}`}>
-													{label}
-												</label>
-
-												{/* Always show toggle; visibility depends only on `open` */}
+							<table className="table">
+								<thead>
+									<tr>
+										<th>Field</th>
+										<th style={{ width: 130 }}>Status</th>
+									</tr>
+								</thead>
+								<tbody>
+									{EQUIP_FIELDS.map(([field, label]) => (
+										<tr key={field}>
+											<td>{label}</td>
+											<td>
 												<button
-													type="button"
 													onClick={() =>
-														setECmtOpen((o) => ({
-															...o,
-															[f]: !open,
-														}))
+														toggleEquip(field)
 													}
-													title={
-														open
-															? "Hide comment box"
-															: "Add a comment"
+													disabled={
+														equipSaving[field]
 													}
-													style={{ marginLeft: 8 }}
 												>
-													{open ? "[ – ]" : "[ + ]"}
+													{echeck[field]
+														? "✓ True (click to clear)"
+														: "Mark True"}
 												</button>
-											</div>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
 
-											{open && (
+							<h4>Equipment Comments</h4>
+							<table className="table">
+								<thead>
+									<tr>
+										<th>Field</th>
+										<th>Comment</th>
+									</tr>
+								</thead>
+								<tbody>
+									{EQUIP_FIELDS.map(([field, label]) => (
+										<tr key={field}>
+											<td>{label}</td>
+											<td>
 												<div
 													style={{
-														marginTop: 6,
-														marginLeft: 26,
+														display: "flex",
+														gap: 8,
+														alignItems: "center",
+														flexWrap: "wrap",
 													}}
 												>
-													<textarea
-														rows={2}
-														style={{
-															width: "100%",
-															boxSizing:
-																"border-box",
-														}}
-														placeholder="Equipment comment…"
-														value={
-															eCmtText[f] || ""
-														}
-														onChange={(e) =>
-															setECmtText(
-																(t) => ({
-																	...t,
-																	[f]: e
-																		.target
-																		.value,
+													<button
+														type="button"
+														onClick={() =>
+															setECmtOpen(
+																(o) => ({
+																	...o,
+																	[field]:
+																		!o[
+																			field
+																		],
 																})
 															)
 														}
-													/>
-													<div
-														style={{
-															display: "flex",
-															gap: 8,
-															marginTop: 6,
-														}}
 													>
-														<button
-															type="button"
-															onClick={() =>
-																saveEquipComment(
-																	f
-																)
-															}
-															disabled={
-																eCmtSaving[f] ||
-																!(
-																	eCmtText[
-																		f
-																	] || ""
-																).trim()
-															}
-														>
-															Save
-														</button>
-														{doc && (
-															<button
-																type="button"
-																onClick={() =>
-																	deleteEquipComment(
-																		f
-																	)
-																}
-																disabled={
-																	eCmtSaving[
-																		f
-																	]
-																}
-															>
-																Delete
-															</button>
-														)}
-														{eCmtSaving[f] && (
-															<span
-																aria-live="polite"
-																style={{
-																	fontSize: 12,
-																}}
-															>
-																saving…
-															</span>
-														)}
-													</div>
-													{doc && (
+														{eCmtOpen[field]
+															? "Hide"
+															: "Add/Show"}
+													</button>
+													{eCmtOpen[field] && (
 														<div
 															style={{
-																marginTop: 6,
-																fontSize: 12,
-																opacity: 0.75,
+																display: "grid",
+																gap: 6,
+																width: "100%",
 															}}
 														>
-															Last saved:{" "}
-															{new Date(
-																doc.updatedAt ||
-																	doc.createdAt
-															).toLocaleString()}
+															<textarea
+																rows={2}
+																placeholder={`Comment for ${label}`}
+																value={
+																	eCmtText[
+																		field
+																	] || ""
+																}
+																onChange={(e) =>
+																	setECmtText(
+																		(
+																			t
+																		) => ({
+																			...t,
+																			[field]:
+																				e
+																					.target
+																					.value,
+																		})
+																	)
+																}
+															/>
+															<div
+																style={{
+																	display:
+																		"flex",
+																	gap: 8,
+																}}
+															>
+																<button
+																	onClick={() =>
+																		saveEquipComment(
+																			field
+																		)
+																	}
+																	disabled={
+																		eCmtSaving[
+																			field
+																		]
+																	}
+																	type="button"
+																>
+																	Save
+																</button>
+																{eCmtDoc[
+																	field
+																] && (
+																	<button
+																		onClick={() =>
+																			deleteEquipComment(
+																				field
+																			)
+																		}
+																		disabled={
+																			eCmtSaving[
+																				field
+																			]
+																		}
+																		type="button"
+																	>
+																		Delete
+																	</button>
+																)}
+															</div>
 														</div>
 													)}
 												</div>
-											)}
-										</li>
-									);
-								})}
-							</ul>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
 						</>
 					)}
 				</aside>
