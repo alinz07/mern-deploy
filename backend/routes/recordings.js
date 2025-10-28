@@ -139,39 +139,61 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 		}
 
 		// ---- run Python worker (faster-whisper + phonemizer) via child_process ----
-		// We’ll stream from GridFS into temp files to feed the Python lib (simplest path).
+		// Stream from GridFS -> temp .webm -> transcode to 16k mono .wav -> python
 		const fs = require("fs");
 		const os = require("os");
 		const { spawn } = require("child_process");
 		const path = require("path");
 		const bucket = getBucket();
 
-		async function dump(id) {
+		async function dump(fileId) {
 			return new Promise((resolve, reject) => {
-				if (!id) return resolve(null);
-				const file = path.join(os.tmpdir(), `${id}.webm`);
+				if (!fileId) return resolve(null);
+				const file = path.join(os.tmpdir(), `${fileId}.webm`);
 				const ws = fs.createWriteStream(file);
 				bucket
-					.openDownloadStream(id)
+					.openDownloadStream(fileId)
 					.on("error", reject)
 					.pipe(ws)
 					.on("finish", () => resolve(file));
 			});
 		}
 
-		const tPath = await dump(rec.teacherFileId);
-		const sPath = await dump(rec.studentFileId);
+		// Transcode webm -> 16k mono wav (dramatically lowers memory use)
+		async function toWav16kMono(inputPath) {
+			if (!inputPath) return null;
+			const out = inputPath.replace(/\.webm$/i, ".wav");
+			await new Promise((resolve, reject) => {
+				const ff = spawn("ffmpeg", [
+					"-y",
+					"-hide_banner",
+					"-loglevel",
+					"error",
+					"-i",
+					inputPath,
+					"-ac",
+					"1",
+					"-ar",
+					"16000",
+					"-f",
+					"wav",
+					out,
+				]);
+				ff.on("close", (code) =>
+					code === 0 ? resolve() : reject(new Error("ffmpeg failed"))
+				);
+			});
+			return out;
+		}
 
-		// call a small python script we’ll add under backend/utils/transcribe.py
+		// Call Python helper
 		function callPy(inputPath) {
 			return new Promise((resolve) => {
 				if (!inputPath) return resolve({ text: "", ipa: "" });
 				const child = spawn(
 					"python3",
 					[path.join(__dirname, "../utils/transcribe.py"), inputPath],
-					{
-						stdio: ["ignore", "pipe", "pipe"],
-					}
+					{ stdio: ["ignore", "pipe", "pipe"] }
 				);
 				let out = "";
 				let err = "";
@@ -187,9 +209,16 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 			});
 		}
 
+		const tPath = await dump(rec.teacherFileId);
+		const sPath = await dump(rec.studentFileId);
+		const [tWav, sWav] = await Promise.all([
+			toWav16kMono(tPath),
+			toWav16kMono(sPath),
+		]);
+
 		const [teacherRes, studentRes] = await Promise.all([
-			callPy(tPath),
-			callPy(sPath),
+			callPy(tWav),
+			callPy(sWav),
 		]);
 
 		rec.teacherText = teacherRes.text || "";

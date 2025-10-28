@@ -1,29 +1,37 @@
-# Dockerfile (at repo root)
+# --- Dockerfile (root) ---
 FROM node:20-bullseye
 
-# System deps for audio + phonemizer
+# System deps for audio decode + phonemizer
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     python3 python3-pip espeak-ng ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
-# App files
+# Keep CPU libs from spawning many threads (lower RAM)
+ENV OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    NUMBA_NUM_THREADS=1 \
+    CT2_USE_CPU_ONLY=1
+
+# App
 WORKDIR /app
 
-# Install backend deps first (better layer caching)
+# Install backend deps first (better layer cache)
 COPY backend/package*.json ./backend/
 RUN cd backend && npm ci
 
-# Copy backend source
+# Copy source
 COPY backend ./backend
 
-# Python deps for transcription
+# Python deps (Whisper + phonemizer)
 COPY backend/utils/requirements.txt ./backend/utils/requirements.txt
 RUN pip3 install --no-cache-dir -r backend/utils/requirements.txt
 
-# Environment
+# Render/Docker port contract
 ENV PORT=10000
 EXPOSE 10000
 
-# Start your existing server entry; adjust if your entry file differs
+# Start your server (matches your repo structure)
 CMD ["node", "backend/app.js"]
