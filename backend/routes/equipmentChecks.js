@@ -18,14 +18,20 @@ function requireAdmin(req, res) {
 	return true;
 }
 
-// POST create/upsert (kept from your version)
+// POST /api/equipment-checks
 router.post("/", auth, async (req, res) => {
 	try {
-		if (!requireAdmin(req, res)) return;
 		const { user, month, day, left, right, both, fmMic } = req.body || {};
 		if (![user, month, day].every(mongoose.isValidObjectId))
 			return res.status(400).json({ msg: "user, month, day required" });
 
+		// allow if admin OR the logged-in user is the owner
+		const isAdmin = req.user.role === "admin";
+		const isSelf = String(req.user._id) === String(user);
+		if (!isAdmin && !isSelf)
+			return res.status(403).json({ msg: "Forbidden" });
+
+		// tenant safety: user/month must belong to the same adminUser as the caller
 		const [u, m, d] = await Promise.all([
 			User.findById(user).lean(),
 			Month.findById(month).lean(),

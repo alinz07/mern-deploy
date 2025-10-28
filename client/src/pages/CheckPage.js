@@ -493,17 +493,21 @@ export default function CheckPage() {
 										}}
 									>
 										<button
+											className="toggle-comment"
+											type="button"
 											onClick={() =>
 												setCommentOpen((o) => ({
 													...o,
 													[field]: !o[field],
 												}))
 											}
-											type="button"
+											aria-label={
+												commentOpen[field]
+													? `Hide comment for ${label}`
+													: `Show comment for ${label}`
+											}
 										>
-											{commentOpen[field]
-												? "Hide"
-												: "Add/Show"}
+											{commentOpen[field] ? "−" : "+"}
 										</button>
 										{commentOpen[field] && (
 											<div

@@ -370,3 +370,15 @@ button {
 .linklike:hover {
 	text-decoration: underline;
 }
+.toggle-comment {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	line-height: 26px; /* centers the glyph vertically */
+	font-size: 18px;
+	font-weight: 700;
+	border-radius: 6px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
