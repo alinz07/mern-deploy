@@ -18,7 +18,6 @@ const upload = multer({
 }); // 30MB per clip
 
 // POST /api/recordings  (create or replace audio for a day)
-// form-data: dayId, userId (student), teacher (file), student (file), durationTeacherMs?, durationStudentMs?
 router.post(
 	"/",
 	auth,
@@ -127,6 +126,17 @@ router.get("/file/:id", auth, async (req, res) => {
 
 // POST /api/recordings/:id/transcribe   (run faster-whisper -> phonemizer; save IPA + text)
 router.post("/:id/transcribe", auth, async (req, res) => {
+	const startedAt = Date.now();
+	const memAtStart = process.memoryUsage();
+
+	const diag = (extra = {}) => ({
+		stage: extra.stage || "unknown",
+		elapsedMs: Date.now() - startedAt,
+		rss: process.memoryUsage().rss,
+		rssStart: memAtStart.rss,
+		...extra,
+	});
+
 	try {
 		const { id } = req.params;
 		if (!mongoose.isValidObjectId(id))
@@ -146,6 +156,11 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 		const path = require("path");
 		const bucket = getBucket();
 
+		function tail(str, n = 4000) {
+			if (!str) return "";
+			return str.length > n ? str.slice(-n) : str;
+		}
+
 		async function dump(fileId) {
 			return new Promise((resolve, reject) => {
 				if (!fileId) return resolve(null);
@@ -153,7 +168,9 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 				const ws = fs.createWriteStream(file);
 				bucket
 					.openDownloadStream(fileId)
-					.on("error", reject)
+					.on("error", (err) =>
+						reject(Object.assign(err, { stage: "dump" }))
+					)
 					.pipe(ws)
 					.on("finish", () => resolve(file));
 			});
@@ -164,6 +181,7 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 			if (!inputPath) return null;
 			const out = inputPath.replace(/\.webm$/i, ".wav");
 			await new Promise((resolve, reject) => {
+				let stderr = "";
 				const ff = spawn("ffmpeg", [
 					"-y",
 					"-hide_banner",
@@ -179,18 +197,29 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 					"wav",
 					out,
 				]);
-				ff.on("close", (code) =>
-					code === 0 ? resolve() : reject(new Error("ffmpeg failed"))
-				);
+				ff.stderr.on("data", (d) => (stderr += d.toString()));
+				ff.on("close", (code, signal) => {
+					if (code === 0) return resolve();
+					const err = new Error("ffmpeg failed");
+					err.code = code;
+					err.signal = signal;
+					err.stderr = stderr;
+					err.stage = "ffmpeg";
+					return reject(err);
+				});
+				ff.on("error", (err) => {
+					err.stage = "ffmpeg-spawn";
+					reject(err);
+				});
 			});
 			return out;
 		}
 
-		// Call Python helper
+		// Call Python helper and capture diagnostics
 		function callPy(inputPath) {
 			return new Promise((resolve) => {
-				if (!inputPath) return resolve({ text: "", ipa: "" });
-				const child = spawn(
+				if (!inputPath) return resolve({ ok: true, text: "", ipa: "" });
+				const child = require("child_process").spawn(
 					"python3",
 					[path.join(__dirname, "../utils/transcribe.py"), inputPath],
 					{ stdio: ["ignore", "pipe", "pipe"] }
@@ -199,27 +228,101 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 				let err = "";
 				child.stdout.on("data", (d) => (out += d.toString()));
 				child.stderr.on("data", (d) => (err += d.toString()));
-				child.on("close", () => {
+				child.on("close", (code, signal) => {
+					// Detect likely OOM: SIGKILL or exit code 137
+					const oomLikely = signal === "SIGKILL" || code === 137;
 					try {
-						resolve(JSON.parse(out));
+						const parsed = JSON.parse(out);
+						return resolve({
+							ok: true,
+							...parsed,
+							stderrTail: tail(err),
+							code,
+							signal,
+							oomLikely,
+						});
 					} catch {
-						resolve({ text: "", ipa: "", err });
+						return resolve({
+							ok: false,
+							text: "",
+							ipa: "",
+							stdoutTail: tail(out),
+							stderrTail: tail(err),
+							code,
+							signal,
+							oomLikely,
+						});
 					}
+				});
+				child.on("error", (errObj) => {
+					return resolve({
+						ok: false,
+						text: "",
+						ipa: "",
+						spawnError: String(errObj),
+						stderrTail: "",
+						stdoutTail: "",
+						code: null,
+						signal: null,
+						oomLikely: false,
+					});
 				});
 			});
 		}
 
-		const tPath = await dump(rec.teacherFileId);
-		const sPath = await dump(rec.studentFileId);
-		const [tWav, sWav] = await Promise.all([
-			toWav16kMono(tPath),
-			toWav16kMono(sPath),
-		]);
+		let tPath, sPath, tWav, sWav, teacherRes, studentRes;
 
-		const [teacherRes, studentRes] = await Promise.all([
-			callPy(tWav),
-			callPy(sWav),
-		]);
+		// DUMP
+		try {
+			tPath = await dump(rec.teacherFileId);
+			sPath = await dump(rec.studentFileId);
+		} catch (err) {
+			console.error("dump error", err);
+			return res
+				.status(500)
+				.json(
+					diag({
+						stage: err.stage || "dump",
+						msg: "Failed to dump from GridFS",
+						error: String(err),
+					})
+				);
+		}
+
+		// FFMPEG
+		try {
+			[tWav, sWav] = await Promise.all([
+				toWav16kMono(tPath),
+				toWav16kMono(sPath),
+			]);
+		} catch (err) {
+			console.error("ffmpeg error", err);
+			return res.status(500).json(
+				diag({
+					stage: err.stage || "ffmpeg",
+					msg: "Transcode failed",
+					code: err.code ?? null,
+					signal: err.signal ?? null,
+					stderrTail: err.stderr ? tail(err.stderr) : "",
+				})
+			);
+		}
+
+		// PYTHON
+		teacherRes = await callPy(tWav);
+		studentRes = await callPy(sWav);
+
+		if (!teacherRes.ok || !studentRes.ok) {
+			// Return rich diagnostics to the client
+			return res.status(500).json(
+				diag({
+					stage: "python",
+					msg: "Transcription failed",
+					teacher: teacherRes,
+					student: studentRes,
+				})
+			);
+		}
 
 		rec.teacherText = teacherRes.text || "";
 		rec.teacherIPA = teacherRes.ipa || "";
@@ -230,7 +333,13 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 		res.json(rec);
 	} catch (e) {
 		console.error("POST /api/recordings/:id/transcribe error", e);
-		res.status(500).json({ msg: "Transcription failed" });
+		res.status(500).json({
+			...diag({
+				stage: "node-catch",
+				msg: "Unhandled error in transcribe route",
+			}),
+			error: String(e),
+		});
 	}
 });
 
