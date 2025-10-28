@@ -598,17 +598,21 @@ export default function CheckPage() {
 						</button>
 					) : (
 						<>
+							{/* ONE combined table: Field | Status | Comment */}
 							<table className="table">
 								<thead>
 									<tr>
 										<th>Field</th>
 										<th style={{ width: 130 }}>Status</th>
+										<th>Comment</th>
 									</tr>
 								</thead>
 								<tbody>
 									{EQUIP_FIELDS.map(([field, label]) => (
 										<tr key={field}>
 											<td>{label}</td>
+
+											{/* Status cell */}
 											<td>
 												<button
 													onClick={() =>
@@ -623,33 +627,19 @@ export default function CheckPage() {
 														: "Mark True"}
 												</button>
 											</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
 
-							<h4>Equipment Comments</h4>
-							<table className="table">
-								<thead>
-									<tr>
-										<th>Field</th>
-										<th>Comment</th>
-									</tr>
-								</thead>
-								<tbody>
-									{EQUIP_FIELDS.map(([field, label]) => (
-										<tr key={field}>
-											<td>{label}</td>
+											{/* Comment cell with +/− toggle */}
 											<td>
 												<div
 													style={{
 														display: "flex",
-														gap: 8,
 														alignItems: "center",
+														gap: 8,
 														flexWrap: "wrap",
 													}}
 												>
 													<button
+														className="toggle-comment"
 														type="button"
 														onClick={() =>
 															setECmtOpen(
@@ -662,11 +652,17 @@ export default function CheckPage() {
 																})
 															)
 														}
+														aria-label={
+															eCmtOpen[field]
+																? `Hide comment for ${label}`
+																: `Show comment for ${label}`
+														}
 													>
 														{eCmtOpen[field]
-															? "Hide"
-															: "Add/Show"}
+															? "−"
+															: "+"}
 													</button>
+
 													{eCmtOpen[field] && (
 														<div
 															style={{
