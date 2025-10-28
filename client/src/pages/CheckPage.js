@@ -462,14 +462,26 @@ export default function CheckPage() {
 							<tr key={field}>
 								<td>{label}</td>
 								<td>
-									<button
-										onClick={() => toggleField(field)}
-										disabled={saving[field] || bulkSaving}
+									<label
+										style={{
+											display: "inline-flex",
+											alignItems: "center",
+											gap: 8,
+										}}
 									>
-										{check[field]
-											? "✓ True (click to clear)"
-											: "Mark True"}
-									</button>
+										<input
+											type="checkbox"
+											checked={!!check[field]}
+											onChange={() => toggleField(field)}
+											disabled={
+												saving[field] || bulkSaving
+											}
+											aria-label={`Toggle ${label}`}
+										/>
+										<span>
+											{check[field] ? "True" : "False"}
+										</span>
+									</label>
 								</td>
 								<td>
 									<div
