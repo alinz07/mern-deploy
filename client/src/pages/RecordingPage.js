@@ -65,8 +65,10 @@ function RecordingCard({
 	dayId,
 	userId,
 	monthId,
-	initialDoc, // may be null for a brand-new unsaved card
-	onChanged, // callback to refresh list when something persisted/deleted
+	initialDoc,
+	onChanged,
+	localKey,
+	onSavedLocal,
 }) {
 	const [doc, setDoc] = useState(initialDoc); // server doc (may be null/undefined until saved)
 	const [msg, setMsg] = useState("");
@@ -108,6 +110,7 @@ function RecordingCard({
 			teacher.clear();
 			student.clear();
 			onChanged?.();
+			onSavedLocal?.(localKey);
 		} catch (e) {
 			setMsg(e?.response?.data?.msg || "Save failed");
 		}
@@ -191,14 +194,6 @@ function RecordingCard({
 				<strong>
 					Recording {hasId ? `#${doc._id.slice(-6)}` : "(new)"}
 				</strong>
-				{monthId && (
-					<Link
-						to={`/check?month=${monthId}&day=${dayId}&user=${userId}`}
-						style={{ marginLeft: "auto" }}
-					>
-						← Back to Check
-					</Link>
-				)}
 			</div>
 
 			{/* Controls */}
@@ -339,7 +334,9 @@ export default function RecordingPage() {
 				<button onClick={addNewCard}>+ Add new recording</button>
 				{monthId && (
 					<Link
-						to={`/check?month=${monthId}&day=${dayId}&user=${userId}`}
+						to={`/check/${dayId}?monthId=${monthId || ""}&userId=${
+							userId || ""
+						}`}
 						style={{ marginLeft: "auto" }}
 					>
 						← Back to Check
@@ -355,6 +352,13 @@ export default function RecordingPage() {
 					monthId={monthId}
 					initialDoc={null}
 					onChanged={onAnyChanged}
+					localKey={u.__localKey}
+					onSavedLocal={(key) => {
+						// remove this placeholder
+						setUnsaved((arr) =>
+							arr.filter((x) => x.__localKey !== key)
+						);
+					}}
 				/>
 			))}
 

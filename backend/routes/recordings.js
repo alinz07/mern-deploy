@@ -375,4 +375,38 @@ router.get("/:id/csv", auth, async (req, res) => {
 	}
 });
 
+// DELETE /api/recordings/:id  (delete doc + any GridFS audio)
+router.delete("/:id", auth, async (req, res) => {
+	try {
+		const { id } = req.params;
+		if (!mongoose.isValidObjectId(id))
+			return res.status(400).json({ msg: "Invalid id" });
+
+		const rec = await Recording.findById(id);
+		if (!rec) return res.status(404).json({ msg: "Recording not found" });
+
+		// permissions: owner or admin (same as other routes)
+		if (req.user.role !== "admin" && String(rec.user) !== req.user.id) {
+			return res.status(403).json({ msg: "Forbidden" });
+		}
+
+		const bucket = getBucket();
+		const toDelete = [rec.teacherFileId, rec.studentFileId].filter(Boolean);
+		await Promise.all(
+			toDelete.map(
+				(fid) =>
+					new Promise((resolve) => {
+						bucket.delete(fid, () => resolve()); // ignore not-found errors
+					})
+			)
+		);
+
+		await rec.deleteOne();
+		return res.json({ ok: true, id });
+	} catch (e) {
+		console.error("DELETE /api/recordings/:id error", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
+
 module.exports = router;
