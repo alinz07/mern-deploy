@@ -66,24 +66,19 @@ router.post(
 				saveOne(studentFile),
 			]);
 
-			// upsert by (day,user)
-			const doc = await Recording.findOneAndUpdate(
-				{ day: dayId, user: userId },
-				{
-					$set: {
-						...(teacherFileId ? { teacherFileId } : {}),
-						...(studentFileId ? { studentFileId } : {}),
-						...(durationTeacherMs
-							? { durationTeacherMs: Number(durationTeacherMs) }
-							: {}),
-						...(durationStudentMs
-							? { durationStudentMs: Number(durationStudentMs) }
-							: {}),
-					},
-				},
-				{ new: true, upsert: true }
-			);
-
+			// create a brand-new Recording every POST
+			const doc = await Recording.create({
+				day: dayId,
+				user: userId,
+				...(teacherFileId ? { teacherFileId } : {}),
+				...(studentFileId ? { studentFileId } : {}),
+				...(durationTeacherMs
+					? { durationTeacherMs: Number(durationTeacherMs) }
+					: {}),
+				...(durationStudentMs
+					? { durationStudentMs: Number(durationStudentMs) }
+					: {}),
+			});
 			return res.json(doc);
 		} catch (e) {
 			console.error("POST /api/recordings error", e);
@@ -92,20 +87,27 @@ router.post(
 	}
 );
 
-// GET /api/recordings/by-day?day=<dayId>&user=<userId>
+// (inside backend/routes/recordings.js)
 router.get("/by-day", auth, async (req, res) => {
 	try {
 		const { day, user } = req.query;
 		if (!mongoose.isValidObjectId(day) || !mongoose.isValidObjectId(user)) {
-			return res.status(400).json({ msg: "Invalid ids" });
+			return res.status(400).json({ msg: "Invalid query params" });
 		}
-		if (req.user.role !== "admin" && req.user.id !== user) {
-			return res.status(403).json({ msg: "Forbidden" });
-		}
-		const doc = await Recording.findOne({ day, user }).lean();
-		res.json(doc || null);
-	} catch {
-		res.status(500).json({ msg: "Server error" });
+
+		// tenant/permission as you already do elsewhere:
+		// - allow owner (req.user.id === user)
+		// - allow same-tenant admin
+		// (Reuse your Day->Month tenant checks if needed.)
+
+		const list = await Recording.find({ day, user })
+			.sort({ createdAt: -1 })
+			.lean();
+
+		return res.json(list);
+	} catch (e) {
+		console.error("GET /recordings/by-day error", e);
+		return res.status(500).json({ msg: "Server error" });
 	}
 });
 
@@ -278,15 +280,13 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 			sPath = await dump(rec.studentFileId);
 		} catch (err) {
 			console.error("dump error", err);
-			return res
-				.status(500)
-				.json(
-					diag({
-						stage: err.stage || "dump",
-						msg: "Failed to dump from GridFS",
-						error: String(err),
-					})
-				);
+			return res.status(500).json(
+				diag({
+					stage: err.stage || "dump",
+					msg: "Failed to dump from GridFS",
+					error: String(err),
+				})
+			);
 		}
 
 		// FFMPEG

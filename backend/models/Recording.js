@@ -38,7 +38,4 @@ const RecordingSchema = new mongoose.Schema(
 	{ timestamps: true }
 );
 
-// unique: one recording object per (day, user)
-RecordingSchema.index({ day: 1, user: 1 }, { unique: true });
-
 module.exports = mongoose.model("Recording", RecordingSchema);
