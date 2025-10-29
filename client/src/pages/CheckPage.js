@@ -613,19 +613,34 @@ export default function CheckPage() {
 											<td>{label}</td>
 
 											{/* Status cell */}
+											{/* Status cell (checkbox, like the left side) */}
 											<td>
-												<button
-													onClick={() =>
-														toggleEquip(field)
-													}
-													disabled={
-														equipSaving[field]
-													}
+												<label
+													style={{
+														display: "inline-flex",
+														alignItems: "center",
+														gap: 8,
+													}}
 												>
-													{echeck[field]
-														? "✓ True (click to clear)"
-														: "Mark True"}
-												</button>
+													<input
+														type="checkbox"
+														checked={
+															!!echeck[field]
+														}
+														onChange={() =>
+															toggleEquip(field)
+														}
+														disabled={
+															equipSaving[field]
+														}
+														aria-label={`Toggle ${label}`}
+													/>
+													<span>
+														{echeck[field]
+															? "True"
+															: "False"}
+													</span>
+												</label>
 											</td>
 
 											{/* Comment cell with +/− toggle */}
