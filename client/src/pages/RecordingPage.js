@@ -208,6 +208,13 @@ function RecordingCard({
 
 	const hasId = !!doc?._id;
 
+	// If this card represented a saved recording that has now been deleted,
+	// and it is not one of the local "unsaved" cards (which have localKey),
+	// stop rendering it.
+	if (!hasId && !localKey) {
+		return null;
+	}
+
 	return (
 		<div
 			style={{
@@ -217,13 +224,13 @@ function RecordingCard({
 				marginBottom: 12,
 			}}
 		>
+			{" "}
 			{/* Header */}
 			<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 				<strong>
 					Recording {hasId ? `#${doc._id.slice(-6)}` : "(new)"}
 				</strong>
 			</div>
-
 			{/* Controls */}
 			<div
 				style={{
@@ -291,7 +298,6 @@ function RecordingCard({
 					<div>IPA: {doc?.studentIPA ?? "—"}</div>
 				</div>
 			</div>
-
 			{/* Actions */}
 			<div style={{ display: "flex", gap: 8, marginTop: 10 }}>
 				<button
@@ -313,7 +319,6 @@ function RecordingCard({
 					{hasId ? "Delete Recording" : "Discard"}
 				</button>
 			</div>
-
 			{!!msg && <div style={{ marginTop: 8, opacity: 0.8 }}>{msg}</div>}
 		</div>
 	);
