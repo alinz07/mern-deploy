@@ -97,14 +97,14 @@ function RecordingCard({
 
 			// For brand-new card: create new Recording document.
 			// (If you ever want to support “replace on existing id”, you can post to /:id/uploads)
-			const { data } = await axios.post(`${API}/api/recordings`, fd, {
-				...tokenHeader(),
-				headers: {
-					...tokenHeader().headers,
-					"Content-Type": "multipart/form-data",
-				},
-			});
-
+			const { data } = await axios.post(
+				`${API}/api/recordings/${doc._id}/transcribe`,
+				{},
+				tokenHeader()
+			);
+			setDoc(data); // use full updated doc
+			setMsg("Transcribed.");
+			onChanged?.();
 			setDoc(data); // expect the server to return the created Recording
 			setMsg("Upload saved.");
 			teacher.clear();
@@ -334,9 +334,9 @@ export default function RecordingPage() {
 				<button onClick={addNewCard}>+ Add new recording</button>
 				{monthId && (
 					<Link
-						to={`/check/${dayId}?monthId=${monthId || ""}&userId=${
-							userId || ""
-						}`}
+						to={`/days/${dayId}/check?monthId=${
+							monthId || ""
+						}&userId=${userId || ""}`}
 						style={{ marginLeft: "auto" }}
 					>
 						← Back to Check
