@@ -195,9 +195,11 @@ function RecordingCard({
 				res.status,
 				res.data
 			);
+
+			const deletedId = doc._id;
 			setDoc(null);
 			setMsg("Deleted.");
-			onChanged?.();
+			onChanged?.(deletedId);
 		} catch (e) {
 			console.error("[RecordingCard] delete error", e);
 			setMsg(e?.response?.data?.msg || "Delete failed");
@@ -352,8 +354,16 @@ export default function RecordingPage() {
 		setUnsaved((arr) => [...arr, { __localKey: crypto.randomUUID() }]);
 	};
 
-	const onAnyChanged = () => {
-		load();
+	const onAnyChanged = (deletedId) => {
+		if (deletedId) {
+			// Optimistically remove the deleted recording from the list
+			setList((prev) => prev.filter((r) => r._id !== deletedId));
+			// We can skip load() here, or keep it if you want to re-sync:
+			// load();
+		} else {
+			// For actions like save or transcribe, just reload from server
+			load();
+		}
 	};
 
 	return (
