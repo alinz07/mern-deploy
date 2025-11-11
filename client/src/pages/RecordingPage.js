@@ -85,50 +85,67 @@ function RecordingCard({
 				setMsg("Please record teacher and/or student first.");
 				return;
 			}
+
+			console.log("[RecordingCard] saveUpload start", {
+				dayId,
+				userId,
+				hasTeacher: !!teacher.blob,
+				hasStudent: !!student.blob,
+			});
+
 			const fd = new FormData();
 			fd.append("dayId", dayId);
 			fd.append("userId", userId);
 			fd.append("durationTeacherMs", String(teacher.durationMs || 0));
 			fd.append("durationStudentMs", String(student.durationMs || 0));
-			if (teacher.blob)
+			if (teacher.blob) {
 				fd.append("teacher", teacher.blob, "teacher.webm");
-			if (student.blob)
+			}
+			if (student.blob) {
 				fd.append("student", student.blob, "student.webm");
+			}
 
-			// For brand-new card: create new Recording document.
-			// (If you ever want to support “replace on existing id”, you can post to /:id/uploads)
-			const { data } = await axios.post(
-				`${API}/api/recordings/${doc._id}/transcribe`,
-				{},
-				tokenHeader()
-			);
-			setDoc(data); // use full updated doc
-			setMsg("Transcribed.");
-			onChanged?.();
-			setDoc(data); // expect the server to return the created Recording
+			const { data } = await axios.post(`${API}/api/recordings`, fd, {
+				...tokenHeader(),
+				headers: {
+					...tokenHeader().headers,
+					// let browser set boundary, but be explicit for clarity
+					"Content-Type": "multipart/form-data",
+				},
+			});
+
+			console.log("[RecordingCard] saveUpload success", data);
+
+			setDoc(data);
 			setMsg("Upload saved.");
 			teacher.clear();
 			student.clear();
 			onChanged?.();
 			onSavedLocal?.(localKey);
 		} catch (e) {
+			console.error("[RecordingCard] saveUpload error", e);
 			setMsg(e?.response?.data?.msg || "Save failed");
 		}
 	};
 
 	const transcribe = async () => {
-		if (!doc?._id) return setMsg("Save the upload first.");
+		if (!doc?._id) {
+			setMsg("Save the upload first.");
+			return;
+		}
 		try {
+			console.log("[RecordingCard] transcribe start", doc._id);
 			const { data } = await axios.post(
 				`${API}/api/recordings/${doc._id}/transcribe`,
 				{},
 				tokenHeader()
 			);
-			// optimistic: update text fields if server returns them
-			setDoc((d) => ({ ...d, ...data?.saved }));
+			console.log("[RecordingCard] transcribe success", data);
+			setDoc(data); // backend returns full updated Recording
 			setMsg("Transcribed.");
 			onChanged?.();
 		} catch (e) {
+			console.error("[RecordingCard] transcribe error", e);
 			setMsg(e?.response?.data?.msg || "Transcribe failed");
 		}
 	};
@@ -153,7 +170,7 @@ function RecordingCard({
 
 	const deleteRecording = async () => {
 		if (!doc?._id) {
-			// brand-new unsaved card: just clear UI
+			console.log("[RecordingCard] discard unsaved card", localKey);
 			teacher.clear();
 			student.clear();
 			setDoc(null);
@@ -165,15 +182,24 @@ function RecordingCard({
 			"Delete this recording (audio + transcript)?"
 		);
 		if (!ok) return;
+
 		try {
-			await axios.delete(
+			console.log("[RecordingCard] delete start", doc._id);
+			const res = await axios.delete(
 				`${API}/api/recordings/${doc._id}`,
 				tokenHeader()
+			);
+			console.log(
+				"[RecordingCard] delete success",
+				doc._id,
+				res.status,
+				res.data
 			);
 			setDoc(null);
 			setMsg("Deleted.");
 			onChanged?.();
 		} catch (e) {
+			console.error("[RecordingCard] delete error", e);
 			setMsg(e?.response?.data?.msg || "Delete failed");
 		}
 	};
@@ -304,12 +330,15 @@ export default function RecordingPage() {
 
 	const load = async () => {
 		try {
+			console.log("[RecordingPage] load start", { dayId, userId });
 			const { data } = await axios.get(
 				`${API}/api/recordings/by-day?day=${dayId}&user=${userId}`,
 				tokenHeader()
 			);
+			console.log("[RecordingPage] load success", data);
 			setList(Array.isArray(data) ? data : data ? [data] : []);
 		} catch (e) {
+			console.error("[RecordingPage] load error", e);
 			setMsg(e?.response?.data?.msg || "Failed to load recordings");
 		}
 	};

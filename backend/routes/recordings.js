@@ -8,6 +8,8 @@ const auth = require("../middleware/auth");
 const Recording = require("../models/Recording");
 const Day = require("../models/Day");
 
+console.log("[recordings.js] routes module loaded");
+
 // ---- storage helpers ----
 function getBucket() {
 	return new GridFSBucket(mongoose.connection.db, { bucketName: "audio" });
@@ -126,7 +128,7 @@ router.get("/file/:id", auth, async (req, res) => {
 	}
 });
 
-// POST /api/recordings/:id/transcribe   (run faster-whisper -> phonemizer; save IPA + text)
+// POST /api/:id/transcribe   (run faster-whisper -> phonemizer; save IPA + text)
 router.post("/:id/transcribe", auth, async (req, res) => {
 	const startedAt = Date.now();
 	const memAtStart = process.memoryUsage();
@@ -376,46 +378,61 @@ router.get("/:id/csv", auth, async (req, res) => {
 });
 
 // DELETE /api/recordings/:id  (delete doc + any GridFS audio)
+// DELETE /api/recordings/:id  (delete doc + any GridFS audio)
 router.delete("/:id", auth, async (req, res) => {
-	console.log("DELETE /api/recordings/:id", req.params.id, "by", req.user.id);
+	console.log(
+		"[recordings.js] DELETE hit",
+		"params.id=",
+		req.params.id,
+		"user.id=",
+		req.user && req.user.id,
+		"role=",
+		req.user && req.user.role
+	);
 
 	try {
 		const { id } = req.params;
 
 		if (!mongoose.isValidObjectId(id)) {
-			console.log("DELETE recording: invalid id");
+			console.log("[recordings.js] invalid id:", id);
 			return res.status(400).json({ msg: "Invalid id" });
 		}
 
 		const rec = await Recording.findById(id);
 		if (!rec) {
-			console.log("DELETE recording: not found", id);
+			console.log("[recordings.js] not found:", id);
 			return res.status(404).json({ msg: "Recording not found" });
 		}
 
-		// Permissions: owner or admin (same pattern as your other routes)
+		// Permissions: owner or admin
 		if (
 			req.user.role !== "admin" &&
 			String(rec.user) !== String(req.user.id)
 		) {
 			console.log(
-				"DELETE recording: forbidden for user",
+				"[recordings.js] forbidden delete",
+				"requester=",
 				req.user.id,
-				"owner is",
+				"owner=",
 				String(rec.user)
 			);
 			return res.status(403).json({ msg: "Forbidden" });
 		}
 
-		// 1) Delete the Recording document first (this is the important part)
+		// Delete doc first
 		await Recording.deleteOne({ _id: id });
-		console.log("DELETE recording: doc deleted", id);
+		console.log("[recordings.js] doc deleted", id);
 
-		// 2) Best-effort delete of any audio files; NEVER let this throw
+		// Best-effort GridFS cleanup
 		try {
 			const bucket = getBucket();
 			const fileIds = [rec.teacherFileId, rec.studentFileId].filter(
 				Boolean
+			);
+
+			console.log(
+				"[recordings.js] attempting GridFS delete for fileIds=",
+				fileIds.map((f) => String(f))
 			);
 
 			for (const fid of fileIds) {
@@ -429,7 +446,7 @@ router.delete("/:id", auth, async (req, res) => {
 						bucket.delete(oid, (err) => {
 							if (err) {
 								console.error(
-									"GridFS delete error for recording file",
+									"[recordings.js] GridFS delete error",
 									String(oid),
 									err.message
 								);
@@ -439,20 +456,23 @@ router.delete("/:id", auth, async (req, res) => {
 					});
 				} catch (err) {
 					console.error(
-						"GridFS delete exception for recording file",
+						"[recordings.js] GridFS delete exception",
 						String(fid),
 						err.message
 					);
 				}
 			}
 		} catch (err) {
-			console.error("GridFS delete setup/connection error", err.message);
-			// swallow: doc is already gone; don't break response
+			console.error(
+				"[recordings.js] GridFS delete setup error",
+				err.message
+			);
 		}
 
+		console.log("[recordings.js] DELETE success", id);
 		return res.json({ ok: true, id });
 	} catch (e) {
-		console.error("DELETE /api/recordings/:id fatal", e);
+		console.error("[recordings.js] DELETE fatal error", e);
 		return res.status(500).json({ msg: "Server error" });
 	}
 });
