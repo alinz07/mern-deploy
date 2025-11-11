@@ -170,14 +170,16 @@ function RecordingCard({
 
 	const deleteRecording = async () => {
 		if (!doc?._id) {
+			// Unsaved placeholder: just clear it locally
 			console.log("[RecordingCard] discard unsaved card", localKey);
 			teacher.clear();
 			student.clear();
 			setDoc(null);
 			setMsg("Discarded unsaved recording.");
-			onChanged?.();
+			onChanged?.(); // no id: parent can choose to reload if it wants
 			return;
 		}
+
 		const ok = window.confirm(
 			"Delete this recording (audio + transcript)?"
 		);
@@ -196,10 +198,12 @@ function RecordingCard({
 				res.data
 			);
 
-			const deletedId = doc._id;
-			setDoc(null);
-			setMsg("Deleted.");
-			onChanged?.(deletedId);
+			// IMPORTANT: do NOT setDoc(null) for saved cards.
+			// Just tell the parent which id to remove.
+			onChanged?.(doc._id);
+
+			// Optional: local message, but it won't be seen once unmounted
+			// setMsg("Deleted.");
 		} catch (e) {
 			console.error("[RecordingCard] delete error", e);
 			setMsg(e?.response?.data?.msg || "Delete failed");
