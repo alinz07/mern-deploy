@@ -69,19 +69,19 @@ router.post(
 			]);
 
 			// create a brand-new Recording every POST
-			const doc = await Recording.create({
+			const rec = await Recording.create({
 				day: dayId,
 				user: userId,
 				...(teacherFileId ? { teacherFileId } : {}),
 				...(studentFileId ? { studentFileId } : {}),
-				...(durationTeacherMs
-					? { durationTeacherMs: Number(durationTeacherMs) }
+				...(req.body.durationTeacherMs
+					? { durationTeacherMs: Number(req.body.durationTeacherMs) }
 					: {}),
-				...(durationStudentMs
-					? { durationStudentMs: Number(durationStudentMs) }
+				...(req.body.durationStudentMs
+					? { durationStudentMs: Number(req.body.durationStudentMs) }
 					: {}),
 			});
-			return res.json(doc);
+			return res.json(rec);
 		} catch (e) {
 			console.error("POST /api/recordings error", e);
 			return res.status(500).json({ msg: "Server error" });
@@ -127,6 +127,103 @@ router.get("/file/:id", auth, async (req, res) => {
 		res.status(500).end();
 	}
 });
+
+// POST /api/recordings/:id/upload
+// Replace teacher and/or student audio on an existing Recording.
+// Also updates durationTeacherMs / durationStudentMs if provided.
+router.post(
+	"/:id/upload",
+	auth,
+	upload.fields([{ name: "teacher" }, { name: "student" }]),
+	async (req, res) => {
+		try {
+			const { id } = req.params;
+			if (!mongoose.isValidObjectId(id)) {
+				return res.status(400).json({ msg: "Invalid id" });
+			}
+
+			const rec = await Recording.findById(id);
+			if (!rec)
+				return res.status(404).json({ msg: "Recording not found" });
+
+			// Permissions: owner or admin (match your other routes)
+			if (
+				req.user.role !== "admin" &&
+				String(rec.user) !== String(req.user.id)
+			) {
+				return res.status(403).json({ msg: "Forbidden" });
+			}
+
+			const bucket = getBucket();
+
+			// tiny helper to delete old file (best-effort) and upload a new one
+			const replaceOne = async (oldId, file, defaultName) => {
+				if (!file) return oldId; // nothing to replace
+				// 1) best-effort delete old gridfs file
+				if (oldId) {
+					try {
+						await new Promise((resolve) => {
+							bucket.delete(
+								typeof oldId === "string"
+									? new mongoose.Types.ObjectId(oldId)
+									: oldId,
+								() => resolve()
+							);
+						});
+					} catch (err) {
+						console.error(
+							"[recordings/:id/upload] GridFS delete error",
+							String(oldId),
+							err?.message || err
+						);
+					}
+				}
+				// 2) upload new file, return its id
+				const stream = bucket.openUploadStream(
+					file.originalname || defaultName,
+					{
+						contentType: file.mimetype || "audio/webm",
+					}
+				);
+				await new Promise((resolve, reject) => {
+					stream.end(file.buffer, (err) =>
+						err ? reject(err) : resolve()
+					);
+				});
+				return stream.id;
+			};
+
+			const teacherFile = req.files?.teacher?.[0] || null;
+			const studentFile = req.files?.student?.[0] || null;
+
+			// replace whichever sides were provided
+			rec.teacherFileId = await replaceOne(
+				rec.teacherFileId,
+				teacherFile,
+				"teacher.webm"
+			);
+			rec.studentFileId = await replaceOne(
+				rec.studentFileId,
+				studentFile,
+				"student.webm"
+			);
+
+			// optional durations from client
+			if (req.body.durationTeacherMs) {
+				rec.durationTeacherMs = Number(req.body.durationTeacherMs);
+			}
+			if (req.body.durationStudentMs) {
+				rec.durationStudentMs = Number(req.body.durationStudentMs);
+			}
+
+			await rec.save();
+			return res.json(rec);
+		} catch (e) {
+			console.error("POST /api/recordings/:id/upload error", e);
+			return res.status(500).json({ msg: "Server error" });
+		}
+	}
+);
 
 // POST /api/:id/transcribe   (run faster-whisper -> phonemizer; save IPA + text)
 router.post("/:id/transcribe", auth, async (req, res) => {

@@ -61,6 +61,9 @@ function useSideRecorder() {
 }
 
 // ------- a single Recording card -------
+// --- inside RecordingPage.js ---
+// ...imports stay the same
+
 function RecordingCard({
 	dayId,
 	userId,
@@ -70,15 +73,15 @@ function RecordingCard({
 	localKey,
 	onSavedLocal,
 }) {
-	const [doc, setDoc] = useState(initialDoc); // server doc (may be null/undefined until saved)
+	const [doc, setDoc] = useState(initialDoc);
 	const [msg, setMsg] = useState("");
 
 	const teacher = useSideRecorder();
 	const student = useSideRecorder();
 
-	// If this card represents an existing doc, we don’t auto-load its audio (GridFS streaming)
-	// The UI keeps it simple: show durations when recorded now; otherwise just show text fields.
+	const hasId = !!doc?._id;
 
+	// helper: build endpoint + form data depending on new vs replace
 	const saveUpload = async () => {
 		try {
 			if (!teacher.blob && !student.blob) {
@@ -86,42 +89,41 @@ function RecordingCard({
 				return;
 			}
 
-			console.log("[RecordingCard] saveUpload start", {
-				dayId,
-				userId,
-				hasTeacher: !!teacher.blob,
-				hasStudent: !!student.blob,
-			});
-
 			const fd = new FormData();
-			fd.append("dayId", dayId);
-			fd.append("userId", userId);
+			if (!hasId) {
+				// CREATE new
+				fd.append("dayId", dayId);
+				fd.append("userId", userId);
+			}
+			// durations (send on both create & replace)
 			fd.append("durationTeacherMs", String(teacher.durationMs || 0));
 			fd.append("durationStudentMs", String(student.durationMs || 0));
-			if (teacher.blob) {
-				fd.append("teacher", teacher.blob, "teacher.webm");
-			}
-			if (student.blob) {
-				fd.append("student", student.blob, "student.webm");
-			}
 
-			const { data } = await axios.post(`${API}/api/recordings`, fd, {
+			if (teacher.blob)
+				fd.append("teacher", teacher.blob, "teacher.webm");
+			if (student.blob)
+				fd.append("student", student.blob, "student.webm");
+
+			const url = hasId
+				? `${API}/api/recordings/${doc._id}/upload` // REPLACE existing
+				: `${API}/api/recordings`; // CREATE new
+
+			const { data } = await axios.post(url, fd, {
 				...tokenHeader(),
 				headers: {
 					...tokenHeader().headers,
-					// let browser set boundary, but be explicit for clarity
 					"Content-Type": "multipart/form-data",
 				},
 			});
 
-			console.log("[RecordingCard] saveUpload success", data);
-
 			setDoc(data);
-			setMsg("Upload saved.");
+			setMsg(hasId ? "Replaced audio." : "Upload saved.");
 			teacher.clear();
 			student.clear();
+
+			// Notify parent: reload list (or remove the placeholder if it was unsaved)
+			if (!hasId) onSavedLocal?.(localKey);
 			onChanged?.();
-			onSavedLocal?.(localKey);
 		} catch (e) {
 			console.error("[RecordingCard] saveUpload error", e);
 			setMsg(e?.response?.data?.msg || "Save failed");
@@ -129,23 +131,17 @@ function RecordingCard({
 	};
 
 	const transcribe = async () => {
-		if (!doc?._id) {
-			setMsg("Save the upload first.");
-			return;
-		}
+		if (!doc?._id) return setMsg("Save the upload first.");
 		try {
-			console.log("[RecordingCard] transcribe start", doc._id);
 			const { data } = await axios.post(
 				`${API}/api/recordings/${doc._id}/transcribe`,
 				{},
 				tokenHeader()
 			);
-			console.log("[RecordingCard] transcribe success", data);
-			setDoc(data); // backend returns full updated Recording
+			setDoc(data);
 			setMsg("Transcribed.");
 			onChanged?.();
 		} catch (e) {
-			console.error("[RecordingCard] transcribe error", e);
 			setMsg(e?.response?.data?.msg || "Transcribe failed");
 		}
 	};
@@ -170,54 +166,51 @@ function RecordingCard({
 
 	const deleteRecording = async () => {
 		if (!doc?._id) {
-			// Unsaved placeholder: just clear it locally
-			console.log("[RecordingCard] discard unsaved card", localKey);
+			// Unsaved placeholder: just clear locally
 			teacher.clear();
 			student.clear();
 			setDoc(null);
 			setMsg("Discarded unsaved recording.");
-			onChanged?.(); // no id: parent can choose to reload if it wants
+			onChanged?.();
 			return;
 		}
-
 		const ok = window.confirm(
 			"Delete this recording (audio + transcript)?"
 		);
 		if (!ok) return;
-
 		try {
-			console.log("[RecordingCard] delete start", doc._id);
-			const res = await axios.delete(
+			await axios.delete(
 				`${API}/api/recordings/${doc._id}`,
 				tokenHeader()
 			);
-			console.log(
-				"[RecordingCard] delete success",
-				doc._id,
-				res.status,
-				res.data
-			);
-
-			// IMPORTANT: do NOT setDoc(null) for saved cards.
-			// Just tell the parent which id to remove.
-			onChanged?.(doc._id);
-
-			// Optional: local message, but it won't be seen once unmounted
-			// setMsg("Deleted.");
+			onChanged?.(doc._id); // parent removes from list
 		} catch (e) {
-			console.error("[RecordingCard] delete error", e);
 			setMsg(e?.response?.data?.msg || "Delete failed");
 		}
 	};
 
-	const hasId = !!doc?._id;
+	const teacherDurationMs = doc?.durationTeacherMs ?? teacher.durationMs ?? 0;
+	const studentDurationMs = doc?.durationStudentMs ?? student.durationMs ?? 0;
 
-	// If this card represented a saved recording that has now been deleted,
-	// and it is not one of the local "unsaved" cards (which have localKey),
-	// stop rendering it.
 	if (!hasId && !localKey) {
+		// saved item deleted -> unmount
 		return null;
 	}
+
+	// label shows "Record" for new cards, "Record again" for saved ones
+	const teacherLabel =
+		teacher.status !== "recording"
+			? hasId
+				? "Record again"
+				: "Record"
+			: "Stop";
+
+	const studentLabel =
+		student.status !== "recording"
+			? hasId
+				? "Record again"
+				: "Record"
+			: "Stop";
 
 	return (
 		<div
@@ -228,14 +221,12 @@ function RecordingCard({
 				marginBottom: 12,
 			}}
 		>
-			{" "}
-			{/* Header */}
 			<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 				<strong>
 					Recording {hasId ? `#${doc._id.slice(-6)}` : "(new)"}
 				</strong>
 			</div>
-			{/* Controls */}
+
 			<div
 				style={{
 					marginTop: 8,
@@ -257,9 +248,13 @@ function RecordingCard({
 					</div>
 					<div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
 						{teacher.status !== "recording" ? (
-							<button onClick={teacher.start}>Record</button>
+							<button onClick={teacher.start}>
+								{teacherLabel}
+							</button>
 						) : (
-							<button onClick={teacher.stop}>Stop</button>
+							<button onClick={teacher.stop}>
+								{teacherLabel}
+							</button>
 						)}
 						<button
 							onClick={teacher.clear}
@@ -267,8 +262,18 @@ function RecordingCard({
 						>
 							Clear
 						</button>
-						<span>Duration: {formatMs(teacher.durationMs)}</span>
+						<span>Duration: {formatMs(teacherDurationMs)}</span>
 					</div>
+
+					{/* Playback if saved */}
+					{doc?.teacherFileId && (
+						<audio
+							controls
+							src={`${API}/api/recordings/file/${doc.teacherFileId}`}
+							style={{ marginTop: 6, width: "100%" }}
+						/>
+					)}
+
 					<div>Text: {doc?.teacherText ?? "—"}</div>
 					<div>IPA: {doc?.teacherIPA ?? "—"}</div>
 				</div>
@@ -286,9 +291,13 @@ function RecordingCard({
 					</div>
 					<div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
 						{student.status !== "recording" ? (
-							<button onClick={student.start}>Record</button>
+							<button onClick={student.start}>
+								{studentLabel}
+							</button>
 						) : (
-							<button onClick={student.stop}>Stop</button>
+							<button onClick={student.stop}>
+								{studentLabel}
+							</button>
 						)}
 						<button
 							onClick={student.clear}
@@ -296,19 +305,34 @@ function RecordingCard({
 						>
 							Clear
 						</button>
-						<span>Duration: {formatMs(student.durationMs)}</span>
+						<span>Duration: {formatMs(studentDurationMs)}</span>
 					</div>
+
+					{/* Playback if saved */}
+					{doc?.studentFileId && (
+						<audio
+							controls
+							src={`${API}/api/recordings/file/${doc.studentFileId}`}
+							style={{ marginTop: 6, width: "100%" }}
+						/>
+					)}
+
 					<div>Text: {doc?.studentText ?? "—"}</div>
 					<div>IPA: {doc?.studentIPA ?? "—"}</div>
 				</div>
 			</div>
-			{/* Actions */}
+
 			<div style={{ display: "flex", gap: 8, marginTop: 10 }}>
 				<button
 					onClick={saveUpload}
 					disabled={!teacher.blob && !student.blob}
+					title={
+						hasId
+							? "Replace audio on this record"
+							: "Create a new recording"
+					}
 				>
-					Save Upload
+					{hasId ? "Save Replacement" : "Save Upload"}
 				</button>
 				<button onClick={transcribe} disabled={!hasId}>
 					Transcribe to IPA
@@ -323,107 +347,8 @@ function RecordingCard({
 					{hasId ? "Delete Recording" : "Discard"}
 				</button>
 			</div>
+
 			{!!msg && <div style={{ marginTop: 8, opacity: 0.8 }}>{msg}</div>}
-		</div>
-	);
-}
-
-// ------- main page (list of cards) -------
-export default function RecordingPage() {
-	const [params] = useSearchParams();
-	const dayId = params.get("day");
-	const userId = params.get("user");
-	const monthId = params.get("month"); // optional back link
-
-	const [list, setList] = useState([]); // server documents
-	const [unsaved, setUnsaved] = useState([]); // local-only cards (no _id yet)
-	const [msg, setMsg] = useState("");
-
-	const load = async () => {
-		try {
-			console.log("[RecordingPage] load start", { dayId, userId });
-			const { data } = await axios.get(
-				`${API}/api/recordings/by-day?day=${dayId}&user=${userId}`,
-				tokenHeader()
-			);
-			console.log("[RecordingPage] load success", data);
-			setList(Array.isArray(data) ? data : data ? [data] : []);
-		} catch (e) {
-			console.error("[RecordingPage] load error", e);
-			setMsg(e?.response?.data?.msg || "Failed to load recordings");
-		}
-	};
-
-	useEffect(() => {
-		load();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [dayId, userId]);
-
-	const addNewCard = () => {
-		setUnsaved((arr) => [...arr, { __localKey: crypto.randomUUID() }]);
-	};
-
-	const onAnyChanged = (deletedId) => {
-		if (deletedId) {
-			// Optimistically remove the deleted recording from the list
-			setList((prev) => prev.filter((r) => r._id !== deletedId));
-			// We can skip load() here, or keep it if you want to re-sync:
-			// load();
-		} else {
-			// For actions like save or transcribe, just reload from server
-			load();
-		}
-	};
-
-	return (
-		<div style={{ maxWidth: 900, margin: "0 auto", padding: 16 }}>
-			<h2>Recordings</h2>
-			<div style={{ marginBottom: 12, display: "flex", gap: 8 }}>
-				<button onClick={addNewCard}>+ Add new recording</button>
-				{monthId && (
-					<Link
-						to={`/days/${dayId}/check?monthId=${
-							monthId || ""
-						}&userId=${userId || ""}`}
-						style={{ marginLeft: "auto" }}
-					>
-						← Back to Check
-					</Link>
-				)}
-			</div>
-
-			{unsaved.map((u) => (
-				<RecordingCard
-					key={u.__localKey}
-					dayId={dayId}
-					userId={userId}
-					monthId={monthId}
-					initialDoc={null}
-					onChanged={onAnyChanged}
-					localKey={u.__localKey}
-					onSavedLocal={(key) => {
-						// remove this placeholder
-						setUnsaved((arr) =>
-							arr.filter((x) => x.__localKey !== key)
-						);
-					}}
-				/>
-			))}
-
-			{list.map((doc) => (
-				<RecordingCard
-					key={doc._id}
-					dayId={dayId}
-					userId={userId}
-					monthId={monthId}
-					initialDoc={doc}
-					onChanged={onAnyChanged}
-				/>
-			))}
-
-			{!!msg && (
-				<div style={{ marginTop: 12, color: "salmon" }}>{msg}</div>
-			)}
 		</div>
 	);
 }
