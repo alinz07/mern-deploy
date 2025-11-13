@@ -61,9 +61,6 @@ function useSideRecorder() {
 }
 
 // ------- a single Recording card -------
-// --- inside RecordingPage.js ---
-// ...imports stay the same
-
 function RecordingCard({
 	dayId,
 	userId,
@@ -352,3 +349,107 @@ function RecordingCard({
 		</div>
 	);
 }
+
+// -------- PAGE SHELL (list, add, refresh) --------
+function RecordingPage() {
+	const [params] = useSearchParams();
+	const dayId = params.get("day");
+	const userId = params.get("user");
+	const monthId = params.get("month");
+
+	const [items, setItems] = useState([]);
+	const [loading, setLoading] = useState(true);
+	const [locals, setLocals] = useState([]); // unsaved placeholders
+
+	const load = async () => {
+		if (!dayId || !userId) return;
+		try {
+			setLoading(true);
+			const { data } = await axios.get(
+				`${API}/api/recordings/by-day?day=${dayId}&user=${userId}`,
+				tokenHeader()
+			);
+			setItems(data || []);
+		} catch (e) {
+			console.error("load recordings", e);
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		load();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [dayId, userId]);
+
+	const addLocal = () => {
+		const key = `local-${Date.now()}`;
+		setLocals((xs) => [...xs, key]);
+	};
+
+	const onChanged = () => load();
+
+	const onSavedLocal = (localKey) => {
+		// remove the placeholder row once the server returns a saved doc
+		setLocals((xs) => xs.filter((k) => k !== localKey));
+	};
+
+	const removeById = (id) => {
+		setItems((xs) => xs.filter((x) => x._id !== id));
+	};
+
+	return (
+		<div style={{ padding: 16 }}>
+			<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+				<Link
+					to={`/check?month=${monthId}&day=${dayId}&user=${userId}`}
+				>
+					← Back to Check
+				</Link>
+				<h2 style={{ margin: 0 }}>Recordings</h2>
+				<div style={{ marginLeft: "auto" }}>
+					<button onClick={addLocal}>+ Add new recording</button>
+				</div>
+			</div>
+
+			{loading && <div style={{ marginTop: 12 }}>Loading…</div>}
+
+			{/* Unsaved placeholders (locals) */}
+			{locals.map((k) => (
+				<RecordingCard
+					key={k}
+					localKey={k}
+					dayId={dayId}
+					userId={userId}
+					monthId={monthId}
+					onChanged={onChanged}
+					onSavedLocal={onSavedLocal}
+					initialDoc={null}
+				/>
+			))}
+
+			{/* Saved recordings */}
+			{items.map((doc) => (
+				<RecordingCard
+					key={doc._id}
+					dayId={dayId}
+					userId={userId}
+					monthId={monthId}
+					initialDoc={doc}
+					onChanged={(maybeDeletedId) => {
+						if (maybeDeletedId) removeById(maybeDeletedId);
+						else load();
+					}}
+				/>
+			))}
+
+			{!loading && items.length === 0 && locals.length === 0 && (
+				<div style={{ marginTop: 12, opacity: 0.8 }}>
+					No recordings yet. Click “Add new recording” to start.
+				</div>
+			)}
+		</div>
+	);
+}
+
+export default RecordingPage;
