@@ -70,6 +70,43 @@ function RecordingCard({
 	localKey,
 	onSavedLocal,
 }) {
+	const [teacherUrl, setTeacherUrl] = useState(null);
+	const [studentUrl, setStudentUrl] = useState(null);
+
+	useEffect(() => {
+		let revoke = [];
+		async function loadOne(fileId, setter) {
+			if (!fileId) return;
+			try {
+				const res = await axios.get(
+					`${API}/api/recordings/file/${fileId}`,
+					{
+						...tokenHeader(),
+						responseType: "blob",
+					}
+				);
+				const url = URL.createObjectURL(res.data);
+				revoke.push(url);
+				setter(url);
+			} catch (e) {
+				console.warn(
+					"Failed to fetch audio",
+					fileId,
+					e?.response?.status
+				);
+				setter(null);
+			}
+		}
+		setTeacherUrl(null);
+		setStudentUrl(null);
+		loadOne(doc?.teacherFileId, setTeacherUrl);
+		loadOne(doc?.studentFileId, setStudentUrl);
+
+		return () => {
+			revoke.forEach((u) => URL.revokeObjectURL(u));
+		};
+	}, [doc?.teacherFileId, doc?.studentFileId]);
+
 	const [doc, setDoc] = useState(initialDoc);
 	const [msg, setMsg] = useState("");
 
@@ -262,15 +299,14 @@ function RecordingCard({
 						<span>Duration: {formatMs(teacherDurationMs)}</span>
 					</div>
 
-					{/* Playback if saved */}
-					{doc?.teacherFileId && (
+					{/* Playback if saved (fetches blob with auth) */}
+					{doc?.teacherFileId && teacherUrl && (
 						<audio
 							controls
-							src={`${API}/api/recordings/file/${doc.teacherFileId}`}
+							src={teacherUrl}
 							style={{ marginTop: 6, width: "100%" }}
 						/>
 					)}
-
 					<div>Text: {doc?.teacherText ?? "—"}</div>
 					<div>IPA: {doc?.teacherIPA ?? "—"}</div>
 				</div>
@@ -305,15 +341,14 @@ function RecordingCard({
 						<span>Duration: {formatMs(studentDurationMs)}</span>
 					</div>
 
-					{/* Playback if saved */}
-					{doc?.studentFileId && (
+					{/* Playback if saved (fetches blob with auth) */}
+					{doc?.studentFileId && studentUrl && (
 						<audio
 							controls
-							src={`${API}/api/recordings/file/${doc.studentFileId}`}
+							src={studentUrl}
 							style={{ marginTop: 6, width: "100%" }}
 						/>
 					)}
-
 					<div>Text: {doc?.studentText ?? "—"}</div>
 					<div>IPA: {doc?.studentIPA ?? "—"}</div>
 				</div>
