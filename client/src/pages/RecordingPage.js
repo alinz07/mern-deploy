@@ -455,10 +455,12 @@ function RecordingPage() {
 		<div style={{ padding: 16 }}>
 			<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
 				<Link
-					to={`/check?month=${monthId}&day=${dayId}&user=${userId}`}
+					to={`/days/${dayId}/check?month=${monthId || ""}&user=${
+						userId || ""
+					}`}
 				>
 					← Back to Check
-				</Link>
+				</Link>{" "}
 				<h2 style={{ margin: 0 }}>Recordings</h2>
 				<div style={{ marginLeft: "auto" }}>
 					<button onClick={addLocal}>+ Add new recording</button>
