@@ -70,6 +70,9 @@ function RecordingCard({
 	localKey,
 	onSavedLocal,
 }) {
+	const [doc, setDoc] = useState(initialDoc);
+	const [msg, setMsg] = useState("");
+
 	const [teacherUrl, setTeacherUrl] = useState(null);
 	const [studentUrl, setStudentUrl] = useState(null);
 
@@ -106,9 +109,6 @@ function RecordingCard({
 			revoke.forEach((u) => URL.revokeObjectURL(u));
 		};
 	}, [doc?.teacherFileId, doc?.studentFileId]);
-
-	const [doc, setDoc] = useState(initialDoc);
-	const [msg, setMsg] = useState("");
 
 	const teacher = useSideRecorder();
 	const student = useSideRecorder();
