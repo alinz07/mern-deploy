@@ -475,7 +475,6 @@ router.get("/:id/csv", auth, async (req, res) => {
 });
 
 // DELETE /api/recordings/:id  (delete doc + any GridFS audio)
-// DELETE /api/recordings/:id  (delete doc + any GridFS audio)
 router.delete("/:id", auth, async (req, res) => {
 	console.log(
 		"[recordings.js] DELETE hit",
@@ -495,13 +494,12 @@ router.delete("/:id", auth, async (req, res) => {
 			return res.status(400).json({ msg: "Invalid id" });
 		}
 
-		const rec = await Recording.findById(id);
+		const rec = await Recording.findById(id).lean(); // <-- lean so we log plain values
 		if (!rec) {
 			console.log("[recordings.js] not found:", id);
 			return res.status(404).json({ msg: "Recording not found" });
 		}
 
-		// Permissions: owner or admin
 		if (
 			req.user.role !== "admin" &&
 			String(rec.user) !== String(req.user.id)
@@ -516,21 +514,50 @@ router.delete("/:id", auth, async (req, res) => {
 			return res.status(403).json({ msg: "Forbidden" });
 		}
 
-		// Delete doc first
+		// Log exactly what we plan to delete
+		console.log("[recordings.js] will delete files:", {
+			teacherFileId: rec.teacherFileId ? String(rec.teacherFileId) : null,
+			studentFileId: rec.studentFileId ? String(rec.studentFileId) : null,
+		});
+
+		// Delete doc first (your existing behavior)
 		await Recording.deleteOne({ _id: id });
 		console.log("[recordings.js] doc deleted", id);
 
-		// Best-effort GridFS cleanup
 		try {
 			const bucket = getBucket();
+
+			// Verify existence in GridFS right before delete (debug-only checks)
+			const listExisting = async (oid) => {
+				if (!oid) return "null";
+				const q = {
+					_id:
+						typeof oid === "string"
+							? new mongoose.Types.ObjectId(oid)
+							: oid,
+				};
+				const arr = await bucket.find(q).toArray();
+				return arr.length ? "present" : "missing";
+			};
+
 			const fileIds = [rec.teacherFileId, rec.studentFileId].filter(
 				Boolean
 			);
-
 			console.log(
 				"[recordings.js] attempting GridFS delete for fileIds=",
 				fileIds.map((f) => String(f))
 			);
+
+			// Extra: log whether each id exists in GridFS
+			for (const fid of fileIds) {
+				const status = await listExisting(fid);
+				console.log(
+					"[recordings.js] pre-delete status",
+					String(fid),
+					"=>",
+					status
+				);
+			}
 
 			for (const fid of fileIds) {
 				try {
@@ -538,7 +565,6 @@ router.delete("/:id", auth, async (req, res) => {
 						typeof fid === "string"
 							? new mongoose.Types.ObjectId(fid)
 							: fid;
-
 					await new Promise((resolve) => {
 						bucket.delete(oid, (err) => {
 							if (err) {
@@ -546,6 +572,11 @@ router.delete("/:id", auth, async (req, res) => {
 									"[recordings.js] GridFS delete error",
 									String(oid),
 									err.message
+								);
+							} else {
+								console.log(
+									"[recordings.js] GridFS delete OK",
+									String(oid)
 								);
 							}
 							resolve();

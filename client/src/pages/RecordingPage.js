@@ -200,7 +200,6 @@ function RecordingCard({
 
 	const deleteRecording = async () => {
 		if (!doc?._id) {
-			// Unsaved placeholder: just clear locally
 			teacher.clear();
 			student.clear();
 			setDoc(null);
@@ -214,29 +213,30 @@ function RecordingCard({
 		);
 		if (!ok) return;
 
+		const id = String(doc._id); // capture before mutations
+
 		try {
-			await axios.delete(
-				`${API}/api/recordings/${doc._id}`,
-				tokenHeader()
-			);
+			await axios.delete(`${API}/api/recordings/${id}`, tokenHeader());
 
-			// Tell parent to remove it from the list…
-			onChanged?.(doc._id);
+			// Inform parent to remove it from items immediately
+			onChanged?.(id);
 
-			// …and also unmount ourselves immediately in case the parent hasn't re-rendered yet.
-			// This guarantees the card vanishes right away.
+			// Also force this card to unmount right now
 			setDoc(null);
-			setTeacherUrl?.((prev) => {
+
+			// Revoke blob URLs (defensive cleanup)
+			setTeacherUrl((prev) => {
 				if (prev) URL.revokeObjectURL(prev);
 				return null;
 			});
-			setStudentUrl?.((prev) => {
+			setStudentUrl((prev) => {
 				if (prev) URL.revokeObjectURL(prev);
 				return null;
 			});
 
 			setMsg("Deleted.");
 		} catch (e) {
+			console.error("[RecordingCard] delete failed", e);
 			setMsg(e?.response?.data?.msg || "Delete failed");
 		}
 	};
