@@ -208,16 +208,34 @@ function RecordingCard({
 			onChanged?.();
 			return;
 		}
+
 		const ok = window.confirm(
 			"Delete this recording (audio + transcript)?"
 		);
 		if (!ok) return;
+
 		try {
 			await axios.delete(
 				`${API}/api/recordings/${doc._id}`,
 				tokenHeader()
 			);
-			onChanged?.(doc._id); // parent removes from list
+
+			// Tell parent to remove it from the list…
+			onChanged?.(doc._id);
+
+			// …and also unmount ourselves immediately in case the parent hasn't re-rendered yet.
+			// This guarantees the card vanishes right away.
+			setDoc(null);
+			setTeacherUrl?.((prev) => {
+				if (prev) URL.revokeObjectURL(prev);
+				return null;
+			});
+			setStudentUrl?.((prev) => {
+				if (prev) URL.revokeObjectURL(prev);
+				return null;
+			});
+
+			setMsg("Deleted.");
 		} catch (e) {
 			setMsg(e?.response?.data?.msg || "Delete failed");
 		}
