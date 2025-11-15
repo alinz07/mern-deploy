@@ -525,9 +525,12 @@ router.delete("/:id", auth, async (req, res) => {
 		await Recording.deleteOne({ _id: id });
 		console.log("[recordings.js] doc deleted", id);
 
-		// Best-effort GridFS cleanup
+		// Best-effort GridFS + direct collection cleanup
 		try {
 			const bucket = getBucket();
+			const db = mongoose.connection.db;
+			const filesColl = db.collection("audio.files");
+			const chunksColl = db.collection("audio.chunks");
 
 			const fileEntries = [
 				{ role: "teacher", id: rec.teacherFileId },
@@ -590,7 +593,7 @@ router.delete("/:id", auth, async (req, res) => {
 					);
 				}
 
-				// Now actually delete
+				// 1) Try GridFSBucket delete (nice to keep)
 				await new Promise((resolve) => {
 					bucket.delete(oid, (err) => {
 						if (err) {
@@ -610,6 +613,33 @@ router.delete("/:id", auth, async (req, res) => {
 						resolve();
 					});
 				});
+
+				// 2) HARD DELETE from audio.files / audio.chunks by _id
+				try {
+					const fileResult = await filesColl.deleteOne({ _id: oid });
+					const chunkResult = await chunksColl.deleteMany({
+						files_id: oid,
+					});
+					console.log("[recordings.js] hardDelete result", {
+						role,
+						id: String(oid),
+						filesDeleted: fileResult.deletedCount,
+						chunksDeleted: chunkResult.deletedCount,
+					});
+				} catch (err) {
+					console.error(
+						"[recordings.js] hardDelete error",
+						role,
+						String(oid),
+						err.message || err
+					);
+				}
+
+				console.log(
+					"[recordings.js] delete loop finished for",
+					role,
+					String(oid)
+				);
 			}
 		} catch (err) {
 			console.error(
