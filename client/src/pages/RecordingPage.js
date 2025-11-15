@@ -72,11 +72,16 @@ function RecordingCard({
 }) {
 	const [doc, setDoc] = useState(initialDoc);
 	const [msg, setMsg] = useState("");
+	const [removed, setRemoved] = useState(false);
 
 	const [teacherUrl, setTeacherUrl] = useState(null);
 	const [studentUrl, setStudentUrl] = useState(null);
 
 	useEffect(() => {
+		if (removed) {
+			// if we've been marked removed, don't bother fetching audio
+			return;
+		}
 		let revoke = [];
 		async function loadOne(fileId, setter) {
 			if (!fileId) return;
@@ -93,7 +98,7 @@ function RecordingCard({
 				setter(url);
 			} catch (e) {
 				console.warn(
-					"Failed to fetch audio",
+					"[RecordingCard] Failed to fetch audio",
 					fileId,
 					e?.response?.status
 				);
@@ -108,12 +113,21 @@ function RecordingCard({
 		return () => {
 			revoke.forEach((u) => URL.revokeObjectURL(u));
 		};
-	}, [doc?.teacherFileId, doc?.studentFileId]);
+	}, [doc?.teacherFileId, doc?.studentFileId, removed]);
 
 	const teacher = useSideRecorder();
 	const student = useSideRecorder();
 
 	const hasId = !!doc?._id;
+
+	// EARLY ESCAPE: once removed, never render again
+	if (removed) {
+		console.log("[RecordingCard] render skipped because removed", {
+			localKey,
+			id: doc?._id,
+		});
+		return null;
+	}
 
 	// helper: build endpoint + form data depending on new vs replace
 	const saveUpload = async () => {
@@ -142,6 +156,13 @@ function RecordingCard({
 				? `${API}/api/recordings/${doc._id}/upload` // REPLACE existing
 				: `${API}/api/recordings`; // CREATE new
 
+			console.log("[RecordingCard] saveUpload", {
+				hasId,
+				url,
+				dayId,
+				userId,
+			});
+
 			const { data } = await axios.post(url, fd, {
 				...tokenHeader(),
 				headers: {
@@ -156,10 +177,11 @@ function RecordingCard({
 			student.clear();
 
 			// Notify parent:
-			// - for new cards, parent will drop the local placeholder and reload list
-			// - for existing cards, parent can reload list if it wants fresh data
 			onChanged?.();
 			if (!hasId && localKey) {
+				console.log("[RecordingCard] saveUpload removing local", {
+					localKey,
+				});
 				onSavedLocal?.(localKey);
 			}
 		} catch (e) {
@@ -205,9 +227,10 @@ function RecordingCard({
 	const deleteRecording = async () => {
 		// Unsaved card: just remove it from the parent's local list
 		if (!doc?._id) {
-			console.log("[RecordingCard] discard unsaved card", localKey);
+			console.log("[RecordingCard] discard unsaved card", { localKey });
 			teacher.clear();
 			student.clear();
+			setRemoved(true);
 			if (localKey) {
 				onSavedLocal?.(localKey);
 			}
@@ -220,42 +243,39 @@ function RecordingCard({
 		if (!ok) return;
 
 		const id = String(doc._id);
+		console.log("[RecordingCard] delete confirmed", { id, localKey });
+
+		// Optimistically hide this card immediately (bulletproof UI)
+		setRemoved(true);
 
 		try {
-			console.log("[RecordingCard] delete start", id);
+			console.log("[RecordingCard] delete start axios", id);
 			const res = await axios.delete(
 				`${API}/api/recordings/${id}`,
 				tokenHeader()
 			);
-			console.log(
-				"[RecordingCard] delete success",
+			console.log("[RecordingCard] delete success", {
 				id,
-				res.status,
-				res.data
-			);
+				status: res.status,
+				data: res.data,
+			});
 
 			// Tell parent which server id to remove
 			onChanged?.(id);
-
-			// Also unmount ourselves immediately
-			setDoc(null);
 		} catch (e) {
 			console.error("[RecordingCard] delete error", e);
 			setMsg(e?.response?.data?.msg || "Delete failed");
+
+			// If you want the card to reappear on failure, uncomment:
+			// setRemoved(false);
 		}
 	};
 
 	const teacherDurationMs = doc?.durationTeacherMs ?? teacher.durationMs ?? 0;
 	const studentDurationMs = doc?.durationStudentMs ?? student.durationMs ?? 0;
 
-	// For a saved item that has been deleted (doc cleared) and no local key,
-	// don't render anything.
-	const hasIdNow = !!doc?._id;
-	if (!hasIdNow && !localKey) {
-		return null;
-	}
-
 	// label shows "Record" for new cards, "Record again" for saved ones
+	const hasIdNow = !!doc?._id;
 	const teacherLabel =
 		teacher.status !== "recording"
 			? hasIdNow
@@ -269,6 +289,13 @@ function RecordingCard({
 				? "Record again"
 				: "Record"
 			: "Stop";
+
+	console.log("[RecordingCard] render", {
+		localKey,
+		id: doc?._id,
+		hasIdNow,
+		removed,
+	});
 
 	return (
 		<div
@@ -429,6 +456,9 @@ function RecordingPage() {
 				`${API}/api/recordings/by-day?day=${dayId}&user=${userId}`,
 				tokenHeader()
 			);
+			console.log("[RecordingPage] load result", {
+				count: data?.length || 0,
+			});
 			setItems(data || []);
 		} catch (e) {
 			console.error("load recordings", e);
@@ -438,23 +468,32 @@ function RecordingPage() {
 	};
 
 	useEffect(() => {
+		console.log("[RecordingPage] useEffect load", { dayId, userId });
 		load();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [dayId, userId]);
 
 	const addNewCard = () => {
 		const key = `local-${Date.now()}`;
+		console.log("[RecordingPage] addNewCard", { key });
 		setLocals((xs) => [...xs, key]);
 	};
 
 	const onSavedLocal = (localKey) => {
+		console.log("[RecordingPage] onSavedLocal", { localKey });
 		// remove the placeholder row once the server returns a saved doc
 		setLocals((xs) => xs.filter((k) => k !== localKey));
 	};
 
 	const removeById = (id) => {
+		console.log("[RecordingPage] removeById", { id });
 		setItems((xs) => xs.filter((x) => x._id !== id));
 	};
+
+	console.log("[RecordingPage] render", {
+		itemsCount: items.length,
+		localsCount: locals.length,
+	});
 
 	return (
 		<div style={{ padding: 16 }}>
@@ -497,6 +536,9 @@ function RecordingPage() {
 					monthId={monthId}
 					initialDoc={doc}
 					onChanged={(maybeDeletedId) => {
+						console.log("[RecordingPage] onChanged from card", {
+							maybeDeletedId,
+						});
 						if (maybeDeletedId) removeById(maybeDeletedId);
 						else load();
 					}}
