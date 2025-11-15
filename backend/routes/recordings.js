@@ -2,7 +2,7 @@
 const router = require("express").Router();
 const mongoose = require("mongoose");
 const multer = require("multer");
-const { GridFSBucket } = require("mongodb");
+const { GridFSBucket, ObjectId } = require("mongodb");
 const auth = require("../middleware/auth");
 
 const Recording = require("../models/Recording");
@@ -529,7 +529,6 @@ router.delete("/:id", auth, async (req, res) => {
 		try {
 			const bucket = getBucket();
 
-			// Tag each id with a role so logs are crystal clear
 			const fileEntries = [
 				{ role: "teacher", id: rec.teacherFileId },
 				{ role: "student", id: rec.studentFileId },
@@ -544,77 +543,73 @@ router.delete("/:id", auth, async (req, res) => {
 				}))
 			);
 
-			// helper to normalize and check presence
-			const normalizeAndCheck = async (entry) => {
-				const { role, id: fid } = entry;
-				let oid;
-				if (fid instanceof mongoose.Types.ObjectId) {
-					oid = fid;
-				} else {
-					try {
-						oid = new mongoose.Types.ObjectId(fid);
-					} catch (err) {
-						console.error(
-							"[recordings.js] invalid ObjectId for",
-							role,
-							"raw=",
-							fid,
-							"error=",
-							err.message || err
-						);
-						throw err;
-					}
-				}
-
-				const arr = await bucket.find({ _id: oid }).toArray();
-				console.log(
-					"[recordings.js] pre-delete presence",
-					role,
-					String(oid),
-					"=>",
-					arr.length ? "present" : "missing",
-					"(count=" + arr.length + ")"
-				);
-				return oid;
-			};
-
 			for (const entry of fileEntries) {
 				const { role, id: fid } = entry;
 				console.log("[recordings.js] delete loop start", {
 					role,
-					id: String(fid),
+					rawId: String(fid),
 					type: typeof fid,
 				});
-				try {
-					const oid = await normalizeAndCheck(entry);
 
-					await new Promise((resolve) => {
-						bucket.delete(oid, (err) => {
-							if (err) {
-								console.error(
-									"[recordings.js] GridFS delete error",
-									role,
-									String(oid),
-									err.message
-								);
-							} else {
-								console.log(
-									"[recordings.js] GridFS delete OK",
-									role,
-									String(oid)
-								);
-							}
-							resolve();
-						});
-					});
+				let oid;
+				try {
+					// Always convert using the MongoDB driver's ObjectId
+					oid =
+						fid instanceof ObjectId
+							? fid
+							: new ObjectId(String(fid));
 				} catch (err) {
 					console.error(
-						"[recordings.js] GridFS delete exception",
+						"[recordings.js] ObjectId conversion error for",
 						role,
-						String(fid),
+						"raw=",
+						fid,
+						"error=",
+						err.message || err
+					);
+					continue; // skip to next file instead of killing the loop
+				}
+
+				// Check presence before delete for debugging
+				try {
+					const arr = await bucket.find({ _id: oid }).toArray();
+					console.log(
+						"[recordings.js] pre-delete presence",
+						role,
+						String(oid),
+						"=>",
+						arr.length ? "present" : "missing",
+						"(count=" + arr.length + ")"
+					);
+				} catch (err) {
+					console.error(
+						"[recordings.js] presence check error",
+						role,
+						String(oid),
 						err.message || err
 					);
 				}
+
+				// Now actually delete
+				await new Promise((resolve) => {
+					bucket.delete(oid, (err) => {
+						if (err) {
+							console.error(
+								"[recordings.js] GridFS delete error",
+								role,
+								String(oid),
+								err.message
+							);
+						} else {
+							console.log(
+								"[recordings.js] GridFS delete OK",
+								role,
+								String(oid)
+							);
+						}
+						resolve();
+					});
+				});
 			}
 		} catch (err) {
 			console.error(
