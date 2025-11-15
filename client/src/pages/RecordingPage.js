@@ -155,9 +155,13 @@ function RecordingCard({
 			teacher.clear();
 			student.clear();
 
-			// Notify parent: reload list (or remove the placeholder if it was unsaved)
-			if (!hasId) onSavedLocal?.(localKey);
+			// Notify parent:
+			// - for new cards, parent will drop the local placeholder and reload list
+			// - for existing cards, parent can reload list if it wants fresh data
 			onChanged?.();
+			if (!hasId && localKey) {
+				onSavedLocal?.(localKey);
+			}
 		} catch (e) {
 			console.error("[RecordingCard] saveUpload error", e);
 			setMsg(e?.response?.data?.msg || "Save failed");
@@ -199,12 +203,14 @@ function RecordingCard({
 	};
 
 	const deleteRecording = async () => {
+		// Unsaved card: just remove it from the parent's local list
 		if (!doc?._id) {
+			console.log("[RecordingCard] discard unsaved card", localKey);
 			teacher.clear();
 			student.clear();
-			setDoc(null);
-			setMsg("Discarded unsaved recording.");
-			onChanged?.();
+			if (localKey) {
+				onSavedLocal?.(localKey);
+			}
 			return;
 		}
 
@@ -213,30 +219,28 @@ function RecordingCard({
 		);
 		if (!ok) return;
 
-		const id = String(doc._id); // capture before mutations
+		const id = String(doc._id);
 
 		try {
-			await axios.delete(`${API}/api/recordings/${id}`, tokenHeader());
+			console.log("[RecordingCard] delete start", id);
+			const res = await axios.delete(
+				`${API}/api/recordings/${id}`,
+				tokenHeader()
+			);
+			console.log(
+				"[RecordingCard] delete success",
+				id,
+				res.status,
+				res.data
+			);
 
-			// Inform parent to remove it from items immediately
+			// Tell parent which server id to remove
 			onChanged?.(id);
 
-			// Also force this card to unmount right now
+			// Also unmount ourselves immediately
 			setDoc(null);
-
-			// Revoke blob URLs (defensive cleanup)
-			setTeacherUrl((prev) => {
-				if (prev) URL.revokeObjectURL(prev);
-				return null;
-			});
-			setStudentUrl((prev) => {
-				if (prev) URL.revokeObjectURL(prev);
-				return null;
-			});
-
-			setMsg("Deleted.");
 		} catch (e) {
-			console.error("[RecordingCard] delete failed", e);
+			console.error("[RecordingCard] delete error", e);
 			setMsg(e?.response?.data?.msg || "Delete failed");
 		}
 	};
@@ -244,22 +248,24 @@ function RecordingCard({
 	const teacherDurationMs = doc?.durationTeacherMs ?? teacher.durationMs ?? 0;
 	const studentDurationMs = doc?.durationStudentMs ?? student.durationMs ?? 0;
 
-	if (!hasId && !localKey) {
-		// saved item deleted -> unmount
+	// For a saved item that has been deleted (doc cleared) and no local key,
+	// don't render anything.
+	const hasIdNow = !!doc?._id;
+	if (!hasIdNow && !localKey) {
 		return null;
 	}
 
 	// label shows "Record" for new cards, "Record again" for saved ones
 	const teacherLabel =
 		teacher.status !== "recording"
-			? hasId
+			? hasIdNow
 				? "Record again"
 				: "Record"
 			: "Stop";
 
 	const studentLabel =
 		student.status !== "recording"
-			? hasId
+			? hasIdNow
 				? "Record again"
 				: "Record"
 			: "Stop";
@@ -275,7 +281,8 @@ function RecordingCard({
 		>
 			<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 				<strong>
-					Recording {hasId ? `#${doc._id.slice(-6)}` : "(new)"}
+					Recording{" "}
+					{hasIdNow && doc?._id ? `#${doc._id.slice(-6)}` : "(new)"}
 				</strong>
 			</div>
 
@@ -377,24 +384,24 @@ function RecordingCard({
 					onClick={saveUpload}
 					disabled={!teacher.blob && !student.blob}
 					title={
-						hasId
+						hasIdNow
 							? "Replace audio on this record"
 							: "Create a new recording"
 					}
 				>
-					{hasId ? "Save Replacement" : "Save Upload"}
+					{hasIdNow ? "Save Replacement" : "Save Upload"}
 				</button>
-				<button onClick={transcribe} disabled={!hasId}>
+				<button onClick={transcribe} disabled={!hasIdNow}>
 					Transcribe to IPA
 				</button>
-				<button onClick={downloadCsv} disabled={!hasId}>
+				<button onClick={downloadCsv} disabled={!hasIdNow}>
 					Export CSV
 				</button>
 				<button
 					onClick={deleteRecording}
 					style={{ marginLeft: "auto" }}
 				>
-					{hasId ? "Delete Recording" : "Discard"}
+					{hasIdNow ? "Delete Recording" : "Discard"}
 				</button>
 			</div>
 
@@ -435,12 +442,10 @@ function RecordingPage() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [dayId, userId]);
 
-	const addLocal = () => {
+	const addNewCard = () => {
 		const key = `local-${Date.now()}`;
 		setLocals((xs) => [...xs, key]);
 	};
-
-	const onChanged = () => load();
 
 	const onSavedLocal = (localKey) => {
 		// remove the placeholder row once the server returns a saved doc
@@ -453,18 +458,18 @@ function RecordingPage() {
 
 	return (
 		<div style={{ padding: 16 }}>
-			<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-				<Link
-					to={`/days/${dayId}/check?month=${monthId || ""}&user=${
-						userId || ""
-					}`}
-				>
-					← Back to Check
-				</Link>{" "}
-				<h2 style={{ margin: 0 }}>Recordings</h2>
-				<div style={{ marginLeft: "auto" }}>
-					<button onClick={addLocal}>+ Add new recording</button>
-				</div>
+			<div style={{ marginBottom: 12, display: "flex", gap: 8 }}>
+				<button onClick={addNewCard}>+ Add new recording</button>
+				{monthId && (
+					<Link
+						to={`/days/${dayId}/check?monthId=${
+							monthId || ""
+						}&userId=${userId || ""}`}
+						style={{ marginLeft: "auto" }}
+					>
+						← Back to Check
+					</Link>
+				)}
 			</div>
 
 			{loading && <div style={{ marginTop: 12 }}>Loading…</div>}
@@ -477,9 +482,9 @@ function RecordingPage() {
 					dayId={dayId}
 					userId={userId}
 					monthId={monthId}
-					onChanged={onChanged}
-					onSavedLocal={onSavedLocal}
 					initialDoc={null}
+					onChanged={() => load()}
+					onSavedLocal={onSavedLocal}
 				/>
 			))}
 
