@@ -525,125 +525,90 @@ router.delete("/:id", auth, async (req, res) => {
 		await Recording.deleteOne({ _id: id });
 		console.log("[recordings.js] doc deleted", id);
 
-		// Best-effort GridFS + direct collection cleanup
+		// Hard-delete both GridFS entries (teacher + student) in one shot
 		try {
-			const bucket = getBucket();
 			const db = mongoose.connection.db;
 			const filesColl = db.collection("audio.files");
 			const chunksColl = db.collection("audio.chunks");
 
-			const fileEntries = [
-				{ role: "teacher", id: rec.teacherFileId },
-				{ role: "student", id: rec.studentFileId },
-			].filter((x) => x.id);
+			// Build a clean list of ObjectIds
+			const rawIds = [];
+			if (rec.teacherFileId) rawIds.push(rec.teacherFileId);
+			if (rec.studentFileId) rawIds.push(rec.studentFileId);
 
-			console.log(
-				"[recordings.js] attempting GridFS delete for fileIds=",
-				fileEntries.map((f) => ({
-					role: f.role,
-					id: String(f.id),
-					type: typeof f.id,
-				}))
-			);
-
-			for (const entry of fileEntries) {
-				const { role, id: fid } = entry;
-				console.log("[recordings.js] delete loop start", {
-					role,
-					rawId: String(fid),
-					type: typeof fid,
-				});
-
-				let oid;
+			const oids = [];
+			for (const raw of rawIds) {
 				try {
-					// Always convert using the MongoDB driver's ObjectId
-					oid =
-						fid instanceof ObjectId
-							? fid
-							: new ObjectId(String(fid));
+					const oid =
+						raw instanceof ObjectId
+							? raw
+							: new ObjectId(String(raw));
+					oids.push(oid);
 				} catch (err) {
 					console.error(
-						"[recordings.js] ObjectId conversion error for",
-						role,
+						"[recordings.js] ObjectId conversion error (hard-delete)",
 						"raw=",
-						fid,
+						raw,
 						"error=",
 						err.message || err
 					);
-					continue; // skip to next file instead of killing the loop
 				}
+			}
 
-				// Check presence before delete for debugging
-				try {
-					const arr = await bucket.find({ _id: oid }).toArray();
-					console.log(
-						"[recordings.js] pre-delete presence",
-						role,
-						String(oid),
-						"=>",
-						arr.length ? "present" : "missing",
-						"(count=" + arr.length + ")"
-					);
-				} catch (err) {
-					console.error(
-						"[recordings.js] presence check error",
-						role,
-						String(oid),
-						err.message || err
-					);
-				}
+			if (!oids.length) {
+				console.log(
+					"[recordings.js] no file ObjectIds to hard-delete for recording",
+					id
+				);
+			} else {
+				console.log(
+					"[recordings.js] hard-delete starting for OIDs=",
+					oids.map((o) => String(o))
+				);
 
-				// 1) Try GridFSBucket delete (nice to keep)
-				await new Promise((resolve) => {
-					bucket.delete(oid, (err) => {
-						if (err) {
-							console.error(
-								"[recordings.js] GridFS delete error",
-								role,
-								String(oid),
-								err.message
-							);
-						} else {
-							console.log(
-								"[recordings.js] GridFS delete OK",
-								role,
-								String(oid)
-							);
-						}
-						resolve();
-					});
+				// Log what exists BEFORE delete
+				const preFiles = await filesColl
+					.find({ _id: { $in: oids } })
+					.toArray();
+				const preChunks = await chunksColl
+					.find({ files_id: { $in: oids } })
+					.toArray();
+				console.log("[recordings.js] hard-delete PRE state", {
+					fileIds: oids.map((o) => String(o)),
+					filesCount: preFiles.length,
+					chunksCount: preChunks.length,
 				});
 
-				// 2) HARD DELETE from audio.files / audio.chunks by _id
-				try {
-					const fileResult = await filesColl.deleteOne({ _id: oid });
-					const chunkResult = await chunksColl.deleteMany({
-						files_id: oid,
-					});
-					console.log("[recordings.js] hardDelete result", {
-						role,
-						id: String(oid),
-						filesDeleted: fileResult.deletedCount,
-						chunksDeleted: chunkResult.deletedCount,
-					});
-				} catch (err) {
-					console.error(
-						"[recordings.js] hardDelete error",
-						role,
-						String(oid),
-						err.message || err
-					);
-				}
+				// Delete from GridFS collections directly
+				const fileResult = await filesColl.deleteMany({
+					_id: { $in: oids },
+				});
+				const chunkResult = await chunksColl.deleteMany({
+					files_id: { $in: oids },
+				});
 
-				console.log(
-					"[recordings.js] delete loop finished for",
-					role,
-					String(oid)
-				);
+				console.log("[recordings.js] hard-delete deleteMany results", {
+					fileIds: oids.map((o) => String(o)),
+					filesDeleted: fileResult.deletedCount,
+					chunksDeleted: chunkResult.deletedCount,
+				});
+
+				// Log what remains AFTER delete
+				const postFiles = await filesColl
+					.find({ _id: { $in: oids } })
+					.toArray();
+				const postChunks = await chunksColl
+					.find({ files_id: { $in: oids } })
+					.toArray();
+				console.log("[recordings.js] hard-delete POST state", {
+					fileIds: oids.map((o) => String(o)),
+					filesCount: postFiles.length,
+					chunksCount: postChunks.length,
+				});
 			}
 		} catch (err) {
 			console.error(
-				"[recordings.js] GridFS delete setup error",
+				"[recordings.js] hard-delete fatal error",
 				err.message || err
 			);
 		}
