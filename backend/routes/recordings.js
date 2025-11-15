@@ -475,6 +475,7 @@ router.get("/:id/csv", auth, async (req, res) => {
 });
 
 // DELETE /api/recordings/:id  (delete doc + any GridFS audio)
+// DELETE /api/recordings/:id  (delete doc + any GridFS audio)
 router.delete("/:id", auth, async (req, res) => {
 	console.log(
 		"[recordings.js] DELETE hit",
@@ -515,6 +516,13 @@ router.delete("/:id", auth, async (req, res) => {
 			return res.status(403).json({ msg: "Forbidden" });
 		}
 
+		console.log("[recordings.js] will delete files:", {
+			teacherFileId: rec.teacherFileId ? String(rec.teacherFileId) : null,
+			studentFileId: rec.studentFileId ? String(rec.studentFileId) : null,
+			teacherType: rec.teacherFileId && typeof rec.teacherFileId,
+			studentType: rec.studentFileId && typeof rec.studentFileId,
+		});
+
 		// Delete doc first
 		await Recording.deleteOne({ _id: id });
 		console.log("[recordings.js] doc deleted", id);
@@ -531,12 +539,26 @@ router.delete("/:id", auth, async (req, res) => {
 				fileIds.map((f) => String(f))
 			);
 
+			// helper to check presence in GridFS before delete
+			const checkPresence = async (fid) => {
+				const oid =
+					typeof fid === "string"
+						? new mongoose.Types.ObjectId(fid)
+						: fid;
+				const arr = await bucket.find({ _id: oid }).toArray();
+				console.log(
+					"[recordings.js] pre-delete presence",
+					String(oid),
+					"=>",
+					arr.length ? "present" : "missing",
+					"(count=" + arr.length + ")"
+				);
+				return oid;
+			};
+
 			for (const fid of fileIds) {
 				try {
-					const oid =
-						typeof fid === "string"
-							? new mongoose.Types.ObjectId(fid)
-							: fid;
+					const oid = await checkPresence(fid);
 
 					await new Promise((resolve) => {
 						bucket.delete(oid, (err) => {
@@ -546,6 +568,11 @@ router.delete("/:id", auth, async (req, res) => {
 									String(oid),
 									err.message
 								);
+							} else {
+								console.log(
+									"[recordings.js] GridFS delete OK",
+									String(oid)
+								);
 							}
 							resolve();
 						});
@@ -554,14 +581,14 @@ router.delete("/:id", auth, async (req, res) => {
 					console.error(
 						"[recordings.js] GridFS delete exception",
 						String(fid),
-						err.message
+						err.message || err
 					);
 				}
 			}
 		} catch (err) {
 			console.error(
 				"[recordings.js] GridFS delete setup error",
-				err.message
+				err.message || err
 			);
 		}
 
