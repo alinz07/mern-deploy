@@ -474,8 +474,6 @@ router.get("/:id/csv", auth, async (req, res) => {
 	}
 });
 
-// DELETE /api/recordings/:id  (delete doc + any GridFS audio)
-// DELETE /api/recordings/:id  (delete doc + any GridFS audio)
 router.delete("/:id", auth, async (req, res) => {
 	console.log(
 		"[recordings.js] DELETE hit",
@@ -530,24 +528,48 @@ router.delete("/:id", auth, async (req, res) => {
 		// Best-effort GridFS cleanup
 		try {
 			const bucket = getBucket();
-			const fileIds = [rec.teacherFileId, rec.studentFileId].filter(
-				Boolean
-			);
+
+			// Tag each id with a role so logs are crystal clear
+			const fileEntries = [
+				{ role: "teacher", id: rec.teacherFileId },
+				{ role: "student", id: rec.studentFileId },
+			].filter((x) => x.id);
 
 			console.log(
 				"[recordings.js] attempting GridFS delete for fileIds=",
-				fileIds.map((f) => String(f))
+				fileEntries.map((f) => ({
+					role: f.role,
+					id: String(f.id),
+					type: typeof f.id,
+				}))
 			);
 
-			// helper to check presence in GridFS before delete
-			const checkPresence = async (fid) => {
-				const oid =
-					typeof fid === "string"
-						? new mongoose.Types.ObjectId(fid)
-						: fid;
+			// helper to normalize and check presence
+			const normalizeAndCheck = async (entry) => {
+				const { role, id: fid } = entry;
+				let oid;
+				if (fid instanceof mongoose.Types.ObjectId) {
+					oid = fid;
+				} else {
+					try {
+						oid = new mongoose.Types.ObjectId(fid);
+					} catch (err) {
+						console.error(
+							"[recordings.js] invalid ObjectId for",
+							role,
+							"raw=",
+							fid,
+							"error=",
+							err.message || err
+						);
+						throw err;
+					}
+				}
+
 				const arr = await bucket.find({ _id: oid }).toArray();
 				console.log(
 					"[recordings.js] pre-delete presence",
+					role,
 					String(oid),
 					"=>",
 					arr.length ? "present" : "missing",
@@ -556,21 +578,29 @@ router.delete("/:id", auth, async (req, res) => {
 				return oid;
 			};
 
-			for (const fid of fileIds) {
+			for (const entry of fileEntries) {
+				const { role, id: fid } = entry;
+				console.log("[recordings.js] delete loop start", {
+					role,
+					id: String(fid),
+					type: typeof fid,
+				});
 				try {
-					const oid = await checkPresence(fid);
+					const oid = await normalizeAndCheck(entry);
 
 					await new Promise((resolve) => {
 						bucket.delete(oid, (err) => {
 							if (err) {
 								console.error(
 									"[recordings.js] GridFS delete error",
+									role,
 									String(oid),
 									err.message
 								);
 							} else {
 								console.log(
 									"[recordings.js] GridFS delete OK",
+									role,
 									String(oid)
 								);
 							}
@@ -580,6 +610,7 @@ router.delete("/:id", auth, async (req, res) => {
 				} catch (err) {
 					console.error(
 						"[recordings.js] GridFS delete exception",
+						role,
 						String(fid),
 						err.message || err
 					);
