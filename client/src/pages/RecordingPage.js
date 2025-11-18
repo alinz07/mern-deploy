@@ -152,7 +152,7 @@ function RecordingCard({
 		return () => {
 			URL.revokeObjectURL(url);
 		};
-	}, [student.blob]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [student.blob]); // eslint-disable-line react-hooks-exhaustive-deps
 
 	const hasId = !!doc?._id;
 
@@ -378,12 +378,6 @@ function RecordingCard({
 								{teacherLabel}
 							</button>
 						)}
-						<button
-							onClick={teacher.clear}
-							disabled={!teacher.blob}
-						>
-							Clear
-						</button>
 						<span>Duration: {formatMs(teacherDurationMs)}</span>
 					</div>
 
@@ -429,12 +423,6 @@ function RecordingCard({
 								{studentLabel}
 							</button>
 						)}
-						<button
-							onClick={student.clear}
-							disabled={!student.blob}
-						>
-							Clear
-						</button>
 						<span>Duration: {formatMs(studentDurationMs)}</span>
 					</div>
 
