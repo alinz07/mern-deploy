@@ -12,8 +12,10 @@ function tokenHeader() {
 }
 function formatMs(ms) {
 	if (!ms) return "—";
-	const s = Math.round(ms / 1000);
-	return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+	const s = Math.floor(ms / 1000); // always round DOWN
+	const m = Math.floor(s / 60); // minutes
+	const ss = String(s % 60).padStart(2, "0"); // seconds (00–59)
+	return `${m}:${ss}`;
 }
 
 // A self-contained recorder for a single side (teacher|student)
