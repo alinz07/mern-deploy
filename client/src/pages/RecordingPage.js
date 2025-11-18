@@ -118,6 +118,42 @@ function RecordingCard({
 	const teacher = useSideRecorder();
 	const student = useSideRecorder();
 
+	// Local preview URLs for unsaved recordings
+	const [teacherLocalUrl, setTeacherLocalUrl] = useState(null);
+	const [studentLocalUrl, setStudentLocalUrl] = useState(null);
+
+	// When teacher.blob changes, create/revoke a local object URL
+	useEffect(() => {
+		if (!teacher.blob) {
+			if (teacherLocalUrl) {
+				URL.revokeObjectURL(teacherLocalUrl);
+			}
+			setTeacherLocalUrl(null);
+			return;
+		}
+		const url = URL.createObjectURL(teacher.blob);
+		setTeacherLocalUrl(url);
+		return () => {
+			URL.revokeObjectURL(url);
+		};
+	}, [teacher.blob]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	// When student.blob changes, create/revoke a local object URL
+	useEffect(() => {
+		if (!student.blob) {
+			if (studentLocalUrl) {
+				URL.revokeObjectURL(studentLocalUrl);
+			}
+			setStudentLocalUrl(null);
+			return;
+		}
+		const url = URL.createObjectURL(student.blob);
+		setStudentLocalUrl(url);
+		return () => {
+			URL.revokeObjectURL(url);
+		};
+	}, [student.blob]); // eslint-disable-line react-hooks/exhaustive-deps
+
 	const hasId = !!doc?._id;
 
 	// EARLY ESCAPE: once removed, never render again
@@ -351,13 +387,22 @@ function RecordingCard({
 						<span>Duration: {formatMs(teacherDurationMs)}</span>
 					</div>
 
-					{/* Playback if saved (fetches blob with auth) */}
-					{doc?.teacherFileId && teacherUrl && (
+					{/* Playback: prefer local unsaved recording, else saved file */}
+					{teacherLocalUrl ? (
 						<audio
 							controls
-							src={teacherUrl}
+							src={teacherLocalUrl}
 							style={{ marginTop: 6, width: "100%" }}
 						/>
+					) : (
+						doc?.teacherFileId &&
+						teacherUrl && (
+							<audio
+								controls
+								src={teacherUrl}
+								style={{ marginTop: 6, width: "100%" }}
+							/>
+						)
 					)}
 					<div>Text: {doc?.teacherText ?? "—"}</div>
 					<div>IPA: {doc?.teacherIPA ?? "—"}</div>
@@ -393,13 +438,22 @@ function RecordingCard({
 						<span>Duration: {formatMs(studentDurationMs)}</span>
 					</div>
 
-					{/* Playback if saved (fetches blob with auth) */}
-					{doc?.studentFileId && studentUrl && (
+					{/* Playback: prefer local unsaved recording, else saved file */}
+					{studentLocalUrl ? (
 						<audio
 							controls
-							src={studentUrl}
+							src={studentLocalUrl}
 							style={{ marginTop: 6, width: "100%" }}
 						/>
+					) : (
+						doc?.studentFileId &&
+						studentUrl && (
+							<audio
+								controls
+								src={studentUrl}
+								style={{ marginTop: 6, width: "100%" }}
+							/>
+						)
 					)}
 					<div>Text: {doc?.studentText ?? "—"}</div>
 					<div>IPA: {doc?.studentIPA ?? "—"}</div>
