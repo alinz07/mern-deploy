@@ -154,31 +154,41 @@ router.post(
 				return res.status(403).json({ msg: "Forbidden" });
 			}
 
+			const db = mongoose.connection.db;
+			const filesColl = db.collection("audio.files");
+			const chunksColl = db.collection("audio.chunks");
 			const bucket = getBucket();
 
-			// tiny helper to delete old file (best-effort) and upload a new one
-			const replaceOne = async (oldId, file, defaultName) => {
-				if (!file) return oldId; // nothing to replace
-				// 1) best-effort delete old gridfs file
-				if (oldId) {
-					try {
-						await new Promise((resolve) => {
-							bucket.delete(
-								typeof oldId === "string"
-									? new mongoose.Types.ObjectId(oldId)
-									: oldId,
-								() => resolve()
-							);
-						});
-					} catch (err) {
-						console.error(
-							"[recordings/:id/upload] GridFS delete error",
-							String(oldId),
-							err?.message || err
-						);
-					}
+			const teacherFile = req.files?.teacher?.[0] || null;
+			const studentFile = req.files?.student?.[0] || null;
+
+			console.log("[recordings/:id/upload] incoming", {
+				id,
+				hasTeacherFile: !!teacherFile,
+				hasStudentFile: !!studentFile,
+				oldTeacherFileId: rec.teacherFileId
+					? String(rec.teacherFileId)
+					: null,
+				oldStudentFileId: rec.studentFileId
+					? String(rec.studentFileId)
+					: null,
+				durationTeacherMs: req.body.durationTeacherMs,
+				durationStudentMs: req.body.durationStudentMs,
+			});
+
+			// upload-first, then best-effort delete old file (using hard-delete)
+			const replaceOne = async (role, oldId, file, defaultName) => {
+				if (!file) {
+					console.log(
+						"[recordings/:id/upload] no new file for role",
+						role,
+						"keeping oldId=",
+						oldId ? String(oldId) : null
+					);
+					return oldId; // nothing to replace
 				}
-				// 2) upload new file, return its id
+
+				// 1) upload new file, get its id
 				const stream = bucket.openUploadStream(
 					file.originalname || defaultName,
 					{
@@ -190,19 +200,73 @@ router.post(
 						err ? reject(err) : resolve()
 					);
 				});
-				return stream.id;
-			};
+				const newId = stream.id;
+				console.log("[recordings/:id/upload] upload OK", {
+					role,
+					newId: String(newId),
+					oldId: oldId ? String(oldId) : null,
+				});
 
-			const teacherFile = req.files?.teacher?.[0] || null;
-			const studentFile = req.files?.student?.[0] || null;
+				// 2) best-effort hard-delete the old GridFS doc + chunks
+				if (oldId) {
+					try {
+						const oid =
+							oldId instanceof ObjectId
+								? oldId
+								: new ObjectId(String(oldId));
+						const preFiles = await filesColl
+							.find({ _id: oid })
+							.toArray();
+						const preChunks = await chunksColl
+							.find({ files_id: oid })
+							.toArray();
+						console.log(
+							"[recordings/:id/upload] old file PRE state",
+							{
+								role,
+								oldId: String(oid),
+								filesCount: preFiles.length,
+								chunksCount: preChunks.length,
+							}
+						);
+
+						const fileResult = await filesColl.deleteMany({
+							_id: oid,
+						});
+						const chunkResult = await chunksColl.deleteMany({
+							files_id: oid,
+						});
+						console.log(
+							"[recordings/:id/upload] old file deleteMany",
+							{
+								role,
+								oldId: String(oid),
+								filesDeleted: fileResult.deletedCount,
+								chunksDeleted: chunkResult.deletedCount,
+							}
+						);
+					} catch (err) {
+						console.error(
+							"[recordings/:id/upload] hard-delete old file error",
+							role,
+							String(oldId),
+							err?.message || err
+						);
+					}
+				}
+
+				return newId;
+			};
 
 			// replace whichever sides were provided
 			rec.teacherFileId = await replaceOne(
+				"teacher",
 				rec.teacherFileId,
 				teacherFile,
 				"teacher.webm"
 			);
 			rec.studentFileId = await replaceOne(
+				"student",
 				rec.studentFileId,
 				studentFile,
 				"student.webm"
@@ -217,6 +281,18 @@ router.post(
 			}
 
 			await rec.save();
+			console.log("[recordings/:id/upload] updated rec", {
+				id: rec._id.toString(),
+				teacherFileId: rec.teacherFileId
+					? String(rec.teacherFileId)
+					: null,
+				studentFileId: rec.studentFileId
+					? String(rec.studentFileId)
+					: null,
+				durationTeacherMs: rec.durationTeacherMs,
+				durationStudentMs: rec.durationStudentMs,
+			});
+
 			return res.json(rec);
 		} catch (e) {
 			console.error("POST /api/recordings/:id/upload error", e);
