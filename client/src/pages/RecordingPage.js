@@ -1,6 +1,5 @@
-// client/src/pages/RecordingPage.js
 import React, { useEffect, useRef, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 
 const API = "https://mern-deploy-docker.onrender.com";
@@ -71,6 +70,7 @@ function RecordingCard({
 	onChanged,
 	localKey,
 	onSavedLocal,
+	onNavigateToCheck,
 }) {
 	const [doc, setDoc] = useState(initialDoc);
 	const [msg, setMsg] = useState("");
@@ -229,7 +229,43 @@ function RecordingCard({
 	};
 
 	const transcribe = async () => {
-		if (!doc?._id) return setMsg("Save the upload first.");
+		if (!doc?._id) {
+			setMsg("Save the upload first.");
+			return;
+		}
+
+		const hasAudio = !!doc?.teacherFileId || !!doc?.studentFileId;
+		if (!hasAudio) {
+			setMsg("Please save audio before transcribing.");
+			return;
+		}
+
+		const ok = window.confirm(
+			"Transcribe this recording to IPA?\n\n" +
+				"This can take up to 45 seconds. After confirming, you'll be " +
+				"sent back to the Check page while the transcription runs in the background."
+		);
+		if (!ok) return;
+
+		// If we know how to route back to Check, fire-and-forget and navigate away.
+		if (onNavigateToCheck) {
+			axios
+				.post(
+					`${API}/api/recordings/${doc._id}/transcribe`,
+					{},
+					tokenHeader()
+				)
+				.catch((e) => {
+					console.error(
+						"[RecordingCard] background transcribe error",
+						e
+					);
+				});
+			onNavigateToCheck();
+			return;
+		}
+
+		// Fallback behavior (no Check route): keep user here and show result.
 		try {
 			const { data } = await axios.post(
 				`${API}/api/recordings/${doc._id}/transcribe`,
@@ -241,24 +277,6 @@ function RecordingCard({
 			onChanged?.();
 		} catch (e) {
 			setMsg(e?.response?.data?.msg || "Transcribe failed");
-		}
-	};
-
-	const downloadCsv = async () => {
-		if (!doc?._id) return setMsg("Save the upload first.");
-		try {
-			const { data } = await axios.get(
-				`${API}/api/recordings/${doc._id}/csv`,
-				{ ...tokenHeader(), responseType: "blob" }
-			);
-			const url = URL.createObjectURL(data);
-			const a = document.createElement("a");
-			a.href = url;
-			a.download = `recording-${doc._id}.csv`;
-			a.click();
-			URL.revokeObjectURL(url);
-		} catch (e) {
-			setMsg(e?.response?.data?.msg || "CSV export failed");
 		}
 	};
 
@@ -309,9 +327,6 @@ function RecordingCard({
 		}
 	};
 
-	const teacherDurationMs = doc?.durationTeacherMs ?? teacher.durationMs ?? 0;
-	const studentDurationMs = doc?.durationStudentMs ?? student.durationMs ?? 0;
-
 	// label shows "Record" for new cards, "Record again" for saved ones
 	const hasIdNow = !!doc?._id;
 	const teacherLabel =
@@ -328,9 +343,12 @@ function RecordingCard({
 				: "Record"
 			: "Stop";
 
+	const canTranscribe =
+		hasIdNow && (doc?.teacherFileId || doc?.studentFileId);
+
 	console.log("[RecordingCard] render", {
 		localKey,
-		id: doc?._id,
+		id: doc._id,
 		hasIdNow,
 		removed,
 	});
@@ -386,7 +404,6 @@ function RecordingCard({
 						>
 							Clear
 						</button>
-						<span>Duration: {formatMs(teacherDurationMs)}</span>
 					</div>
 
 					{/* Playback: prefer local unsaved recording, else saved file */}
@@ -437,7 +454,6 @@ function RecordingCard({
 						>
 							Clear
 						</button>
-						<span>Duration: {formatMs(studentDurationMs)}</span>
 					</div>
 
 					{/* Playback: prefer local unsaved recording, else saved file */}
@@ -474,11 +490,8 @@ function RecordingCard({
 				>
 					{hasIdNow ? "Save Replacement" : "Save Upload"}
 				</button>
-				<button onClick={transcribe} disabled={!hasIdNow}>
+				<button onClick={transcribe} disabled={!canTranscribe}>
 					Transcribe to IPA
-				</button>
-				<button onClick={downloadCsv} disabled={!hasIdNow}>
-					Export CSV
 				</button>
 				<button
 					onClick={deleteRecording}
@@ -500,9 +513,24 @@ function RecordingPage() {
 	const userId = params.get("user");
 	const monthId = params.get("month");
 
+	const navigate = useNavigate();
+
 	const [items, setItems] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [locals, setLocals] = useState([]); // unsaved placeholders
+
+	const backToCheckUrl =
+		monthId && dayId && userId
+			? `/days/${dayId}/check?monthId=${monthId || ""}&userId=${
+					userId || ""
+			  }`
+			: null;
+
+	const goBackToCheck = () => {
+		if (backToCheckUrl) {
+			navigate(backToCheckUrl);
+		}
+	};
 
 	const load = async () => {
 		if (!dayId || !userId) return;
@@ -580,6 +608,9 @@ function RecordingPage() {
 					initialDoc={null}
 					onChanged={() => load()}
 					onSavedLocal={onSavedLocal}
+					onNavigateToCheck={
+						backToCheckUrl ? goBackToCheck : undefined
+					}
 				/>
 			))}
 
@@ -598,6 +629,9 @@ function RecordingPage() {
 						if (maybeDeletedId) removeById(maybeDeletedId);
 						else load();
 					}}
+					onNavigateToCheck={
+						backToCheckUrl ? goBackToCheck : undefined
+					}
 				/>
 			))}
 
