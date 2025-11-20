@@ -18,6 +18,13 @@ function formatMs(ms) {
 	return `${m}:${ss}`;
 }
 
+// Helper for CSV values
+function escapeCsv(value) {
+	if (value == null) return '""';
+	const str = String(value).replace(/"/g, '""');
+	return `"${str}"`;
+}
+
 // A self-contained recorder for a single side (teacher|student)
 function useSideRecorder() {
 	const mediaRef = useRef(null);
@@ -587,6 +594,70 @@ function RecordingPage() {
 		setItems((xs) => xs.filter((x) => x._id !== id));
 	};
 
+	const exportAllTranscriptions = () => {
+		if (!items || items.length === 0) {
+			alert("No recordings to export.");
+			return;
+		}
+
+		const rows = [];
+		// Header row
+		rows.push(["RecordingId", "Side", "Text", "IPA"].join(","));
+
+		items.forEach((doc) => {
+			if (!doc) return;
+
+			const { _id, teacherText, teacherIPA, studentText, studentIPA } =
+				doc;
+
+			// Teacher row
+			if (teacherText && teacherIPA) {
+				rows.push(
+					[
+						escapeCsv(_id || ""),
+						escapeCsv("Teacher"),
+						escapeCsv(teacherText),
+						escapeCsv(teacherIPA),
+					].join(",")
+				);
+			}
+
+			// Student row
+			if (studentText && studentIPA) {
+				rows.push(
+					[
+						escapeCsv(_id || ""),
+						escapeCsv("Student"),
+						escapeCsv(studentText),
+						escapeCsv(studentIPA),
+					].join(",")
+				);
+			}
+		});
+
+		// If we only have the header, nothing matched
+		if (rows.length === 1) {
+			alert("No transcriptions found to export.");
+			return;
+		}
+
+		const csvContent = rows.join("\n");
+		const blob = new Blob([csvContent], {
+			type: "text/csv;charset=utf-8;",
+		});
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+
+		const datePart = new Date().toISOString().slice(0, 10);
+		a.download = `transcriptions-${dayId || "day"}-${
+			userId || "user"
+		}-${datePart}.csv`;
+
+		a.click();
+		URL.revokeObjectURL(url);
+	};
+
 	console.log("[RecordingPage] render", {
 		itemsCount: items.length,
 		localsCount: locals.length,
@@ -596,6 +667,11 @@ function RecordingPage() {
 		<div style={{ padding: 16 }}>
 			<div style={{ marginBottom: 12, display: "flex", gap: 8 }}>
 				<button onClick={addNewCard}>+ Add new recording</button>
+
+				<button onClick={exportAllTranscriptions}>
+					Export all transcriptions
+				</button>
+
 				{monthId && (
 					<Link
 						to={`/days/${dayId}/check?monthId=${
