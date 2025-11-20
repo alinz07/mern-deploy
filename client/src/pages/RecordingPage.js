@@ -229,7 +229,47 @@ function RecordingCard({
 	};
 
 	const transcribe = async () => {
-		if (!doc?._id) return setMsg("Save the upload first.");
+		if (!doc?._id) {
+			return setMsg("Save the upload first.");
+		}
+
+		// Require at least one saved audio file (teacher or student)
+		if (!doc?.teacherFileId && !doc?.studentFileId) {
+			return setMsg("Please record and save audio before transcribing.");
+		}
+
+		const ok = window.confirm(
+			"Transcribe this recording to IPA?\n\n" +
+				"This can take up to 45 seconds. After confirming, you'll be " +
+				"sent back to the Check page while the transcription runs in the background."
+		);
+		if (!ok) return;
+
+		// If we have enough info, fire transcription in the background
+		// and immediately send the user back to the Check page.
+		if (dayId && monthId && userId) {
+			axios
+				.post(
+					`${API}/api/recordings/${doc._id}/transcribe`,
+					{},
+					tokenHeader()
+				)
+				.catch((e) => {
+					console.error(
+						"[RecordingCard] background transcribe error",
+						e
+					);
+				});
+
+			const backUrl = `/days/${dayId}/check?monthId=${
+				monthId || ""
+			}&userId=${userId || ""}`;
+			window.location.href = backUrl;
+			return;
+		}
+
+		// Fallback behavior if we don't have month/day/user in the URL:
+		// behave like before and stay on this page.
 		try {
 			const { data } = await axios.post(
 				`${API}/api/recordings/${doc._id}/transcribe`,
@@ -244,23 +284,23 @@ function RecordingCard({
 		}
 	};
 
-	const downloadCsv = async () => {
-		if (!doc?._id) return setMsg("Save the upload first.");
-		try {
-			const { data } = await axios.get(
-				`${API}/api/recordings/${doc._id}/csv`,
-				{ ...tokenHeader(), responseType: "blob" }
-			);
-			const url = URL.createObjectURL(data);
-			const a = document.createElement("a");
-			a.href = url;
-			a.download = `recording-${doc._id}.csv`;
-			a.click();
-			URL.revokeObjectURL(url);
-		} catch (e) {
-			setMsg(e?.response?.data?.msg || "CSV export failed");
-		}
-	};
+	// const downloadCsv = async () => {
+	// 	if (!doc?._id) return setMsg("Save the upload first.");
+	// 	try {
+	// 		const { data } = await axios.get(
+	// 			`${API}/api/recordings/${doc._id}/csv`,
+	// 			{ ...tokenHeader(), responseType: "blob" }
+	// 		);
+	// 		const url = URL.createObjectURL(data);
+	// 		const a = document.createElement("a");
+	// 		a.href = url;
+	// 		a.download = `recording-${doc._id}.csv`;
+	// 		a.click();
+	// 		URL.revokeObjectURL(url);
+	// 	} catch (e) {
+	// 		setMsg(e?.response?.data?.msg || "CSV export failed");
+	// 	}
+	// };
 
 	const deleteRecording = async () => {
 		// Unsaved card: just remove it from the parent's local list
@@ -314,6 +354,8 @@ function RecordingCard({
 
 	// label shows "Record" for new cards, "Record again" for saved ones
 	const hasIdNow = !!doc?._id;
+	const hasAudio = !!doc?.teacherFileId || !!doc?.studentFileId;
+	const canTranscribe = hasIdNow && hasAudio;
 	const teacherLabel =
 		teacher.status !== "recording"
 			? hasIdNow
@@ -474,12 +516,11 @@ function RecordingCard({
 				>
 					{hasIdNow ? "Save Replacement" : "Save Upload"}
 				</button>
-				<button onClick={transcribe} disabled={!hasIdNow}>
+				<button onClick={transcribe} disabled={!canTranscribe}>
 					Transcribe to IPA
 				</button>
-				<button onClick={downloadCsv} disabled={!hasIdNow}>
-					Export CSV
-				</button>
+				{/* Export CSV temporarily removed */}
+
 				<button
 					onClick={deleteRecording}
 					style={{ marginLeft: "auto" }}
