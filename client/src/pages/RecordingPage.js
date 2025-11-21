@@ -1,9 +1,25 @@
 // client/src/pages/RecordingPage.js
 import React, { useEffect, useRef, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import axios from "axios";
 
 const API = "https://mern-deploy-docker.onrender.com";
+
+// Which Daily Check a recording belongs to
+const FIELD_OPTIONS = [
+	["checkone", "Check One"],
+	["checktwo", "Check Two"],
+	["checkthree", "Check Three"],
+	["checkfour", "Check Four"],
+	["checkfive", "Check Five"],
+	["checksix", "Check Six"],
+	["checkseven", "Check Seven"],
+	["checkeight", "Check Eight"],
+	["checknine", "Check Nine"],
+	["checkten", "Check Ten"],
+];
+
+const DEFAULT_FIELD = "checkone";
 
 // ------- small helpers -------
 function tokenHeader() {
@@ -83,6 +99,9 @@ function RecordingCard({
 	const [msg, setMsg] = useState("");
 	const [removed, setRemoved] = useState(false);
 
+	// Which Daily Check this recording is for
+	const [field, setField] = useState(initialDoc?.field || DEFAULT_FIELD);
+
 	const [teacherUrl, setTeacherUrl] = useState(null);
 	const [studentUrl, setStudentUrl] = useState(null);
 
@@ -126,6 +145,13 @@ function RecordingCard({
 
 	const teacher = useSideRecorder();
 	const student = useSideRecorder();
+
+	// Keep dropdown in sync with server data
+	useEffect(() => {
+		if (doc?.field) {
+			setField(doc.field);
+		}
+	}, [doc?.field]);
 
 	// Local preview URLs for unsaved recordings
 	const [teacherLocalUrl, setTeacherLocalUrl] = useState(null);
@@ -192,6 +218,9 @@ function RecordingCard({
 			fd.append("durationTeacherMs", String(teacher.durationMs || 0));
 			fd.append("durationStudentMs", String(student.durationMs || 0));
 
+			// which Daily Check this recording belongs to
+			fd.append("field", field || DEFAULT_FIELD);
+
 			if (teacher.blob)
 				fd.append("teacher", teacher.blob, "teacher.webm");
 			if (student.blob)
@@ -232,62 +261,6 @@ function RecordingCard({
 		} catch (e) {
 			console.error("[RecordingCard] saveUpload error", e);
 			setMsg(e?.response?.data?.msg || "Save failed");
-		}
-	};
-
-	const transcribe = async () => {
-		if (!doc?._id) {
-			return setMsg("Save the upload first.");
-		}
-
-		// Require at least one saved audio file (teacher or student)
-		if (!doc?.teacherFileId && !doc?.studentFileId) {
-			return setMsg("Please record and save audio before transcribing.");
-		}
-
-		const ok = window.confirm(
-			"Transcribe this recording to IPA?\n\n" +
-				"This can take up to 45 seconds. After confirming, you'll be " +
-				"sent back to the Check page while the transcription runs in the background."
-		);
-		if (!ok) return;
-
-		// If we have enough info, fire transcription in the background
-		// and immediately send the user back to the Check page.
-		if (dayId && monthId && userId) {
-			axios
-				.post(
-					`${API}/api/recordings/${doc._id}/transcribe`,
-					{},
-					tokenHeader()
-				)
-				.catch((e) => {
-					console.error(
-						"[RecordingCard] background transcribe error",
-						e
-					);
-				});
-
-			const backUrl = `/days/${dayId}/check?monthId=${
-				monthId || ""
-			}&userId=${userId || ""}`;
-			window.location.href = backUrl;
-			return;
-		}
-
-		// Fallback behavior if we don't have month/day/user in the URL:
-		// behave like before and stay on this page.
-		try {
-			const { data } = await axios.post(
-				`${API}/api/recordings/${doc._id}/transcribe`,
-				{},
-				tokenHeader()
-			);
-			setDoc(data);
-			setMsg("Transcribed.");
-			onChanged?.();
-		} catch (e) {
-			setMsg(e?.response?.data?.msg || "Transcribe failed");
 		}
 	};
 
@@ -361,8 +334,6 @@ function RecordingCard({
 
 	// label shows "Record" for new cards, "Record again" for saved ones
 	const hasIdNow = !!doc?._id;
-	const hasAudio = !!doc?.teacherFileId || !!doc?.studentFileId;
-	const canTranscribe = hasIdNow && hasAudio;
 	const teacherLabel =
 		teacher.status !== "recording"
 			? hasIdNow
@@ -393,11 +364,33 @@ function RecordingCard({
 				marginBottom: 12,
 			}}
 		>
-			<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					gap: 12,
+					flexWrap: "wrap",
+				}}
+			>
 				<strong>
 					Recording{" "}
 					{hasIdNow && doc?._id ? `#${doc._id.slice(-6)}` : "(new)"}
 				</strong>
+
+				<label style={{ fontSize: 14 }}>
+					Check:&nbsp;
+					<select
+						value={field}
+						onChange={(e) => setField(e.target.value)}
+						style={{ padding: 2 }}
+					>
+						{FIELD_OPTIONS.map(([value, label]) => (
+							<option key={value} value={value}>
+								{label}
+							</option>
+						))}
+					</select>
+				</label>
 			</div>
 
 			<div
@@ -523,10 +516,6 @@ function RecordingCard({
 				>
 					{hasIdNow ? "Save Replacement" : "Save Upload"}
 				</button>
-				<button onClick={transcribe} disabled={!canTranscribe}>
-					Transcribe to IPA
-				</button>
-				{/* Export CSV temporarily removed */}
 
 				<button
 					onClick={deleteRecording}
@@ -542,15 +531,29 @@ function RecordingCard({
 }
 
 // -------- PAGE SHELL (list, add, refresh) --------
-function RecordingPage() {
+function RecordingPage({
+	dayId: dayIdProp,
+	userId: userIdProp,
+	monthId: monthIdProp,
+}) {
 	const [params] = useSearchParams();
-	const dayId = params.get("day");
-	const userId = params.get("user");
-	const monthId = params.get("month");
+
+	const dayIdFromQuery = params.get("day");
+	const userIdFromQuery = params.get("user");
+	const monthIdFromQuery = params.get("month");
+
+	// Prefer explicit props (used on CheckPage), fall back to query params
+	const dayId = dayIdProp || dayIdFromQuery;
+	const userId = userIdProp || userIdFromQuery;
+	const monthId = monthIdProp || monthIdFromQuery;
 
 	const [items, setItems] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [locals, setLocals] = useState([]); // unsaved placeholders
+
+	const hasAnyAudio = items.some(
+		(rec) => rec.teacherFileId || rec.studentFileId
+	);
 
 	const load = async () => {
 		if (!dayId || !userId) return;
@@ -592,6 +595,60 @@ function RecordingPage() {
 	const removeById = (id) => {
 		console.log("[RecordingPage] removeById", { id });
 		setItems((xs) => xs.filter((x) => x._id !== id));
+	};
+
+	const transcribeAll = async () => {
+		if (!items.length) {
+			alert("No recordings to transcribe yet.");
+			return;
+		}
+
+		// Only transcribe saved recordings that actually have audio
+		const ids = items
+			.filter((r) => r._id && (r.teacherFileId || r.studentFileId))
+			.map((r) => r._id);
+
+		if (!ids.length) {
+			alert("Please record and save audio before transcribing.");
+			return;
+		}
+
+		const ok = window.confirm(
+			[
+				"Transcribe all recordings for this day to IPA?",
+				"",
+				"This can take up to 45 seconds.",
+				"You will be routed to the Day list while transcription runs in the background.",
+				"",
+				"Only continue if you're finished editing today's check and equipment check.",
+			].join("\n")
+		);
+		if (!ok) return;
+
+		// Fire off all transcription requests in the background.
+		ids.forEach((id) => {
+			axios
+				.post(
+					`${API}/api/recordings/${id}/transcribe`,
+					{},
+					tokenHeader()
+				)
+				.catch((e) => {
+					console.error(
+						"[RecordingPage] background transcribe error",
+						id,
+						e
+					);
+				});
+		});
+
+		// Route to DayList (month page) when we know the month.
+		if (monthId) {
+			window.location.href = `/months/${monthId}`;
+		} else {
+			// Fallback: stay on page, maybe refresh the list soon.
+			setTimeout(() => load(), 1000);
+		}
 	};
 
 	const exportAllTranscriptions = () => {
@@ -665,25 +722,27 @@ function RecordingPage() {
 
 	return (
 		<div style={{ padding: 16 }}>
-			<div style={{ marginBottom: 12, display: "flex", gap: 8 }}>
+			<div
+				style={{
+					marginBottom: 12,
+					display: "flex",
+					gap: 8,
+					alignItems: "center",
+				}}
+			>
 				<button onClick={addNewCard}>+ Add new recording</button>
 
-				<button onClick={exportAllTranscriptions}>
+				<button
+					type="button"
+					onClick={transcribeAll}
+					disabled={!hasAnyAudio || transcribing}
+				>
+					{transcribing ? "Transcribing..." : "Transcribe all"}
+				</button>
+				<button type="button" onClick={exportAllTranscriptions}>
 					Export all transcriptions
 				</button>
-
-				{monthId && (
-					<Link
-						to={`/days/${dayId}/check?monthId=${
-							monthId || ""
-						}&userId=${userId || ""}`}
-						style={{ marginLeft: "auto" }}
-					>
-						← Back to Check
-					</Link>
-				)}
 			</div>
-
 			{loading && <div style={{ marginTop: 12 }}>Loading…</div>}
 
 			{/* Unsaved placeholders (locals) */}

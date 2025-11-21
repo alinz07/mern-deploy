@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import axios from "axios";
+import RecordingPage from "./RecordingPage";
 
 const API = "https://mern-deploy-docker.onrender.com";
 
@@ -412,7 +413,9 @@ export default function CheckPage() {
 		<div
 			style={{
 				display: "grid",
-				gridTemplateColumns: equipAllowed ? "1fr 340px" : "1fr",
+				gridTemplateColumns: equipAllowed
+					? "minmax(0, 1.1fr) minmax(380px, 1fr) 340px"
+					: "minmax(0, 1.1fr) minmax(380px, 1fr)",
 				gap: 24,
 			}}
 		>
@@ -433,15 +436,6 @@ export default function CheckPage() {
 					}}
 				>
 					<h2 style={{ margin: 0 }}>Daily Check</h2>
-					<Link
-						to={`/record?day=${dayId}&user=${
-							resolvedUserId || ""
-						}&month=${monthId || ""}`}
-					>
-						<button type="button" title="Open recording page">
-							Record Sound
-						</button>
-					</Link>
 					<span style={{ opacity: 0.7 }}>
 						({checkedCount} / 10 complete)
 					</span>
@@ -583,6 +577,30 @@ export default function CheckPage() {
 						Clear all
 					</button>
 				</div>
+			</div>
+
+			{/* CENTER: Recordings */}
+			<div
+				style={{
+					maxWidth: 520,
+					margin: "0 auto",
+				}}
+			>
+				<h3 style={{ marginTop: 0 }}>Recordings</h3>
+
+				{!resolvedUserId && (
+					<p style={{ opacity: 0.7, fontSize: 14 }}>
+						Loading recordings…
+					</p>
+				)}
+
+				{resolvedUserId && (
+					<RecordingPage
+						dayId={dayId}
+						userId={resolvedUserId}
+						monthId={monthId}
+					/>
+				)}
 			</div>
 
 			{/* RIGHT: Equipment Check */}

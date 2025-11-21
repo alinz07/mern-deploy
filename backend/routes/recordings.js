@@ -26,13 +26,37 @@ router.post(
 	upload.fields([{ name: "teacher" }, { name: "student" }]),
 	async (req, res) => {
 		try {
-			const { dayId, userId, durationTeacherMs, durationStudentMs } =
-				req.body;
+			const {
+				dayId,
+				userId,
+				field,
+				durationTeacherMs,
+				durationStudentMs,
+			} = req.body;
+
 			if (
 				!mongoose.isValidObjectId(dayId) ||
 				!mongoose.isValidObjectId(userId)
 			) {
 				return res.status(400).json({ msg: "Invalid ids" });
+			}
+
+			// Validate field (one per check row)
+			const VALID_FIELDS = new Set([
+				"checkone",
+				"checktwo",
+				"checkthree",
+				"checkfour",
+				"checkfive",
+				"checksix",
+				"checkseven",
+				"checkeight",
+				"checknine",
+				"checkten",
+			]);
+
+			if (!VALID_FIELDS.has(field)) {
+				return res.status(400).json({ msg: "Invalid field" });
 			}
 
 			// permissions: must be the student themself OR an admin in same tenant
@@ -42,8 +66,9 @@ router.post(
 
 			const day = await Day.findById(dayId).lean();
 			if (!day) return res.status(404).json({ msg: "Day not found" });
-			if (String(day.userId) !== String(userId))
+			if (String(day.userId) !== String(userId)) {
 				return res.status(400).json({ msg: "Day/user mismatch" });
+			}
 
 			const bucket = getBucket();
 
@@ -68,19 +93,36 @@ router.post(
 				saveOne(studentFile),
 			]);
 
-			// create a brand-new Recording every POST
-			const rec = await Recording.create({
-				day: dayId,
-				user: userId,
-				...(teacherFileId ? { teacherFileId } : {}),
-				...(studentFileId ? { studentFileId } : {}),
-				...(req.body.durationTeacherMs
-					? { durationTeacherMs: Number(req.body.durationTeacherMs) }
-					: {}),
-				...(req.body.durationStudentMs
-					? { durationStudentMs: Number(req.body.durationStudentMs) }
-					: {}),
+			// Enforce ONE recording per (day, user, field) by upserting.
+			// We only set audio fields if new files were provided, so existing
+			// audio isn't wiped out when a side is omitted.
+			const filter = { day: dayId, user: userId, field };
+
+			const set = {};
+			if (teacherFileId) set.teacherFileId = teacherFileId;
+			if (studentFileId) set.studentFileId = studentFileId;
+			if (durationTeacherMs) {
+				set.durationTeacherMs = Number(durationTeacherMs);
+			}
+			if (durationStudentMs) {
+				set.durationStudentMs = Number(durationStudentMs);
+			}
+
+			const update = {
+				$set: set,
+				$setOnInsert: {
+					day: dayId,
+					user: userId,
+					field,
+				},
+			};
+
+			const rec = await Recording.findOneAndUpdate(filter, update, {
+				new: true,
+				upsert: true,
+				setDefaultsOnInsert: true,
 			});
+
 			return res.json(rec);
 		} catch (e) {
 			console.error("POST /api/recordings error", e);
