@@ -550,6 +550,11 @@ function RecordingPage({
 	const [items, setItems] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [locals, setLocals] = useState([]); // unsaved placeholders
+	const [msg, setMsg] = useState("");
+
+	// loading flags for bulk actions
+	const [transcribing, setTranscribing] = useState(false);
+	const [exportingAll, setExportingAll] = useState(false);
 
 	const hasAnyAudio = items.some(
 		(rec) => rec.teacherFileId || rec.studentFileId
@@ -599,120 +604,141 @@ function RecordingPage({
 
 	const transcribeAll = async () => {
 		if (!items.length) {
-			alert("No recordings to transcribe yet.");
+			alert("No saved recordings to transcribe.");
 			return;
 		}
 
 		// Only transcribe saved recordings that actually have audio
-		const ids = items
-			.filter((r) => r._id && (r.teacherFileId || r.studentFileId))
-			.map((r) => r._id);
+		const idsWithAudio = items
+			.filter((rec) => rec.teacherFileId || rec.studentFileId)
+			.map((rec) => rec._id);
 
-		if (!ids.length) {
+		if (!idsWithAudio.length) {
 			alert("Please record and save audio before transcribing.");
 			return;
 		}
 
 		const ok = window.confirm(
 			[
-				"Transcribe all recordings for this day to IPA?",
+				"Transcribe all saved recordings on this day?",
 				"",
-				"This can take up to 45 seconds.",
-				"You will be routed to the Day list while transcription runs in the background.",
+				"This can take up to ~45 seconds.",
+				"After you confirm you'll be sent back to the Day List for this month.",
 				"",
-				"Only continue if you're finished editing today's check and equipment check.",
+				"Only do this if you are finished editing checks, comments, equipment,",
+				"and recordings for this day.",
 			].join("\n")
 		);
 		if (!ok) return;
 
-		// Fire off all transcription requests in the background.
-		ids.forEach((id) => {
-			axios
-				.post(
-					`${API}/api/recordings/${id}/transcribe`,
-					{},
-					tokenHeader()
-				)
-				.catch((e) => {
-					console.error(
-						"[RecordingPage] background transcribe error",
-						id,
-						e
-					);
-				});
-		});
+		setTranscribing(true);
+		setMsg("");
 
-		// Route to DayList (month page) when we know the month.
-		if (monthId) {
-			window.location.href = `/months/${monthId}`;
-		} else {
-			// Fallback: stay on page, maybe refresh the list soon.
-			setTimeout(() => load(), 1000);
+		try {
+			// Fire off all transcription requests
+			await Promise.all(
+				idsWithAudio.map((id) =>
+					axios.post(
+						`${API}/api/recordings/${id}/transcribe`,
+						{},
+						tokenHeader()
+					)
+				)
+			);
+
+			if (monthId) {
+				// Go to DayList for this month
+				window.location.href = `/months/${monthId}${
+					userId ? `?userId=${userId}` : ""
+				}`;
+			} else {
+				// Fallback if we don't know the month
+				setMsg(
+					"Transcription started. Refresh the Day List to see updated stats."
+				);
+			}
+		} catch (e) {
+			console.error("[RecordingPage] transcribeAll error", e);
+			setMsg(
+				e?.response?.data?.msg ||
+					"Bulk transcribe failed or partially succeeded."
+			);
+		} finally {
+			setTranscribing(false);
 		}
 	};
 
 	const exportAllTranscriptions = () => {
-		if (!items || items.length === 0) {
+		if (!items.length) {
 			alert("No recordings to export.");
 			return;
 		}
 
-		const rows = [];
-		// Header row
-		rows.push(["RecordingId", "Side", "Text", "IPA"].join(","));
+		setExportingAll(true);
 
-		items.forEach((doc) => {
-			if (!doc) return;
+		try {
+			const rows = [];
+			// Header row
+			rows.push(["RecordingId", "Side", "Text", "IPA"].join(","));
 
-			const { _id, teacherText, teacherIPA, studentText, studentIPA } =
-				doc;
+			items.forEach((doc) => {
+				if (!doc) return;
 
-			// Teacher row
-			if (teacherText && teacherIPA) {
-				rows.push(
-					[
-						escapeCsv(_id || ""),
-						escapeCsv("Teacher"),
-						escapeCsv(teacherText),
-						escapeCsv(teacherIPA),
-					].join(",")
-				);
+				const {
+					_id,
+					teacherText,
+					teacherIPA,
+					studentText,
+					studentIPA,
+				} = doc;
+
+				// Teacher row
+				if (teacherText && teacherIPA) {
+					rows.push(
+						[
+							escapeCsv(_id || ""),
+							escapeCsv("Teacher"),
+							escapeCsv(teacherText),
+							escapeCsv(teacherIPA),
+						].join(",")
+					);
+				}
+
+				// Student row
+				if (studentText && studentIPA) {
+					rows.push(
+						[
+							escapeCsv(_id || ""),
+							escapeCsv("Student"),
+							escapeCsv(studentText),
+							escapeCsv(studentIPA),
+						].join(",")
+					);
+				}
+			});
+
+			// If we only have the header, nothing matched
+			if (rows.length === 1) {
+				alert("No transcriptions found to export.");
+				return;
 			}
 
-			// Student row
-			if (studentText && studentIPA) {
-				rows.push(
-					[
-						escapeCsv(_id || ""),
-						escapeCsv("Student"),
-						escapeCsv(studentText),
-						escapeCsv(studentIPA),
-					].join(",")
-				);
-			}
-		});
+			const csvContent = rows.join("\n");
+			const blob = new Blob([csvContent], {
+				type: "text/csv;charset=utf-8;",
+			});
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
 
-		// If we only have the header, nothing matched
-		if (rows.length === 1) {
-			alert("No transcriptions found to export.");
-			return;
+			const datePart = new Date().toISOString().slice(0, 10);
+			a.download = `recordings-transcriptions-${datePart}.csv`;
+
+			a.click();
+			URL.revokeObjectURL(url);
+		} finally {
+			setExportingAll(false);
 		}
-
-		const csvContent = rows.join("\n");
-		const blob = new Blob([csvContent], {
-			type: "text/csv;charset=utf-8;",
-		});
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-
-		const datePart = new Date().toISOString().slice(0, 10);
-		a.download = `transcriptions-${dayId || "day"}-${
-			userId || "user"
-		}-${datePart}.csv`;
-
-		a.click();
-		URL.revokeObjectURL(url);
 	};
 
 	console.log("[RecordingPage] render", {
@@ -731,7 +757,6 @@ function RecordingPage({
 				}}
 			>
 				<button onClick={addNewCard}>+ Add new recording</button>
-
 				<button
 					type="button"
 					onClick={transcribeAll}
@@ -739,11 +764,19 @@ function RecordingPage({
 				>
 					{transcribing ? "Transcribing..." : "Transcribe all"}
 				</button>
-				<button type="button" onClick={exportAllTranscriptions}>
-					Export all transcriptions
-				</button>
+				<button
+					type="button"
+					onClick={exportAllTranscriptions}
+					disabled={!items.length || exportingAll}
+				>
+					{exportingAll
+						? "Exporting..."
+						: "Export all transcriptions"}
+				</button>{" "}
 			</div>
 			{loading && <div style={{ marginTop: 12 }}>Loading…</div>}
+
+			{msg && <div style={{ marginTop: 8, opacity: 0.8 }}>{msg}</div>}
 
 			{/* Unsaved placeholders (locals) */}
 			{locals.map((k) => (
