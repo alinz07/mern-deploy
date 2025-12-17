@@ -310,25 +310,37 @@ function AdminDashboard() {
 			{/* ======= COMPLETION STATS ======= */}
 			<h3>Completion Stats</h3>
 			<p style={{ marginTop: -8, opacity: 0.8 }}>
-				Current month:{" "}
-				{checksStats.currentMonthLabel ||
-					equipStats.currentMonthLabel ||
-					"—"}{" "}
-				(to date) · Previous month:{" "}
-				{checksStats.previousMonthLabel ||
-					equipStats.previousMonthLabel ||
-					"—"}
+				Current month: {checksStats.currentMonthLabel || "—"} (to date)
+				· Previous month: {checksStats.previousMonthLabel || "—"}
 			</p>
 			<table>
 				<thead>
 					<tr>
 						<th>User</th>
-						<th>Current — Online</th>
-						<th>Current — In-Person</th>
-						<th>Previous — Online</th>
-						<th>Previous — In-Person</th>
-						<th>Current — Equipment</th>
-						<th>Previous — Equipment</th>
+						<th>
+							{checksStats.currentMonthLabel || "Current"} —
+							Online
+						</th>
+						<th>
+							{checksStats.currentMonthLabel || "Current"} —
+							In-Person
+						</th>
+						<th>
+							{checksStats.previousMonthLabel || "Previous"} —
+							Online
+						</th>
+						<th>
+							{checksStats.previousMonthLabel || "Previous"} —
+							In-Person
+						</th>
+						<th>
+							{checksStats.currentMonthLabel || "Current"} —
+							Equipment
+						</th>
+						<th>
+							{checksStats.previousMonthLabel || "Previous"} —
+							Equipment
+						</th>
 					</tr>
 				</thead>
 				<tbody>

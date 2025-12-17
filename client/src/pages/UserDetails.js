@@ -352,8 +352,8 @@ export default function UserDetails() {
 						<thead>
 							<tr>
 								<th>Field</th>
-								<th>Current Month</th>
-								<th>Previous Month</th>
+								<th>({stats.currentMonth?.name})</th>
+								<th>({stats.previousMonth?.name})</th>
 							</tr>
 						</thead>
 						<tbody>{statRows}</tbody>
@@ -364,14 +364,17 @@ export default function UserDetails() {
 				<div>
 					<h3 style={{ marginTop: 8 }}>
 						Comments by Field{" "}
-						<small>(current & previous month)</small>
+						<small>
+							({stats.currentMonth?.name} vs{" "}
+							{stats.previousMonth?.name})
+						</small>
 					</h3>
 					<table className="table grid">
 						<thead>
 							<tr>
 								<th>Field</th>
-								<th>Current Month</th>
-								<th>Previous Month</th>
+								<th>({stats.currentMonth?.name})</th>
+								<th>({stats.previousMonth?.name})</th>
 							</tr>
 						</thead>
 						<tbody>{commentsRows}</tbody>
