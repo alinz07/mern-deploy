@@ -29,7 +29,7 @@ const App = () => {
 
 		setAuthToken(token);
 		axios
-			.get("https://mern-deploy-docker.onrender.com/api/auth/me")
+			.get("/api/auth/me")
 			.then((res) => setUser(res.data))
 			.catch((err) => {
 				console.error(

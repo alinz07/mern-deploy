@@ -15,11 +15,26 @@ require("dotenv").config();
 const app = express();
 
 //middleware
-const corsOptions = {
-	origin: "https://mern-deploy-1-hixt.onrender.com", // frontend URI (ReactJS)
-};
+// ✅ Allow both Render frontend + local React dev server
+const allowedOrigins = [
+	process.env.CLIENT_ORIGIN, // e.g. http://localhost:3000
+	"https://mern-deploy-1-hixt.onrender.com",
+	"http://localhost:3000",
+].filter(Boolean);
+
+app.use(
+	cors({
+		origin: function (origin, callback) {
+			// allow requests with no origin (like curl/postman)
+			if (!origin) return callback(null, true);
+
+			if (allowedOrigins.includes(origin)) return callback(null, true);
+
+			return callback(new Error("Not allowed by CORS: " + origin));
+		},
+	})
+);
 app.use(express.json());
-app.use(cors(corsOptions));
 
 // connect MongoDB
 mongoose
