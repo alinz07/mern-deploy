@@ -23,6 +23,12 @@ function AdminDashboard() {
 	const [editForm, setEditForm] = useState({ username: "", email: "" });
 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+	// ===== NEW: Create month (admin) =====
+	const [showAddMonth, setShowAddMonth] = useState(false);
+	const [selectedStudentId, setSelectedStudentId] = useState("");
+	const [creatingMonth, setCreatingMonth] = useState(false);
+	const [monthCreateMsg, setMonthCreateMsg] = useState("");
+
 	// ===== STATS =====
 	const [checksStats, setChecksStats] = useState({
 		rows: [],
@@ -151,6 +157,66 @@ function AdminDashboard() {
 		fetchStats();
 		fetchJoinCode();
 	}, []);
+
+	// Utility: "MonthName YYYY" (same pattern as MonthList)
+	const getFormattedMonth = (offset = 0) => {
+		const date = new Date();
+		date.setMonth(date.getMonth() + offset);
+		const mname = date.toLocaleString("default", { month: "long" });
+		const year = date.getFullYear();
+		return `${mname} ${year}`;
+	};
+	const currentMonthName = getFormattedMonth(0);
+
+	// ===== NEW: Admin create current month for a student =====
+	const studentUsers = useMemo(
+		() => (users || []).filter((u) => u?.role !== "admin"),
+		[users]
+	);
+
+	const createMonthForSelectedStudent = async () => {
+		if (!selectedStudentId) return alert("Please select a student.");
+
+		const student = studentUsers.find((u) => u._id === selectedStudentId);
+		const studentName = student?.username || "this student";
+
+		const ok = window.confirm(
+			`Create "${currentMonthName}" for ${studentName}?`
+		);
+		if (!ok) return;
+
+		setCreatingMonth(true);
+		setMonthCreateMsg("");
+
+		try {
+			await axios.post(
+				"https://mern-deploy-docker.onrender.com/api/months/new",
+				{ name: currentMonthName, userId: selectedStudentId },
+				tokenHeader()
+			);
+
+			// Re-fetch so the new row has populated username (owner column)
+			const refreshed = await axios.get(
+				"https://mern-deploy-docker.onrender.com/api/months",
+				tokenHeader()
+			);
+			setMonths(refreshed.data || []);
+
+			setMonthCreateMsg(
+				`✅ "${currentMonthName}" added for ${studentName}`
+			);
+			setShowAddMonth(false);
+			setSelectedStudentId("");
+		} catch (err) {
+			const msg =
+				err?.response?.data?.msg ||
+				err?.response?.data?.error ||
+				"Failed to create month";
+			setMonthCreateMsg(`❌ ${msg}`);
+		} finally {
+			setCreatingMonth(false);
+		}
+	};
 
 	// ===== Helpers for months table =====
 	const nameToDate = (name) => {
@@ -580,6 +646,7 @@ function AdminDashboard() {
 				}}
 			>
 				<h3 style={{ margin: 0 }}>Months</h3>
+
 				<div>
 					<button
 						type="button"
@@ -594,7 +661,9 @@ function AdminDashboard() {
 							: "Oldest → Newest"}
 					</button>
 				</div>
+
 				<div>or</div>
+
 				<div>
 					<input
 						type="text"
@@ -605,6 +674,69 @@ function AdminDashboard() {
 						aria-label="search by username"
 					/>
 				</div>
+
+				{/* NEW: Add Month UI */}
+				<div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+					<button
+						type="button"
+						onClick={() => {
+							setMonthCreateMsg("");
+							setShowAddMonth((v) => !v);
+						}}
+						title="Create current month for a student"
+					>
+						➕ Add Month
+					</button>
+
+					{showAddMonth && (
+						<>
+							<select
+								value={selectedStudentId}
+								onChange={(e) =>
+									setSelectedStudentId(e.target.value)
+								}
+								style={{ padding: "6px 8px" }}
+								aria-label="select student for month creation"
+							>
+								<option value="">Select student…</option>
+								{studentUsers.map((u) => (
+									<option key={u._id} value={u._id}>
+										{u.username}
+									</option>
+								))}
+							</select>
+
+							<button
+								type="button"
+								onClick={createMonthForSelectedStudent}
+								disabled={creatingMonth}
+								title={`Create ${currentMonthName} for selected student`}
+							>
+								{creatingMonth
+									? "Creating…"
+									: `Create ${currentMonthName}`}
+							</button>
+
+							<button
+								type="button"
+								onClick={() => {
+									setShowAddMonth(false);
+									setSelectedStudentId("");
+								}}
+								disabled={creatingMonth}
+								title="Cancel"
+							>
+								Cancel
+							</button>
+						</>
+					)}
+				</div>
+
+				{monthCreateMsg && (
+					<div style={{ width: "100%", opacity: 0.9 }}>
+						{monthCreateMsg}
+					</div>
+				)}
 			</div>
 
 			<table>
