@@ -14,20 +14,51 @@ function AdminDashboard() {
 	const [searchTerm, setSearchTerm] = useState("");
 	const [sortDir, setSortDir] = useState("desc");
 
-	// ===== UI controls (users) — NEW =====
+	// ===== UI controls (users) =====
 	const [usersSearch, setUsersSearch] = useState("");
-	const [usersSortDir, setUsersSortDir] = useState("asc"); // A→Z by default
+	const [usersSortDir, setUsersSortDir] = useState("asc");
 
 	const [deletingId, setDeletingId] = useState(null);
 	const [editId, setEditId] = useState(null);
 	const [editForm, setEditForm] = useState({ username: "", email: "" });
 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-	// ===== NEW: Create month (admin) =====
+	// ===== Create month (admin) =====
 	const [showAddMonth, setShowAddMonth] = useState(false);
 	const [selectedStudentId, setSelectedStudentId] = useState("");
 	const [creatingMonth, setCreatingMonth] = useState(false);
 	const [monthCreateMsg, setMonthCreateMsg] = useState("");
+
+	// NEW: month selection
+	const monthNames = useMemo(
+		() => [
+			"January",
+			"February",
+			"March",
+			"April",
+			"May",
+			"June",
+			"July",
+			"August",
+			"September",
+			"October",
+			"November",
+			"December",
+		],
+		[]
+	);
+
+	const now = new Date();
+	const [selectedMonthIndex, setSelectedMonthIndex] = useState(
+		now.getMonth()
+	);
+	const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+
+	const yearOptions = useMemo(() => {
+		const y = new Date().getFullYear();
+		// currentYear-2 .. currentYear+2
+		return [y - 2, y - 1, y, y + 1, y + 2];
+	}, []);
 
 	// ===== STATS =====
 	const [checksStats, setChecksStats] = useState({
@@ -42,7 +73,7 @@ function AdminDashboard() {
 	});
 	const [loadingStats, setLoadingStats] = useState(true);
 
-	// 🔹 Admin join code
+	// Join code
 	const [joinCode, setJoinCode] = useState("");
 	const [loadingJoin, setLoadingJoin] = useState(true);
 
@@ -158,17 +189,11 @@ function AdminDashboard() {
 		fetchJoinCode();
 	}, []);
 
-	// Utility: "MonthName YYYY" (same pattern as MonthList)
-	const getFormattedMonth = (offset = 0) => {
-		const date = new Date();
-		date.setMonth(date.getMonth() + offset);
-		const mname = date.toLocaleString("default", { month: "long" });
-		const year = date.getFullYear();
-		return `${mname} ${year}`;
-	};
-	const currentMonthName = getFormattedMonth(0);
+	// month label to create
+	const selectedMonthName = monthNames[selectedMonthIndex] || "January";
+	const monthRecordName = `${selectedMonthName} ${selectedYear}`;
 
-	// ===== NEW: Admin create current month for a student =====
+	// students only
 	const studentUsers = useMemo(
 		() => (users || []).filter((u) => u?.role !== "admin"),
 		[users]
@@ -181,7 +206,7 @@ function AdminDashboard() {
 		const studentName = student?.username || "this student";
 
 		const ok = window.confirm(
-			`Create "${currentMonthName}" for ${studentName}?`
+			`Create "${monthRecordName}" for ${studentName}?`
 		);
 		if (!ok) return;
 
@@ -191,11 +216,11 @@ function AdminDashboard() {
 		try {
 			await axios.post(
 				"https://mern-deploy-docker.onrender.com/api/months/new",
-				{ name: currentMonthName, userId: selectedStudentId },
+				{ name: monthRecordName, userId: selectedStudentId },
 				tokenHeader()
 			);
 
-			// Re-fetch so the new row has populated username (owner column)
+			// refresh months so Owner column is populated
 			const refreshed = await axios.get(
 				"https://mern-deploy-docker.onrender.com/api/months",
 				tokenHeader()
@@ -203,7 +228,7 @@ function AdminDashboard() {
 			setMonths(refreshed.data || []);
 
 			setMonthCreateMsg(
-				`✅ "${currentMonthName}" added for ${studentName}`
+				`✅ "${monthRecordName}" added for ${studentName}`
 			);
 			setShowAddMonth(false);
 			setSelectedStudentId("");
@@ -221,7 +246,10 @@ function AdminDashboard() {
 	// ===== Helpers for months table =====
 	const nameToDate = (name) => {
 		if (!name) return null;
-		const [mName, yStr] = name.split(" ");
+		const parts = name.split(" ");
+		if (parts.length < 2) return null;
+		const mName = parts[0];
+		const yStr = parts[1];
 		const d = new Date(`${mName} 1, ${yStr}`);
 		return isNaN(d) ? null : d;
 	};
@@ -243,7 +271,7 @@ function AdminDashboard() {
 		return list;
 	}, [months, searchTerm, sortDir]);
 
-	// ===== NEW: Users search + sort =====
+	// ===== Users search + sort =====
 	const filteredSortedUsers = useMemo(() => {
 		const term = usersSearch.trim().toLowerCase();
 		const list = term
@@ -262,7 +290,7 @@ function AdminDashboard() {
 		return list;
 	}, [users, usersSearch, usersSortDir]);
 
-	// Merge equipment stats into checks rows by userId (unchanged)
+	// Merge equipment stats into checks rows by userId
 	const mergedRows = useMemo(() => {
 		const byId = new Map(
 			(checksStats.rows || []).map((r) => [r.userId, { ...r }])
@@ -285,7 +313,6 @@ function AdminDashboard() {
 		);
 	}, [checksStats.rows, equipStats.rows]);
 
-	// Render helpers
 	const monthsTableRows = useMemo(() => {
 		const list = filteredSortedMonths;
 		if (list.length === 0) {
@@ -342,7 +369,6 @@ function AdminDashboard() {
 			<div className="page-header">
 				<h2>Admin Dashboard</h2>
 
-				{/* Join code chip */}
 				<div
 					style={{
 						flex: 1,
@@ -373,12 +399,12 @@ function AdminDashboard() {
 				</a>
 			</div>
 
-			{/* ======= COMPLETION STATS ======= */}
 			<h3>Completion Stats</h3>
 			<p style={{ marginTop: -8, opacity: 0.8 }}>
 				Current month: {checksStats.currentMonthLabel || "—"} (to date)
 				· Previous month: {checksStats.previousMonthLabel || "—"}
 			</p>
+
 			<table>
 				<thead>
 					<tr>
@@ -675,17 +701,24 @@ function AdminDashboard() {
 					/>
 				</div>
 
-				{/* NEW: Add Month UI */}
-				<div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+				{/* Add Month UI */}
+				<div
+					style={{
+						marginLeft: "auto",
+						display: "flex",
+						gap: 8,
+						flexWrap: "wrap",
+					}}
+				>
 					<button
 						type="button"
 						onClick={() => {
 							setMonthCreateMsg("");
 							setShowAddMonth((v) => !v);
 						}}
-						title="Create current month for a student"
+						title="Create a month for a student"
 					>
-						➕ Add Month
+						Add Month
 					</button>
 
 					{showAddMonth && (
@@ -706,15 +739,47 @@ function AdminDashboard() {
 								))}
 							</select>
 
+							<select
+								value={selectedMonthIndex}
+								onChange={(e) =>
+									setSelectedMonthIndex(
+										Number(e.target.value)
+									)
+								}
+								style={{ padding: "6px 8px" }}
+								aria-label="select month"
+							>
+								{monthNames.map((mn, idx) => (
+									<option key={mn} value={idx}>
+										{mn}
+									</option>
+								))}
+							</select>
+
+							<select
+								value={selectedYear}
+								onChange={(e) =>
+									setSelectedYear(Number(e.target.value))
+								}
+								style={{ padding: "6px 8px" }}
+								aria-label="select year"
+							>
+								{yearOptions.map((y) => (
+									<option key={y} value={y}>
+										{y}
+									</option>
+								))}
+							</select>
+
 							<button
 								type="button"
 								onClick={createMonthForSelectedStudent}
 								disabled={creatingMonth}
-								title={`Create ${currentMonthName} for selected student`}
+								title={`Create ${monthRecordName} for selected student`}
 							>
 								{creatingMonth
 									? "Creating…"
-									: `Create ${currentMonthName}`}
+									: `Create ${monthRecordName}`}
 							</button>
 
 							<button
