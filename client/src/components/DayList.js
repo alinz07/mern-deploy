@@ -80,6 +80,23 @@ export default function DayList() {
 		return { min: toYMD(first), max: toYMD(last) };
 	}, [monthName]);
 
+	// ✅ Only allow "Add Today" buttons when viewing the current month
+	const isCurrentMonth = useMemo(() => {
+		if (!monthName) return false;
+
+		const parts = monthName.trim().split(/\s+/);
+		if (parts.length < 2) return false;
+
+		const [mName, yStr] = parts;
+		const now = new Date();
+		const currentMonthName = now.toLocaleString("default", {
+			month: "long",
+		});
+		const currentYear = String(now.getFullYear());
+
+		return mName === currentMonthName && yStr === currentYear;
+	}, [monthName]);
+
 	const refreshDays = async () => {
 		const res = await axios.get(
 			`${API}/api/days?monthId=${monthId}`,
@@ -319,26 +336,36 @@ export default function DayList() {
 					</button>
 				</form>
 
-				<span style={{ opacity: 0.6 }}>or</span>
+				{isCurrentMonth && (
+					<>
+						<span style={{ opacity: 0.6 }}>or</span>
 
-				<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-					<button
-						type="button"
-						onClick={handleAddToday}
-						disabled={submitting}
-					>
-						Add Today (online)
-					</button>
-					{/* NEW quick action */}
-					<button
-						type="button"
-						onClick={handleAddTodayInperson}
-						disabled={submitting}
-						title="Add today as in-person"
-					>
-						Add Today (in-person)
-					</button>
-				</div>
+						<div
+							style={{
+								display: "flex",
+								gap: 8,
+								alignItems: "center",
+							}}
+						>
+							<button
+								type="button"
+								onClick={handleAddToday}
+								disabled={submitting}
+							>
+								Add Today (online)
+							</button>
+
+							<button
+								type="button"
+								onClick={handleAddTodayInperson}
+								disabled={submitting}
+								title="Add today as in-person"
+							>
+								Add Today (in-person)
+							</button>
+						</div>
+					</>
+				)}
 			</div>
 
 			{/* Days list */}
