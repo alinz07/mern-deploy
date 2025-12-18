@@ -3,7 +3,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import axios from "axios";
 
-const API = process.env.REACT_APP_API_BASE || "http://localhost:8000";
+const API =
+	process.env.REACT_APP_API_BASE || "https://mern-deploy-docker.onrender.com";
 
 // Which Daily Check a recording belongs to
 const FIELD_OPTIONS = [
@@ -663,15 +664,13 @@ function RecordingPage({
 
 		try {
 			// Fire off all transcription requests
-			await Promise.all(
-				idsWithAudio.map((id) =>
-					axios.post(
-						`${API}/api/recordings/${id}/transcribe`,
-						{},
-						tokenHeader()
-					)
-				)
-			);
+			for (const id of idsWithAudio) {
+				await axios.post(
+					`${API}/api/recordings/${id}/transcribe`,
+					{},
+					tokenHeader()
+				);
+			}
 
 			if (monthId) {
 				// Go to DayList for this month
