@@ -555,24 +555,21 @@ function RecordingPage({
 	const [locals, setLocals] = useState([]); // unsaved placeholders
 	const [msg, setMsg] = useState("");
 
+	// loading flags for bulk actions (MUST be declared before useEffect uses them)
+	const [transcribing, setTranscribing] = useState(false);
+	const [exportingAll, setExportingAll] = useState(false);
+
 	const hasUnsaved = locals.length > 0;
 
 	useEffect(() => {
-		// Show warning banner when there are unsaved cards (but don't overwrite other messages)
 		if (hasUnsaved && !transcribing) {
 			setMsg((prev) => prev || UNSAVED_WARNING);
 			return;
 		}
-
-		// If the only message showing was the unsaved warning, clear it once they're saved
 		if (!hasUnsaved) {
 			setMsg((prev) => (prev === UNSAVED_WARNING ? "" : prev));
 		}
 	}, [hasUnsaved, transcribing]);
-
-	// loading flags for bulk actions
-	const [transcribing, setTranscribing] = useState(false);
-	const [exportingAll, setExportingAll] = useState(false);
 
 	const hasAnyAudio = items.some(
 		(rec) => rec.teacherFileId || rec.studentFileId
