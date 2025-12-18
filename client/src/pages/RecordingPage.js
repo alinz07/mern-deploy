@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import axios from "axios";
 
-const API = "https://mern-deploy-docker.onrender.com";
+const API = process.env.REACT_APP_API_BASE || "http://localhost:8000";
 
 // Which Daily Check a recording belongs to
 const FIELD_OPTIONS = [
@@ -253,7 +253,12 @@ function RecordingCard({
 			student.clear();
 
 			// Notify parent:
-			onChanged?.();
+			// Notify parent:
+			// - CREATE: pass the saved doc up so parent can insert it immediately
+			// - REPLACE: keep existing behavior
+			if (!hasId) onChanged?.(data);
+			else onChanged?.();
+
 			if (!hasId && localKey) {
 				console.log("[RecordingCard] saveUpload removing local", {
 					localKey,
@@ -812,7 +817,16 @@ function RecordingPage({
 					userId={userId}
 					monthId={monthId}
 					initialDoc={null}
-					onChanged={() => load()}
+					onChanged={(savedDoc) => {
+						if (savedDoc && savedDoc._id) {
+							setItems((xs) => [
+								savedDoc,
+								...xs.filter((x) => x._id !== savedDoc._id),
+							]);
+						} else {
+							load();
+						}
+					}}
 					onSavedLocal={onSavedLocal}
 				/>
 			))}
