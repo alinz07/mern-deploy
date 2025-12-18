@@ -20,6 +20,8 @@ const FIELD_OPTIONS = [
 ];
 
 const DEFAULT_FIELD = "checkone";
+const UNSAVED_WARNING =
+	"⚠️ You have unsaved recordings. Save them before Transcribe All.";
 
 // ------- small helpers -------
 function tokenHeader() {
@@ -553,6 +555,21 @@ function RecordingPage({
 	const [locals, setLocals] = useState([]); // unsaved placeholders
 	const [msg, setMsg] = useState("");
 
+	const hasUnsaved = locals.length > 0;
+
+	useEffect(() => {
+		// Show warning banner when there are unsaved cards (but don't overwrite other messages)
+		if (hasUnsaved && !transcribing) {
+			setMsg((prev) => prev || UNSAVED_WARNING);
+			return;
+		}
+
+		// If the only message showing was the unsaved warning, clear it once they're saved
+		if (!hasUnsaved) {
+			setMsg((prev) => (prev === UNSAVED_WARNING ? "" : prev));
+		}
+	}, [hasUnsaved, transcribing]);
+
 	// loading flags for bulk actions
 	const [transcribing, setTranscribing] = useState(false);
 	const [exportingAll, setExportingAll] = useState(false);
@@ -604,6 +621,10 @@ function RecordingPage({
 	};
 
 	const transcribeAll = async () => {
+		if (hasUnsaved) {
+			setMsg(UNSAVED_WARNING);
+			return;
+		}
 		if (!items.length) {
 			alert("No saved recordings to transcribe.");
 			return;
@@ -767,7 +788,7 @@ function RecordingPage({
 				<button
 					type="button"
 					onClick={transcribeAll}
-					disabled={!hasAnyAudio || transcribing}
+					disabled={!hasAnyAudio || transcribing || hasUnsaved}
 				>
 					{transcribing ? "Transcribing..." : "Transcribe all"}
 				</button>
