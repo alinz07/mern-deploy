@@ -82,8 +82,7 @@ router.get("/for-day", auth, async (req, res) => {
 			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
 
 		const doc = await EquipmentCheck.findOne({ user, month, day }).lean();
-		if (!doc) return res.status(404).json({ msg: "Not found" });
-		res.json(doc);
+		return res.json(doc || null);
 	} catch (e) {
 		res.status(500).json({ msg: "Server error" });
 	}

@@ -59,6 +59,9 @@ export default function CheckPage() {
 	const [eCmtDoc, setECmtDoc] = useState({});
 	const [eCmtSaving, setECmtSaving] = useState({});
 
+	// lock ui for transcriptions
+	const [uiLocked, setUiLocked] = useState(false);
+
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
 	});
@@ -410,142 +413,183 @@ export default function CheckPage() {
 	const checkedCount = fieldKeys.reduce((n, k) => n + (check[k] ? 1 : 0), 0);
 
 	return (
-		<div
-			style={{
-				display: "grid",
-				gridTemplateColumns: equipAllowed
-					? "minmax(0, 1.1fr) minmax(380px, 1fr) 340px"
-					: "minmax(0, 1.1fr) minmax(380px, 1fr)",
-				gap: 24,
-			}}
-		>
-			{/* LEFT: Daily Check */}
-			<div style={{ maxWidth: 760 }}>
-				<p style={{ marginBottom: 12 }}>
-					<Link to={monthId ? `/months/${monthId}` : `/`}>
-						← Back to DayList
-					</Link>
-				</p>
-
+		<div>
+			{uiLocked && (
 				<div
 					style={{
+						position: "fixed",
+						inset: 0,
+						zIndex: 9999,
+						background: "rgba(0,0,0,0.55)",
 						display: "flex",
-						alignItems: "baseline",
-						gap: 12,
-						flexWrap: "wrap",
+						alignItems: "center",
+						justifyContent: "center",
+						padding: 24,
+						textAlign: "center",
 					}}
 				>
-					<h2 style={{ margin: 0 }}>Daily Check</h2>
-					<span style={{ opacity: 0.7 }}>
-						({checkedCount} / 10 complete)
-					</span>
+					<div style={{ maxWidth: 520 }}>
+						<div
+							style={{
+								fontSize: 18,
+								fontWeight: 700,
+								marginBottom: 10,
+							}}
+						>
+							Transcribing…
+						</div>
+						<div style={{ opacity: 0.95 }}>
+							Please stay on this page. You’ll be redirected
+							automatically when transcription finishes.
+						</div>
+					</div>
 				</div>
+			)}
 
-				{msg && <p style={{ color: "crimson", marginTop: 8 }}>{msg}</p>}
+			<div
+				style={{
+					display: "grid",
+					gridTemplateColumns: equipAllowed
+						? "minmax(0, 1.1fr) minmax(380px, 1fr) 340px"
+						: "minmax(0, 1.1fr) minmax(380px, 1fr)",
+					gap: 24,
+				}}
+			></div>
+			<div
+				style={{
+					display: "grid",
+					gridTemplateColumns: equipAllowed
+						? "minmax(0, 1.1fr) minmax(380px, 1fr) 340px"
+						: "minmax(0, 1.1fr) minmax(380px, 1fr)",
+					gap: 24,
+				}}
+			>
+				{/* LEFT: Daily Check */}
+				<div style={{ maxWidth: 760 }}>
+					<p style={{ marginBottom: 12 }}>
+						<Link to={monthId ? `/months/${monthId}` : `/`}>
+							← Back to DayList
+						</Link>
+					</p>
 
-				<table className="table">
-					<thead>
-						<tr>
-							<th style={{ width: 180 }}>Field</th>
-							<th style={{ width: 120 }}>Status</th>
-							<th>Comments</th>
-						</tr>
-					</thead>
-					<tbody>
-						{FIELD_MAP.map(([field, label]) => (
-							<tr key={field}>
-								<td>{label}</td>
-								<td>
-									<label
-										style={{
-											display: "inline-flex",
-											alignItems: "center",
-											gap: 8,
-										}}
-									>
-										<input
-											type="checkbox"
-											checked={!!check[field]}
-											onChange={() => toggleField(field)}
-											disabled={
-												saving[field] || bulkSaving
-											}
-											aria-label={`Toggle ${label}`}
-										/>
-										<span>
-											{check[field] ? "True" : "False"}
-										</span>
-									</label>
-								</td>
-								<td>
-									<div
-										style={{
-											display: "flex",
-											gap: 8,
-											alignItems: "center",
-											flexWrap: "wrap",
-										}}
-									>
-										<button
-											className="toggle-comment"
-											type="button"
-											onClick={() =>
-												setCommentOpen((o) => ({
-													...o,
-													[field]: !o[field],
-												}))
-											}
-											aria-label={
-												commentOpen[field]
-													? `Hide comment for ${label}`
-													: `Show comment for ${label}`
-											}
+					<div
+						style={{
+							display: "flex",
+							alignItems: "baseline",
+							gap: 12,
+							flexWrap: "wrap",
+						}}
+					>
+						<h2 style={{ margin: 0 }}>Daily Check</h2>
+						<span style={{ opacity: 0.7 }}>
+							({checkedCount} / 10 complete)
+						</span>
+					</div>
+
+					{msg && (
+						<p style={{ color: "crimson", marginTop: 8 }}>{msg}</p>
+					)}
+
+					<table className="table">
+						<thead>
+							<tr>
+								<th style={{ width: 180 }}>Field</th>
+								<th style={{ width: 120 }}>Status</th>
+								<th>Comments</th>
+							</tr>
+						</thead>
+						<tbody>
+							{FIELD_MAP.map(([field, label]) => (
+								<tr key={field}>
+									<td>{label}</td>
+									<td>
+										<label
+											style={{
+												display: "inline-flex",
+												alignItems: "center",
+												gap: 8,
+											}}
 										>
-											{commentOpen[field] ? "−" : "+"}
-										</button>
-										{commentOpen[field] && (
-											<div
-												style={{
-													display: "grid",
-													gap: 6,
-													width: "100%",
-												}}
+											<input
+												type="checkbox"
+												checked={!!check[field]}
+												onChange={() =>
+													toggleField(field)
+												}
+												disabled={
+													saving[field] || bulkSaving
+												}
+												aria-label={`Toggle ${label}`}
+											/>
+											<span>
+												{check[field]
+													? "True"
+													: "False"}
+											</span>
+										</label>
+									</td>
+									<td>
+										<div
+											style={{
+												display: "flex",
+												gap: 8,
+												alignItems: "center",
+												flexWrap: "wrap",
+											}}
+										>
+											<button
+												className="toggle-comment"
+												type="button"
+												onClick={() =>
+													setCommentOpen((o) => ({
+														...o,
+														[field]: !o[field],
+													}))
+												}
+												aria-label={
+													commentOpen[field]
+														? `Hide comment for ${label}`
+														: `Show comment for ${label}`
+												}
 											>
-												<textarea
-													rows={2}
-													placeholder={`Comment for ${label}`}
-													value={
-														commentText[field] || ""
-													}
-													onChange={(e) =>
-														setCommentText((t) => ({
-															...t,
-															[field]:
-																e.target.value,
-														}))
-													}
-												/>
+												{commentOpen[field] ? "−" : "+"}
+											</button>
+											{commentOpen[field] && (
 												<div
 													style={{
-														display: "flex",
-														gap: 8,
+														display: "grid",
+														gap: 6,
+														width: "100%",
 													}}
 												>
-													<button
-														onClick={() =>
-															saveComment(field)
+													<textarea
+														rows={2}
+														placeholder={`Comment for ${label}`}
+														value={
+															commentText[
+																field
+															] || ""
 														}
-														disabled={
-															commentSaving[field]
+														onChange={(e) =>
+															setCommentText(
+																(t) => ({
+																	...t,
+																	[field]:
+																		e.target
+																			.value,
+																})
+															)
 														}
-														type="button"
+													/>
+													<div
+														style={{
+															display: "flex",
+															gap: 8,
+														}}
 													>
-														Save
-													</button>
-													{commentDoc[field] && (
 														<button
 															onClick={() =>
-																deleteComment(
+																saveComment(
 																	field
 																)
 															}
@@ -556,204 +600,229 @@ export default function CheckPage() {
 															}
 															type="button"
 														>
-															Delete
+															Save
 														</button>
-													)}
-												</div>
-											</div>
-										)}
-									</div>
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
-
-				<div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-					<button onClick={() => setAll(true)} disabled={bulkSaving}>
-						Mark all
-					</button>
-					<button onClick={() => setAll(false)} disabled={bulkSaving}>
-						Clear all
-					</button>
-				</div>
-			</div>
-
-			{/* CENTER: Recordings */}
-			<div
-				style={{
-					maxWidth: 520,
-					margin: "0 auto",
-				}}
-			>
-				<h3 style={{ marginTop: 0 }}>Recordings</h3>
-
-				{!resolvedUserId && (
-					<p style={{ opacity: 0.7, fontSize: 14 }}>
-						Loading recordings…
-					</p>
-				)}
-
-				{resolvedUserId && (
-					<RecordingPage
-						dayId={dayId}
-						userId={resolvedUserId}
-						monthId={monthId}
-					/>
-				)}
-			</div>
-
-			{/* RIGHT: Equipment Check */}
-			{equipAllowed && (
-				<aside
-					style={{ borderLeft: "1px solid #ddd", paddingLeft: 16 }}
-				>
-					<h3 style={{ marginTop: 0 }}>Equipment Check</h3>
-					{equipMsg && <p style={{ color: "crimson" }}>{equipMsg}</p>}
-					{!echeck ? (
-						<button type="button" onClick={enableEquipmentCheck}>
-							Enable equipment check
-						</button>
-					) : (
-						<>
-							{/* ONE combined table: Field | Status | Comment */}
-							<table className="table">
-								<thead>
-									<tr>
-										<th>Field</th>
-										<th style={{ width: 130 }}>Status</th>
-										<th>Comment</th>
-									</tr>
-								</thead>
-								<tbody>
-									{EQUIP_FIELDS.map(([field, label]) => (
-										<tr key={field}>
-											<td>{label}</td>
-
-											{/* Status cell */}
-											{/* Status cell (checkbox, like the left side) */}
-											<td>
-												<label
-													style={{
-														display: "inline-flex",
-														alignItems: "center",
-														gap: 8,
-													}}
-												>
-													<input
-														type="checkbox"
-														checked={
-															!!echeck[field]
-														}
-														onChange={() =>
-															toggleEquip(field)
-														}
-														disabled={
-															equipSaving[field]
-														}
-														aria-label={`Toggle ${label}`}
-													/>
-													<span>
-														{echeck[field]
-															? "True"
-															: "False"}
-													</span>
-												</label>
-											</td>
-
-											{/* Comment cell with +/− toggle */}
-											<td>
-												<div
-													style={{
-														display: "flex",
-														alignItems: "center",
-														gap: 8,
-														flexWrap: "wrap",
-													}}
-												>
-													<button
-														className="toggle-comment"
-														type="button"
-														onClick={() =>
-															setECmtOpen(
-																(o) => ({
-																	...o,
-																	[field]:
-																		!o[
-																			field
-																		],
-																})
-															)
-														}
-														aria-label={
-															eCmtOpen[field]
-																? `Hide comment for ${label}`
-																: `Show comment for ${label}`
-														}
-													>
-														{eCmtOpen[field]
-															? "−"
-															: "+"}
-													</button>
-
-													{eCmtOpen[field] && (
-														<div
-															style={{
-																display: "grid",
-																gap: 6,
-																width: "100%",
-															}}
-														>
-															<textarea
-																rows={2}
-																placeholder={`Comment for ${label}`}
-																value={
-																	eCmtText[
+														{commentDoc[field] && (
+															<button
+																onClick={() =>
+																	deleteComment(
 																		field
-																	] || ""
-																}
-																onChange={(e) =>
-																	setECmtText(
-																		(
-																			t
-																		) => ({
-																			...t,
-																			[field]:
-																				e
-																					.target
-																					.value,
-																		})
 																	)
 																}
-															/>
+																disabled={
+																	commentSaving[
+																		field
+																	]
+																}
+																type="button"
+															>
+																Delete
+															</button>
+														)}
+													</div>
+												</div>
+											)}
+										</div>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+
+					<div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+						<button
+							onClick={() => setAll(true)}
+							disabled={bulkSaving}
+						>
+							Mark all
+						</button>
+						<button
+							onClick={() => setAll(false)}
+							disabled={bulkSaving}
+						>
+							Clear all
+						</button>
+					</div>
+				</div>
+
+				{/* CENTER: Recordings */}
+				<div
+					style={{
+						maxWidth: 520,
+						margin: "0 auto",
+					}}
+				>
+					<h3 style={{ marginTop: 0 }}>Recordings</h3>
+
+					{!resolvedUserId && (
+						<p style={{ opacity: 0.7, fontSize: 14 }}>
+							Loading recordings…
+						</p>
+					)}
+
+					{resolvedUserId && (
+						<RecordingPage
+							dayId={dayId}
+							userId={resolvedUserId}
+							monthId={monthId}
+							onTranscribingChange={setUiLocked}
+						/>
+					)}
+				</div>
+
+				{/* RIGHT: Equipment Check */}
+				{equipAllowed && (
+					<aside
+						style={{
+							borderLeft: "1px solid #ddd",
+							paddingLeft: 16,
+						}}
+					>
+						<h3 style={{ marginTop: 0 }}>Equipment Check</h3>
+						{equipMsg && (
+							<p style={{ color: "crimson" }}>{equipMsg}</p>
+						)}
+						{!echeck ? (
+							<button
+								type="button"
+								onClick={enableEquipmentCheck}
+							>
+								Enable equipment check
+							</button>
+						) : (
+							<>
+								{/* ONE combined table: Field | Status | Comment */}
+								<table className="table">
+									<thead>
+										<tr>
+											<th>Field</th>
+											<th style={{ width: 130 }}>
+												Status
+											</th>
+											<th>Comment</th>
+										</tr>
+									</thead>
+									<tbody>
+										{EQUIP_FIELDS.map(([field, label]) => (
+											<tr key={field}>
+												<td>{label}</td>
+
+												{/* Status cell */}
+												{/* Status cell (checkbox, like the left side) */}
+												<td>
+													<label
+														style={{
+															display:
+																"inline-flex",
+															alignItems:
+																"center",
+															gap: 8,
+														}}
+													>
+														<input
+															type="checkbox"
+															checked={
+																!!echeck[field]
+															}
+															onChange={() =>
+																toggleEquip(
+																	field
+																)
+															}
+															disabled={
+																equipSaving[
+																	field
+																]
+															}
+															aria-label={`Toggle ${label}`}
+														/>
+														<span>
+															{echeck[field]
+																? "True"
+																: "False"}
+														</span>
+													</label>
+												</td>
+
+												{/* Comment cell with +/− toggle */}
+												<td>
+													<div
+														style={{
+															display: "flex",
+															alignItems:
+																"center",
+															gap: 8,
+															flexWrap: "wrap",
+														}}
+													>
+														<button
+															className="toggle-comment"
+															type="button"
+															onClick={() =>
+																setECmtOpen(
+																	(o) => ({
+																		...o,
+																		[field]:
+																			!o[
+																				field
+																			],
+																	})
+																)
+															}
+															aria-label={
+																eCmtOpen[field]
+																	? `Hide comment for ${label}`
+																	: `Show comment for ${label}`
+															}
+														>
+															{eCmtOpen[field]
+																? "−"
+																: "+"}
+														</button>
+
+														{eCmtOpen[field] && (
 															<div
 																style={{
 																	display:
-																		"flex",
-																	gap: 8,
+																		"grid",
+																	gap: 6,
+																	width: "100%",
 																}}
 															>
-																<button
-																	onClick={() =>
-																		saveEquipComment(
+																<textarea
+																	rows={2}
+																	placeholder={`Comment for ${label}`}
+																	value={
+																		eCmtText[
 																			field
+																		] || ""
+																	}
+																	onChange={(
+																		e
+																	) =>
+																		setECmtText(
+																			(
+																				t
+																			) => ({
+																				...t,
+																				[field]:
+																					e
+																						.target
+																						.value,
+																			})
 																		)
 																	}
-																	disabled={
-																		eCmtSaving[
-																			field
-																		]
-																	}
-																	type="button"
+																/>
+																<div
+																	style={{
+																		display:
+																			"flex",
+																		gap: 8,
+																	}}
 																>
-																	Save
-																</button>
-																{eCmtDoc[
-																	field
-																] && (
 																	<button
 																		onClick={() =>
-																			deleteEquipComment(
+																			saveEquipComment(
 																				field
 																			)
 																		}
@@ -764,22 +833,41 @@ export default function CheckPage() {
 																		}
 																		type="button"
 																	>
-																		Delete
+																		Save
 																	</button>
-																)}
+																	{eCmtDoc[
+																		field
+																	] && (
+																		<button
+																			onClick={() =>
+																				deleteEquipComment(
+																					field
+																				)
+																			}
+																			disabled={
+																				eCmtSaving[
+																					field
+																				]
+																			}
+																			type="button"
+																		>
+																			Delete
+																		</button>
+																	)}
+																</div>
 															</div>
-														</div>
-													)}
-												</div>
-											</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
-						</>
-					)}
-				</aside>
-			)}
+														)}
+													</div>
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</>
+						)}
+					</aside>
+				)}
+			</div>
 		</div>
 	);
 }

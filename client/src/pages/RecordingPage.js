@@ -535,6 +535,7 @@ function RecordingPage({
 	dayId: dayIdProp,
 	userId: userIdProp,
 	monthId: monthIdProp,
+	onTranscribingChange,
 }) {
 	const [params] = useSearchParams();
 
@@ -623,16 +624,19 @@ function RecordingPage({
 				"Transcribe all saved recordings on this day?",
 				"",
 				"This can take up to ~45 seconds.",
-				"After you confirm you'll be sent back to the Day List for this month.",
+				"Please stay on this page while transcription runs.",
+				"When it finishes, you’ll be redirected to the Day List automatically.",
 				"",
 				"Only do this if you are finished editing checks, comments, equipment,",
 				"and recordings for this day.",
 			].join("\n")
 		);
+
 		if (!ok) return;
 
 		setTranscribing(true);
 		setMsg("");
+		onTranscribingChange?.(true);
 
 		try {
 			// Fire off all transcription requests
@@ -664,6 +668,7 @@ function RecordingPage({
 					"Bulk transcribe failed or partially succeeded."
 			);
 		} finally {
+			onTranscribingChange?.(false);
 			setTranscribing(false);
 		}
 	};
@@ -756,7 +761,9 @@ function RecordingPage({
 					alignItems: "center",
 				}}
 			>
-				<button onClick={addNewCard}>+ Add new recording</button>
+				<button onClick={addNewCard} disabled={transcribing}>
+					+ Add new recording
+				</button>
 				<button
 					type="button"
 					onClick={transcribeAll}
@@ -767,12 +774,12 @@ function RecordingPage({
 				<button
 					type="button"
 					onClick={exportAllTranscriptions}
-					disabled={!items.length || exportingAll}
+					disabled={!items.length || exportingAll || transcribing}
 				>
 					{exportingAll
 						? "Exporting..."
 						: "Export all transcriptions"}
-				</button>{" "}
+				</button>
 			</div>
 			{loading && <div style={{ marginTop: 12 }}>Loading…</div>}
 
