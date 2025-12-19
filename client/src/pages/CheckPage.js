@@ -1,6 +1,11 @@
 // client/src/pages/CheckPage.js  (DROP-IN)
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { useParams, useSearchParams, Link } from "react-router-dom";
+import {
+	useParams,
+	useSearchParams,
+	Link,
+	useNavigate,
+} from "react-router-dom";
 import axios from "axios";
 import RecordingPage from "./RecordingPage";
 
@@ -33,6 +38,7 @@ export default function CheckPage() {
 	// If an admin is acting for a student, this will be present.
 	// For regular users on their own page, it's usually null.
 	const userIdFromQuery = searchParams.get("userId");
+	const navigate = useNavigate();
 
 	// Daily check
 	const [check, setCheck] = useState(null);
@@ -206,6 +212,37 @@ export default function CheckPage() {
 		};
 		load();
 	}, [echeck?._id]);
+
+	useEffect(() => {
+		let cancelled = false;
+
+		const checkLock = async () => {
+			try {
+				const res = await axios.get(`${API}/api/days/${dayId}`, {
+					headers: { "x-auth-token": localStorage.getItem("token") },
+				});
+
+				const st = res.data?.transcription?.status;
+				const locked = st === "queued" || st === "processing";
+
+				if (!cancelled && locked) {
+					sessionStorage.setItem(
+						"transcribeNotice",
+						"⚠️ That day is currently transcribing in the background. Please wait until it finishes."
+					);
+					navigate(`/months/${monthId}`);
+				}
+			} catch (e) {
+				// if this fails, don't block; just log
+				console.error("[CheckPage] day lock check failed", e);
+			}
+		};
+
+		checkLock();
+		return () => {
+			cancelled = true;
+		};
+	}, [dayId, monthId, navigate]);
 
 	// --------- Daily check handlers ----------
 	const toggleField = useCallback(
@@ -446,15 +483,6 @@ export default function CheckPage() {
 				</div>
 			)}
 
-			<div
-				style={{
-					display: "grid",
-					gridTemplateColumns: equipAllowed
-						? "minmax(0, 1.1fr) minmax(380px, 1fr) 340px"
-						: "minmax(0, 1.1fr) minmax(380px, 1fr)",
-					gap: 24,
-				}}
-			></div>
 			<div
 				style={{
 					display: "grid",

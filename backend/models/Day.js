@@ -21,6 +21,18 @@ const DaySchema = new mongoose.Schema(
 			default: "online",
 			index: true,
 		},
+		transcription: {
+			status: {
+				type: String,
+				enum: ["idle", "queued", "processing", "done", "error"],
+				default: "idle",
+				index: true,
+			},
+			requestedAt: { type: Date },
+			startedAt: { type: Date },
+			finishedAt: { type: Date },
+			error: { type: String },
+		},
 	},
 	{ timestamps: true }
 );

@@ -7,8 +7,208 @@ const auth = require("../middleware/auth");
 
 const Recording = require("../models/Recording");
 const Day = require("../models/Day");
+const Month = require("../models/Month");
+const axios = require("axios");
 
 console.log("[recordings.js] routes module loaded");
+
+// -------------------- background transcription queue --------------------
+const TRANSCRIBE_LOCK_STATES = new Set(["queued", "processing"]);
+const TRANSCRIBE_STALE_MS = 30 * 60 * 1000; // 30 minutes
+const selfBase = `http://127.0.0.1:${process.env.PORT || 8000}`;
+
+const transcribeQueue = [];
+let transcribeWorkerRunning = false;
+
+function isLockedStatus(status) {
+	return TRANSCRIBE_LOCK_STATES.has(status || "idle");
+}
+
+async function enqueueDayTranscription({ dayId, userId, token }) {
+	transcribeQueue.push({ dayId, userId, token });
+	runTranscribeWorker().catch((e) =>
+		console.error("[transcribeWorker] fatal", e)
+	);
+}
+
+async function runTranscribeWorker() {
+	if (transcribeWorkerRunning) return;
+	transcribeWorkerRunning = true;
+
+	try {
+		while (transcribeQueue.length) {
+			const job = transcribeQueue.shift();
+			await processDayTranscriptionJob(job);
+		}
+	} finally {
+		transcribeWorkerRunning = false;
+	}
+}
+
+async function processDayTranscriptionJob({ dayId, userId, token }) {
+	// mark processing
+	await Day.updateOne(
+		{ _id: dayId },
+		{
+			$set: {
+				"transcription.status": "processing",
+				"transcription.startedAt": new Date(),
+				"transcription.error": null,
+			},
+		}
+	);
+
+	try {
+		// find recordings for this day/user
+		const recs = await Recording.find({ day: dayId, user: userId })
+			.select("_id teacherFileId studentFileId")
+			.lean();
+
+		const ids = recs
+			.filter((r) => r.teacherFileId || r.studentFileId)
+			.map((r) => String(r._id));
+
+		// nothing to do
+		if (!ids.length) {
+			await Day.updateOne(
+				{ _id: dayId },
+				{
+					$set: {
+						"transcription.status": "done",
+						"transcription.finishedAt": new Date(),
+					},
+				}
+			);
+			return;
+		}
+
+		// run sequentially to avoid OOM
+		for (const id of ids) {
+			await axios.post(
+				`${selfBase}/api/recordings/${id}/transcribe`,
+				{},
+				{
+					headers: {
+						"x-auth-token": token,
+						"x-transcribe-job": "1",
+					},
+					timeout: 0,
+				}
+			);
+		}
+
+		await Day.updateOne(
+			{ _id: dayId },
+			{
+				$set: {
+					"transcription.status": "done",
+					"transcription.finishedAt": new Date(),
+				},
+			}
+		);
+	} catch (err) {
+		console.error("[transcribeWorker] job error", err);
+		await Day.updateOne(
+			{ _id: dayId },
+			{
+				$set: {
+					"transcription.status": "error",
+					"transcription.error": err?.message
+						? String(err.message)
+						: String(err),
+					"transcription.finishedAt": new Date(),
+				},
+			}
+		);
+	}
+}
+
+// POST /api/recordings/transcribe-day  (queue transcription in background)
+router.post("/transcribe-day", auth, async (req, res) => {
+	try {
+		const { dayId, userId } = req.body;
+
+		if (
+			!mongoose.isValidObjectId(dayId) ||
+			!mongoose.isValidObjectId(userId)
+		) {
+			return res.status(400).json({ msg: "Invalid ids" });
+		}
+
+		// must be the student OR an admin
+		if (req.user.role !== "admin" && req.user.id !== userId) {
+			return res.status(403).json({ msg: "Forbidden" });
+		}
+
+		const day = await Day.findById(dayId).lean();
+		if (!day) return res.status(404).json({ msg: "Day not found" });
+
+		// day/user match
+		if (String(day.userId) !== String(userId)) {
+			return res.status(400).json({ msg: "Day/user mismatch" });
+		}
+
+		// tenant check via month
+		const month = await Month.findById(day.month).lean();
+		if (!month) return res.status(404).json({ msg: "Month not found" });
+		if (String(month.adminUser) !== String(req.user.adminUser)) {
+			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
+		}
+
+		// refuse if already locked (unless stale)
+		const now = Date.now();
+		const staleCutoff = new Date(now - TRANSCRIBE_STALE_MS);
+
+		const updated = await Day.findOneAndUpdate(
+			{
+				_id: dayId,
+				$or: [
+					{
+						"transcription.status": {
+							$nin: ["queued", "processing"],
+						},
+					},
+					{
+						"transcription.status": "queued",
+						"transcription.requestedAt": { $lt: staleCutoff },
+					},
+					{
+						"transcription.status": "processing",
+						"transcription.startedAt": { $lt: staleCutoff },
+					},
+					{ transcription: { $exists: false } },
+				],
+			},
+			{
+				$set: {
+					"transcription.status": "queued",
+					"transcription.requestedAt": new Date(),
+					"transcription.startedAt": null,
+					"transcription.finishedAt": null,
+					"transcription.error": null,
+				},
+			},
+			{ new: true }
+		).lean();
+
+		if (!updated) {
+			return res
+				.status(409)
+				.json({ msg: "This day is already transcribing." });
+		}
+
+		const token = req.header("x-auth-token");
+		await enqueueDayTranscription({ dayId, userId, token });
+
+		return res.status(202).json({
+			ok: true,
+			status: updated.transcription?.status || "queued",
+		});
+	} catch (e) {
+		console.error("POST /api/recordings/transcribe-day error", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
 
 // ---- storage helpers ----
 function getBucket() {
@@ -68,6 +268,13 @@ router.post(
 			if (!day) return res.status(404).json({ msg: "Day not found" });
 			if (String(day.userId) !== String(userId)) {
 				return res.status(400).json({ msg: "Day/user mismatch" });
+			}
+
+			const st = day?.transcription?.status;
+			if (st === "queued" || st === "processing") {
+				return res.status(423).json({
+					msg: "This day is currently transcribing. Please wait until it finishes.",
+				});
 			}
 
 			const bucket = getBucket();
@@ -187,6 +394,15 @@ router.post(
 			const rec = await Recording.findById(id);
 			if (!rec)
 				return res.status(404).json({ msg: "Recording not found" });
+			const day = await Day.findById(rec.day)
+				.select("transcription.status")
+				.lean();
+			const st = day?.transcription?.status;
+			if (st === "queued" || st === "processing") {
+				return res.status(423).json({
+					msg: "This day is currently transcribing. Please wait until it finishes.",
+				});
+			}
 
 			// Permissions: owner or admin (match your other routes)
 			if (
@@ -365,6 +581,19 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 		if (!rec) return res.status(404).json({ msg: "Recording not found" });
 		if (req.user.role !== "admin" && String(rec.user) !== req.user.id) {
 			return res.status(403).json({ msg: "Forbidden" });
+		}
+
+		const internalJob = req.get("x-transcribe-job") === "1";
+		if (!internalJob) {
+			const day = await Day.findById(rec.day)
+				.select("transcription.status")
+				.lean();
+			const st = day?.transcription?.status;
+			if (st === "queued" || st === "processing") {
+				return res.status(423).json({
+					msg: "This day is currently transcribing. Please wait until it finishes.",
+				});
+			}
 		}
 
 		// ---- run Python worker (faster-whisper + phonemizer) via child_process ----
@@ -612,9 +841,20 @@ router.delete("/:id", auth, async (req, res) => {
 		}
 
 		const rec = await Recording.findById(id);
+
 		if (!rec) {
 			console.log("[recordings.js] not found:", id);
 			return res.status(404).json({ msg: "Recording not found" });
+		}
+
+		const day = await Day.findById(rec.day)
+			.select("transcription.status")
+			.lean();
+		const st = day?.transcription?.status;
+		if (st === "queued" || st === "processing") {
+			return res.status(423).json({
+				msg: "This day is currently transcribing. Please wait until it finishes.",
+			});
 		}
 
 		// Permissions: owner or admin

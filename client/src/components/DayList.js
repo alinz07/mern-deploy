@@ -64,6 +64,14 @@ export default function DayList() {
 		if (monthId) load();
 	}, [monthId]);
 
+	useEffect(() => {
+		const notice = sessionStorage.getItem("transcribeNotice");
+		if (notice) {
+			setMsg(notice);
+			sessionStorage.removeItem("transcribeNotice");
+		}
+	}, []);
+
 	// compute min/max strings for the date input (no UTC conversion)
 	const dateBounds = useMemo(() => {
 		if (!monthName) return { min: undefined, max: undefined };
@@ -386,12 +394,35 @@ export default function DayList() {
 									gap: 10,
 								}}
 							>
-								<Link
-									to={`/days/${d._id}/check?monthId=${monthId}&userId=${d.userId}`}
-								>
-									{d.dayNumber}:{" "}
-									{formatDayLabel(monthName, d.dayNumber)}
-								</Link>
+								{(() => {
+									const label = formatDayLabel(
+										monthName,
+										d.dayNumber
+									);
+									const status = d?.transcription?.status;
+									const locked =
+										status === "queued" ||
+										status === "processing";
+
+									return locked ? (
+										<span style={{ opacity: 0.7 }}>
+											{label} <em>(Transcribing...)</em>
+										</span>
+									) : (
+										<Link
+											to={`/days/${
+												d._id
+											}/check?monthId=${monthId}${
+												monthOwnerId
+													? `&userId=${monthOwnerId}`
+													: ""
+											}`}
+										>
+											{label}
+										</Link>
+									);
+								})()}
+
 								<span
 									style={{
 										marginLeft: 8,
@@ -401,6 +432,7 @@ export default function DayList() {
 								>
 									[{d.environment || "online"}]
 								</span>
+
 								<button
 									type="button"
 									onClick={() => handleDeleteDay(d)}

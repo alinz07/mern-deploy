@@ -183,6 +183,39 @@ router.post("/add-today", auth, async (req, res) => {
 	}
 });
 
+// GET /api/days/:dayId  (fetch a single day, including transcription status)
+router.get("/:dayId", auth, async (req, res) => {
+	try {
+		const { dayId } = req.params;
+		if (!mongoose.isValidObjectId(dayId)) {
+			return res.status(400).json({ msg: "Invalid dayId" });
+		}
+
+		const day = await Day.findById(dayId).lean();
+		if (!day) return res.status(404).json({ msg: "Day not found" });
+
+		const month = await Month.findById(day.month).lean();
+		if (!month) return res.status(404).json({ msg: "Month not found" });
+
+		// tenant check
+		if (String(month.adminUser) !== String(req.user.adminUser)) {
+			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
+		}
+
+		// permission check
+		const isOwner = String(day.userId) === String(req.user.id);
+		const isAdmin = req.user.role === "admin";
+		if (!isOwner && !isAdmin) {
+			return res.status(403).json({ msg: "Forbidden" });
+		}
+
+		return res.json(day);
+	} catch (e) {
+		console.error("GET /api/days/:dayId error", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
+
 // DELETE /api/days/:dayId   <-- UPDATED: cascade EquipmentCheck + EquipComment too
 router.delete("/:dayId", auth, async (req, res) => {
 	try {

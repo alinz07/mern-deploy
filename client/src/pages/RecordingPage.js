@@ -1,6 +1,6 @@
 // client/src/pages/RecordingPage.js
 import React, { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 
 const API =
@@ -546,6 +546,7 @@ function RecordingPage({
 	onTranscribingChange,
 }) {
 	const [params] = useSearchParams();
+	const navigate = useNavigate();
 
 	const dayIdFromQuery = params.get("day");
 	const userIdFromQuery = params.get("user");
@@ -659,39 +660,33 @@ function RecordingPage({
 		if (!ok) return;
 
 		setTranscribing(true);
-		setMsg("");
 		onTranscribingChange?.(true);
+		setMsg(
+			"✅ Transcription will run in the background. Redirecting to Day List now..."
+		);
 
 		try {
-			// Fire off all transcription requests
-			for (const id of idsWithAudio) {
-				await axios.post(
-					`${API}/api/recordings/${id}/transcribe`,
-					{},
-					tokenHeader()
-				);
-			}
-
-			if (monthId) {
-				// Go to DayList for this month
-				window.location.href = `/months/${monthId}${
-					userId ? `?userId=${userId}` : ""
-				}`;
-			} else {
-				// Fallback if we don't know the month
-				setMsg(
-					"Transcription started. Refresh the Day List to see updated stats."
-				);
-			}
-		} catch (e) {
-			console.error("[RecordingPage] transcribeAll error", e);
-			setMsg(
-				e?.response?.data?.msg ||
-					"Bulk transcribe failed or partially succeeded."
+			await axios.post(
+				`${API}/api/recordings/transcribe-day`,
+				{ dayId, userId },
+				{ headers: { "x-auth-token": localStorage.getItem("token") } }
 			);
-		} finally {
-			onTranscribingChange?.(false);
+
+			// optional: show a one-time banner on DayList
+			sessionStorage.setItem(
+				"transcribeNotice",
+				"✅ Transcription started in the background. This day will be locked until it finishes."
+			);
+
+			navigate(`/months/${monthId}`);
+		} catch (err) {
+			console.error("[RecordingPage] transcribe-day error", err);
 			setTranscribing(false);
+			onTranscribingChange?.(false);
+			setMsg(
+				err?.response?.data?.msg ||
+					"Error starting background transcription. Please try again."
+			);
 		}
 	};
 
