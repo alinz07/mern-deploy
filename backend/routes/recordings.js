@@ -8,7 +8,6 @@ const auth = require("../middleware/auth");
 const Recording = require("../models/Recording");
 const Day = require("../models/Day");
 const Month = require("../models/Month");
-const axios = require("axios");
 
 console.log("[recordings.js] routes module loaded");
 
@@ -84,17 +83,25 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 
 		// run sequentially to avoid OOM
 		for (const id of ids) {
-			await axios.post(
+			const resp = await fetch(
 				`${selfBase}/api/recordings/${id}/transcribe`,
-				{},
 				{
+					method: "POST",
 					headers: {
 						"x-auth-token": token,
 						"x-transcribe-job": "1",
+						"Content-Type": "application/json",
 					},
-					timeout: 0,
+					body: JSON.stringify({}),
 				}
 			);
+
+			if (!resp.ok) {
+				const txt = await resp.text().catch(() => "");
+				throw new Error(
+					`Transcribe failed (${resp.status}): ${txt.slice(0, 300)}`
+				);
+			}
 		}
 
 		await Day.updateOne(
