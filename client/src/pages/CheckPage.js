@@ -12,18 +12,17 @@ import RecordingPage from "./RecordingPage";
 const API = "https://mern-deploy-docker.onrender.com";
 
 const FIELD_MAP = [
-	["checkone", "Check One"],
-	["checktwo", "Check Two"],
-	["checkthree", "Check Three"],
-	["checkfour", "Check Four"],
-	["checkfive", "Check Five"],
-	["checksix", "Check Six"],
-	["checkseven", "Check Seven"],
-	["checkeight", "Check Eight"],
-	["checknine", "Check Nine"],
-	["checkten", "Check Ten"],
+	["checkone", "u (oo)"],
+	["checktwo", "a (ah)"],
+	["checkthree", "i (ee)"],
+	["checkfour", "s (s)"],
+	["checkfive", "ʃ (sh)"],
+	["checksix", "m (m)"],
+	["checkseven", "n (n)"],
+	["checkeight", "dʒ (j)"],
+	["checknine", "z (z)"],
+	["checkten", "h (h)"],
 ];
-
 const EQUIP_FIELDS = [
 	["left", "Left"],
 	["right", "Right"],

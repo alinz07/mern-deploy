@@ -8,16 +8,16 @@ const API =
 
 // Which Daily Check a recording belongs to
 const FIELD_OPTIONS = [
-	["checkone", "Check One"],
-	["checktwo", "Check Two"],
-	["checkthree", "Check Three"],
-	["checkfour", "Check Four"],
-	["checkfive", "Check Five"],
-	["checksix", "Check Six"],
-	["checkseven", "Check Seven"],
-	["checkeight", "Check Eight"],
-	["checknine", "Check Nine"],
-	["checkten", "Check Ten"],
+	["checkone", "u (oo)"],
+	["checktwo", "a (ah)"],
+	["checkthree", "i (ee)"],
+	["checkfour", "s (s)"],
+	["checkfive", "ʃ (sh)"],
+	["checksix", "m (m)"],
+	["checkseven", "n (n)"],
+	["checkeight", "dʒ (j)"],
+	["checknine", "z (z)"],
+	["checkten", "h (h)"],
 ];
 
 const DEFAULT_FIELD = "checkone";
