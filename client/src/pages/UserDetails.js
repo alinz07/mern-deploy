@@ -20,12 +20,21 @@ const CHECK_FIELDS = [
 	"checknine",
 	"checkten",
 ];
+const CHECK_LABELS = {
+	checkone: "u (oo)",
+	checktwo: "a (ah)",
+	checkthree: "i (ee)",
+	checkfour: "s (s)",
+	checkfive: "ʃ (sh)",
+	checksix: "m (m)",
+	checkseven: "n (n)",
+	checkeight: "dʒ (j)",
+	checknine: "z (z)",
+	checkten: "h (h)",
+};
 
 function labelize(key) {
-	const m = key.match(/^check(\w+)$/i);
-	if (!m) return key;
-	const w = m[1];
-	return `Check ${w[0].toUpperCase()}${w.slice(1)}`;
+	return CHECK_LABELS[key] || key;
 }
 
 // Format from real ISO (if present)
@@ -342,7 +351,7 @@ export default function UserDetails() {
 				{/* Left: per-field success */}
 				<div>
 					<h3 style={{ marginTop: 8 }}>
-						Check Field Success{" "}
+						Sound Check Success{" "}
 						<small>
 							({stats.currentMonth?.name} vs{" "}
 							{stats.previousMonth?.name})
@@ -363,7 +372,7 @@ export default function UserDetails() {
 				{/* Right: per-field comments (current & previous) */}
 				<div>
 					<h3 style={{ marginTop: 8 }}>
-						Comments by Field{" "}
+						Comments by Sound{" "}
 						<small>
 							({stats.currentMonth?.name} vs{" "}
 							{stats.previousMonth?.name})
