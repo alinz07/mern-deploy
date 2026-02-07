@@ -12,16 +12,11 @@ const Month = require("../models/Month");
 console.log("[recordings.js] routes module loaded");
 
 // -------------------- background transcription queue --------------------
-const TRANSCRIBE_LOCK_STATES = new Set(["queued", "processing"]);
 const TRANSCRIBE_STALE_MS = 30 * 60 * 1000; // 30 minutes
 const selfBase = `http://127.0.0.1:${process.env.PORT || 8000}`;
 
 const transcribeQueue = [];
 let transcribeWorkerRunning = false;
-
-function isLockedStatus(status) {
-	return TRANSCRIBE_LOCK_STATES.has(status || "idle");
-}
 
 async function enqueueDayTranscription({ dayId, userId, token }) {
 	transcribeQueue.push({ dayId, userId, token });
@@ -60,12 +55,10 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 	try {
 		// find recordings for this day/user
 		const recs = await Recording.find({ day: dayId, user: userId })
-			.select("_id teacherFileId studentFileId")
+			.select("_id audioFileId")
 			.lean();
 
-		const ids = recs
-			.filter((r) => r.teacherFileId || r.studentFileId)
-			.map((r) => String(r._id));
+		const ids = recs.filter((r) => r.audioFileId).map((r) => String(r._id));
 
 		// nothing to do
 		if (!ids.length) {
@@ -81,7 +74,7 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 			return;
 		}
 
-		// run sequentially to avoid OOM
+		// run sequentially to avoid OOM / spikes
 		for (const id of ids) {
 			const resp = await fetch(
 				`${selfBase}/api/recordings/${id}/transcribe`,
@@ -226,126 +219,123 @@ const upload = multer({
 	limits: { fileSize: 30 * 1024 * 1024 },
 }); // 30MB per clip
 
-// POST /api/recordings  (create or replace audio for a day)
-router.post(
-	"/",
-	auth,
-	upload.fields([{ name: "teacher" }, { name: "student" }]),
-	async (req, res) => {
-		try {
-			const {
-				dayId,
-				userId,
-				field,
-				durationTeacherMs,
-				durationStudentMs,
-			} = req.body;
+function isValidField(field) {
+	const VALID_FIELDS = new Set([
+		"checkone",
+		"checktwo",
+		"checkthree",
+		"checkfour",
+		"checkfive",
+		"checksix",
+		"checkseven",
+		"checkeight",
+		"checknine",
+		"checkten",
+	]);
+	return VALID_FIELDS.has(field);
+}
 
-			if (
-				!mongoose.isValidObjectId(dayId) ||
-				!mongoose.isValidObjectId(userId)
-			) {
-				return res.status(400).json({ msg: "Invalid ids" });
-			}
+async function assertTenantAndPermForDay({ req, dayId, userId }) {
+	const day = await Day.findById(dayId).lean();
+	if (!day) return { ok: false, status: 404, msg: "Day not found" };
 
-			// Validate field (one per check row)
-			const VALID_FIELDS = new Set([
-				"checkone",
-				"checktwo",
-				"checkthree",
-				"checkfour",
-				"checkfive",
-				"checksix",
-				"checkseven",
-				"checkeight",
-				"checknine",
-				"checkten",
-			]);
+	if (String(day.userId) !== String(userId)) {
+		return { ok: false, status: 400, msg: "Day/user mismatch" };
+	}
 
-			if (!VALID_FIELDS.has(field)) {
-				return res.status(400).json({ msg: "Invalid field" });
-			}
+	// tenant check via month
+	const month = await Month.findById(day.month).lean();
+	if (!month) return { ok: false, status: 404, msg: "Month not found" };
+	if (String(month.adminUser) !== String(req.user.adminUser)) {
+		return { ok: false, status: 403, msg: "Forbidden (tenant mismatch)" };
+	}
 
-			// permissions: must be the student themself OR an admin in same tenant
-			if (req.user.role !== "admin" && req.user.id !== userId) {
-				return res.status(403).json({ msg: "Forbidden" });
-			}
+	// permissions: must be the student themself OR an admin in same tenant
+	if (req.user.role !== "admin" && req.user.id !== userId) {
+		return { ok: false, status: 403, msg: "Forbidden" };
+	}
 
-			const day = await Day.findById(dayId).lean();
-			if (!day) return res.status(404).json({ msg: "Day not found" });
-			if (String(day.userId) !== String(userId)) {
-				return res.status(400).json({ msg: "Day/user mismatch" });
-			}
+	const st = day?.transcription?.status;
+	if (st === "queued" || st === "processing") {
+		return {
+			ok: false,
+			status: 423,
+			msg: "This day is currently transcribing. Please wait until it finishes.",
+		};
+	}
 
-			const st = day?.transcription?.status;
-			if (st === "queued" || st === "processing") {
-				return res.status(423).json({
-					msg: "This day is currently transcribing. Please wait until it finishes.",
+	return { ok: true, day };
+}
+
+// POST /api/recordings  (create or replace audio for a day/field)
+// multipart/form-data:
+// - dayId, userId, field, durationAudioMs
+// - audio (file)
+router.post("/", auth, upload.single("audio"), async (req, res) => {
+	try {
+		const { dayId, userId, field, durationAudioMs } = req.body;
+
+		if (
+			!mongoose.isValidObjectId(dayId) ||
+			!mongoose.isValidObjectId(userId)
+		) {
+			return res.status(400).json({ msg: "Invalid ids" });
+		}
+		if (!isValidField(field)) {
+			return res.status(400).json({ msg: "Invalid field" });
+		}
+
+		const perm = await assertTenantAndPermForDay({ req, dayId, userId });
+		if (!perm.ok) return res.status(perm.status).json({ msg: perm.msg });
+
+		const bucket = getBucket();
+
+		const saveOne = async (file) =>
+			new Promise((resolve, reject) => {
+				if (!file) return resolve(null);
+				const stream = bucket.openUploadStream(file.originalname, {
+					contentType: file.mimetype || "audio/webm",
 				});
-			}
-
-			const bucket = getBucket();
-
-			// write files to GridFS if provided
-			const saveOne = async (file) =>
-				new Promise((resolve, reject) => {
-					if (!file) return resolve(null);
-					const stream = bucket.openUploadStream(file.originalname, {
-						contentType: file.mimetype || "audio/webm",
-					});
-					stream.end(file.buffer, (err) => {
-						if (err) return reject(err);
-						resolve(stream.id);
-					});
+				stream.end(file.buffer, (err) => {
+					if (err) return reject(err);
+					resolve(stream.id);
 				});
-
-			const teacherFile = req.files?.teacher?.[0] || null;
-			const studentFile = req.files?.student?.[0] || null;
-
-			const [teacherFileId, studentFileId] = await Promise.all([
-				saveOne(teacherFile),
-				saveOne(studentFile),
-			]);
-
-			// Enforce ONE recording per (day, user, field) by upserting.
-			// We only set audio fields if new files were provided, so existing
-			// audio isn't wiped out when a side is omitted.
-			const filter = { day: dayId, user: userId, field };
-
-			const set = {};
-			if (teacherFileId) set.teacherFileId = teacherFileId;
-			if (studentFileId) set.studentFileId = studentFileId;
-			if (durationTeacherMs) {
-				set.durationTeacherMs = Number(durationTeacherMs);
-			}
-			if (durationStudentMs) {
-				set.durationStudentMs = Number(durationStudentMs);
-			}
-
-			const update = {
-				$set: set,
-				$setOnInsert: {
-					day: dayId,
-					user: userId,
-					field,
-				},
-			};
-
-			const rec = await Recording.findOneAndUpdate(filter, update, {
-				new: true,
-				upsert: true,
-				setDefaultsOnInsert: true,
 			});
 
-			return res.json(rec);
-		} catch (e) {
-			console.error("POST /api/recordings error", e);
-			return res.status(500).json({ msg: "Server error" });
-		}
-	}
-);
+		const audioFile = req.file || null;
+		const audioFileId = await saveOne(audioFile);
 
-// (inside backend/routes/recordings.js)
+		// Enforce ONE recording per (day, user, field) by upserting.
+		const filter = { day: dayId, user: userId, field };
+
+		const set = {};
+		if (audioFileId) set.audioFileId = audioFileId;
+		if (durationAudioMs != null)
+			set.durationAudioMs = Number(durationAudioMs);
+
+		const update = {
+			$set: set,
+			$setOnInsert: {
+				day: dayId,
+				user: userId,
+				field,
+			},
+		};
+
+		const rec = await Recording.findOneAndUpdate(filter, update, {
+			new: true,
+			upsert: true,
+			setDefaultsOnInsert: true,
+		});
+
+		return res.json(rec);
+	} catch (e) {
+		console.error("POST /api/recordings error", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
+
+// GET /api/recordings/by-day?day=...&user=...
 router.get("/by-day", auth, async (req, res) => {
 	try {
 		const { day, user } = req.query;
@@ -353,10 +343,13 @@ router.get("/by-day", auth, async (req, res) => {
 			return res.status(400).json({ msg: "Invalid query params" });
 		}
 
-		// tenant/permission as you already do elsewhere:
-		// - allow owner (req.user.id === user)
-		// - allow same-tenant admin
-		// (Reuse your Day->Month tenant checks if needed.)
+		// Make sure requester is owner or same-tenant admin, and tenant matches month
+		const perm = await assertTenantAndPermForDay({
+			req,
+			dayId: day,
+			userId: user,
+		});
+		if (!perm.ok) return res.status(perm.status).json({ msg: perm.msg });
 
 		const list = await Recording.find({ day, user })
 			.sort({ createdAt: -1 })
@@ -364,7 +357,7 @@ router.get("/by-day", auth, async (req, res) => {
 
 		return res.json(list);
 	} catch (e) {
-		console.error("GET /recordings/by-day error", e);
+		console.error("GET /api/recordings/by-day error", e);
 		return res.status(500).json({ msg: "Server error" });
 	}
 });
@@ -385,188 +378,144 @@ router.get("/file/:id", auth, async (req, res) => {
 });
 
 // POST /api/recordings/:id/upload
-// Replace teacher and/or student audio on an existing Recording.
-// Also updates durationTeacherMs / durationStudentMs if provided.
-router.post(
-	"/:id/upload",
-	auth,
-	upload.fields([{ name: "teacher" }, { name: "student" }]),
-	async (req, res) => {
-		try {
-			const { id } = req.params;
-			if (!mongoose.isValidObjectId(id)) {
-				return res.status(400).json({ msg: "Invalid id" });
-			}
-
-			const rec = await Recording.findById(id);
-			if (!rec)
-				return res.status(404).json({ msg: "Recording not found" });
-			const day = await Day.findById(rec.day)
-				.select("transcription.status")
-				.lean();
-			const st = day?.transcription?.status;
-			if (st === "queued" || st === "processing") {
-				return res.status(423).json({
-					msg: "This day is currently transcribing. Please wait until it finishes.",
-				});
-			}
-
-			// Permissions: owner or admin (match your other routes)
-			if (
-				req.user.role !== "admin" &&
-				String(rec.user) !== String(req.user.id)
-			) {
-				return res.status(403).json({ msg: "Forbidden" });
-			}
-
-			const db = mongoose.connection.db;
-			const filesColl = db.collection("audio.files");
-			const chunksColl = db.collection("audio.chunks");
-			const bucket = getBucket();
-
-			const teacherFile = req.files?.teacher?.[0] || null;
-			const studentFile = req.files?.student?.[0] || null;
-
-			console.log("[recordings/:id/upload] incoming", {
-				id,
-				hasTeacherFile: !!teacherFile,
-				hasStudentFile: !!studentFile,
-				oldTeacherFileId: rec.teacherFileId
-					? String(rec.teacherFileId)
-					: null,
-				oldStudentFileId: rec.studentFileId
-					? String(rec.studentFileId)
-					: null,
-				durationTeacherMs: req.body.durationTeacherMs,
-				durationStudentMs: req.body.durationStudentMs,
-			});
-
-			// upload-first, then best-effort delete old file (using hard-delete)
-			const replaceOne = async (role, oldId, file, defaultName) => {
-				if (!file) {
-					console.log(
-						"[recordings/:id/upload] no new file for role",
-						role,
-						"keeping oldId=",
-						oldId ? String(oldId) : null
-					);
-					return oldId; // nothing to replace
-				}
-
-				// 1) upload new file, get its id
-				const stream = bucket.openUploadStream(
-					file.originalname || defaultName,
-					{
-						contentType: file.mimetype || "audio/webm",
-					}
-				);
-				await new Promise((resolve, reject) => {
-					stream.end(file.buffer, (err) =>
-						err ? reject(err) : resolve()
-					);
-				});
-				const newId = stream.id;
-				console.log("[recordings/:id/upload] upload OK", {
-					role,
-					newId: String(newId),
-					oldId: oldId ? String(oldId) : null,
-				});
-
-				// 2) best-effort hard-delete the old GridFS doc + chunks
-				if (oldId) {
-					try {
-						const oid =
-							oldId instanceof ObjectId
-								? oldId
-								: new ObjectId(String(oldId));
-						const preFiles = await filesColl
-							.find({ _id: oid })
-							.toArray();
-						const preChunks = await chunksColl
-							.find({ files_id: oid })
-							.toArray();
-						console.log(
-							"[recordings/:id/upload] old file PRE state",
-							{
-								role,
-								oldId: String(oid),
-								filesCount: preFiles.length,
-								chunksCount: preChunks.length,
-							}
-						);
-
-						const fileResult = await filesColl.deleteMany({
-							_id: oid,
-						});
-						const chunkResult = await chunksColl.deleteMany({
-							files_id: oid,
-						});
-						console.log(
-							"[recordings/:id/upload] old file deleteMany",
-							{
-								role,
-								oldId: String(oid),
-								filesDeleted: fileResult.deletedCount,
-								chunksDeleted: chunkResult.deletedCount,
-							}
-						);
-					} catch (err) {
-						console.error(
-							"[recordings/:id/upload] hard-delete old file error",
-							role,
-							String(oldId),
-							err?.message || err
-						);
-					}
-				}
-
-				return newId;
-			};
-
-			// replace whichever sides were provided
-			rec.teacherFileId = await replaceOne(
-				"teacher",
-				rec.teacherFileId,
-				teacherFile,
-				"teacher.webm"
-			);
-			rec.studentFileId = await replaceOne(
-				"student",
-				rec.studentFileId,
-				studentFile,
-				"student.webm"
-			);
-
-			// optional durations from client
-			if (req.body.durationTeacherMs) {
-				rec.durationTeacherMs = Number(req.body.durationTeacherMs);
-			}
-			if (req.body.durationStudentMs) {
-				rec.durationStudentMs = Number(req.body.durationStudentMs);
-			}
-
-			await rec.save();
-			console.log("[recordings/:id/upload] updated rec", {
-				id: rec._id.toString(),
-				teacherFileId: rec.teacherFileId
-					? String(rec.teacherFileId)
-					: null,
-				studentFileId: rec.studentFileId
-					? String(rec.studentFileId)
-					: null,
-				durationTeacherMs: rec.durationTeacherMs,
-				durationStudentMs: rec.durationStudentMs,
-			});
-
-			return res.json(rec);
-		} catch (e) {
-			console.error("POST /api/recordings/:id/upload error", e);
-			return res.status(500).json({ msg: "Server error" });
+// Replace audio on an existing Recording.
+// Also updates durationAudioMs if provided.
+router.post("/:id/upload", auth, upload.single("audio"), async (req, res) => {
+	try {
+		const { id } = req.params;
+		if (!mongoose.isValidObjectId(id)) {
+			return res.status(400).json({ msg: "Invalid id" });
 		}
-	}
-);
 
-// POST /api/:id/transcribe   (run faster-whisper -> phonemizer; save IPA + text)
+		const rec = await Recording.findById(id);
+		if (!rec) return res.status(404).json({ msg: "Recording not found" });
+
+		const day = await Day.findById(rec.day).lean();
+		if (!day) return res.status(404).json({ msg: "Day not found" });
+
+		const st = day?.transcription?.status;
+		if (st === "queued" || st === "processing") {
+			return res.status(423).json({
+				msg: "This day is currently transcribing. Please wait until it finishes.",
+			});
+		}
+
+		// Tenant check via month
+		const month = await Month.findById(day.month).lean();
+		if (!month) return res.status(404).json({ msg: "Month not found" });
+		if (String(month.adminUser) !== String(req.user.adminUser)) {
+			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
+		}
+
+		// Permissions: owner or admin
+		if (
+			req.user.role !== "admin" &&
+			String(rec.user) !== String(req.user.id)
+		) {
+			return res.status(403).json({ msg: "Forbidden" });
+		}
+
+		const db = mongoose.connection.db;
+		const filesColl = db.collection("audio.files");
+		const chunksColl = db.collection("audio.chunks");
+		const bucket = getBucket();
+
+		const audioFile = req.file || null;
+
+		console.log("[recordings/:id/upload] incoming", {
+			id,
+			hasAudioFile: !!audioFile,
+			oldAudioFileId: rec.audioFileId ? String(rec.audioFileId) : null,
+			durationAudioMs: req.body.durationAudioMs,
+		});
+
+		// upload-first, then best-effort delete old file (using hard-delete)
+		const replaceOne = async (oldId, file, defaultName) => {
+			if (!file) return oldId;
+
+			// 1) upload new file, get its id
+			const stream = bucket.openUploadStream(
+				file.originalname || defaultName,
+				{
+					contentType: file.mimetype || "audio/webm",
+				}
+			);
+			await new Promise((resolve, reject) => {
+				stream.end(file.buffer, (err) =>
+					err ? reject(err) : resolve()
+				);
+			});
+			const newId = stream.id;
+
+			// 2) best-effort hard-delete the old GridFS doc + chunks
+			if (oldId) {
+				try {
+					const oid =
+						oldId instanceof ObjectId
+							? oldId
+							: new ObjectId(String(oldId));
+
+					const preFiles = await filesColl
+						.find({ _id: oid })
+						.toArray();
+					const preChunks = await chunksColl
+						.find({ files_id: oid })
+						.toArray();
+
+					console.log("[recordings/:id/upload] old file PRE state", {
+						oldId: String(oid),
+						filesCount: preFiles.length,
+						chunksCount: preChunks.length,
+					});
+
+					const fileResult = await filesColl.deleteMany({ _id: oid });
+					const chunkResult = await chunksColl.deleteMany({
+						files_id: oid,
+					});
+
+					console.log("[recordings/:id/upload] old file deleteMany", {
+						oldId: String(oid),
+						filesDeleted: fileResult.deletedCount,
+						chunksDeleted: chunkResult.deletedCount,
+					});
+				} catch (err) {
+					console.error(
+						"[recordings/:id/upload] hard-delete old file error",
+						String(oldId),
+						err?.message || err
+					);
+				}
+			}
+
+			return newId;
+		};
+
+		rec.audioFileId = await replaceOne(
+			rec.audioFileId,
+			audioFile,
+			"audio.webm"
+		);
+
+		if (req.body.durationAudioMs != null) {
+			rec.durationAudioMs = Number(req.body.durationAudioMs);
+		}
+
+		await rec.save();
+
+		console.log("[recordings/:id/upload] updated rec", {
+			id: rec._id.toString(),
+			audioFileId: rec.audioFileId ? String(rec.audioFileId) : null,
+			durationAudioMs: rec.durationAudioMs,
+		});
+
+		return res.json(rec);
+	} catch (e) {
+		console.error("POST /api/recordings/:id/upload error", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
+
+// POST /api/recordings/:id/transcribe
 router.post("/:id/transcribe", auth, async (req, res) => {
 	const startedAt = Date.now();
 	const memAtStart = process.memoryUsage();
@@ -631,7 +580,6 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 			});
 		}
 
-		// Transcode webm -> 16k mono wav (dramatically lowers memory use)
 		async function toWav16kMono(inputPath) {
 			if (!inputPath) return null;
 			const out = inputPath.replace(/\.webm$/i, ".wav");
@@ -670,7 +618,6 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 			return out;
 		}
 
-		// Call Python helper and capture diagnostics
 		function callPy(inputPath) {
 			return new Promise((resolve) => {
 				if (!inputPath) return resolve({ ok: true, text: "", ipa: "" });
@@ -684,7 +631,6 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 				child.stdout.on("data", (d) => (out += d.toString()));
 				child.stderr.on("data", (d) => (err += d.toString()));
 				child.on("close", (code, signal) => {
-					// Detect likely OOM: SIGKILL or exit code 137
 					const oomLikely = signal === "SIGKILL" || code === 137;
 					try {
 						const parsed = JSON.parse(out);
@@ -725,12 +671,12 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 			});
 		}
 
-		let tPath, sPath, tWav, sWav, teacherRes, studentRes;
+		let aPath = null;
+		let aWav = null;
 
 		// DUMP
 		try {
-			tPath = await dump(rec.teacherFileId);
-			sPath = await dump(rec.studentFileId);
+			aPath = await dump(rec.audioFileId);
 		} catch (err) {
 			console.error("dump error", err);
 			return res.status(500).json(
@@ -744,10 +690,7 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 
 		// FFMPEG
 		try {
-			[tWav, sWav] = await Promise.all([
-				toWav16kMono(tPath),
-				toWav16kMono(sPath),
-			]);
+			aWav = await toWav16kMono(aPath);
 		} catch (err) {
 			console.error("ffmpeg error", err);
 			return res.status(500).json(
@@ -762,31 +705,26 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 		}
 
 		// PYTHON
-		teacherRes = await callPy(tWav);
-		studentRes = await callPy(sWav);
+		const audioRes = await callPy(aWav);
 
-		if (!teacherRes.ok || !studentRes.ok) {
-			// Return rich diagnostics to the client
+		if (!audioRes.ok) {
 			return res.status(500).json(
 				diag({
 					stage: "python",
 					msg: "Transcription failed",
-					teacher: teacherRes,
-					student: studentRes,
+					audio: audioRes,
 				})
 			);
 		}
 
-		rec.teacherText = teacherRes.text || "";
-		rec.teacherIPA = teacherRes.ipa || "";
-		rec.studentText = studentRes.text || "";
-		rec.studentIPA = studentRes.ipa || "";
+		rec.audioText = audioRes.text || "";
+		rec.audioIPA = audioRes.ipa || "";
 		await rec.save();
 
-		res.json(rec);
+		return res.json(rec);
 	} catch (e) {
 		console.error("POST /api/recordings/:id/transcribe error", e);
-		res.status(500).json({
+		return res.status(500).json({
 			...diag({
 				stage: "node-catch",
 				msg: "Unhandled error in transcribe route",
@@ -796,7 +734,7 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 	}
 });
 
-// GET /api/recordings/:id/csv   (CSV export for Excel)
+// GET /api/recordings/:id/csv
 router.get("/:id/csv", auth, async (req, res) => {
 	try {
 		const { id } = req.params;
@@ -808,8 +746,7 @@ router.get("/:id/csv", auth, async (req, res) => {
 
 		const rows = [
 			["role", "text", "ipa"],
-			["teacher", r.teacherText || "", r.teacherIPA || ""],
-			["student", r.studentText || "", r.studentIPA || ""],
+			["audio", r.audioText || "", r.audioIPA || ""],
 		];
 		const csv = rows
 			.map((cols) =>
@@ -855,13 +792,20 @@ router.delete("/:id", auth, async (req, res) => {
 		}
 
 		const day = await Day.findById(rec.day)
-			.select("transcription.status")
+			.select("month transcription.status")
 			.lean();
 		const st = day?.transcription?.status;
 		if (st === "queued" || st === "processing") {
 			return res.status(423).json({
 				msg: "This day is currently transcribing. Please wait until it finishes.",
 			});
+		}
+
+		// Tenant check via month
+		const month = await Month.findById(day.month).lean();
+		if (!month) return res.status(404).json({ msg: "Month not found" });
+		if (String(month.adminUser) !== String(req.user.adminUser)) {
+			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
 		}
 
 		// Permissions: owner or admin
@@ -880,26 +824,22 @@ router.delete("/:id", auth, async (req, res) => {
 		}
 
 		console.log("[recordings.js] will delete files:", {
-			teacherFileId: rec.teacherFileId ? String(rec.teacherFileId) : null,
-			studentFileId: rec.studentFileId ? String(rec.studentFileId) : null,
-			teacherType: rec.teacherFileId && typeof rec.teacherFileId,
-			studentType: rec.studentFileId && typeof rec.studentFileId,
+			audioFileId: rec.audioFileId ? String(rec.audioFileId) : null,
+			audioType: rec.audioFileId && typeof rec.audioFileId,
 		});
 
 		// Delete doc first
 		await Recording.deleteOne({ _id: id });
 		console.log("[recordings.js] doc deleted", id);
 
-		// Hard-delete both GridFS entries (teacher + student) in one shot
+		// Hard-delete GridFS entries
 		try {
 			const db = mongoose.connection.db;
 			const filesColl = db.collection("audio.files");
 			const chunksColl = db.collection("audio.chunks");
 
-			// Build a clean list of ObjectIds
 			const rawIds = [];
-			if (rec.teacherFileId) rawIds.push(rec.teacherFileId);
-			if (rec.studentFileId) rawIds.push(rec.studentFileId);
+			if (rec.audioFileId) rawIds.push(rec.audioFileId);
 
 			const oids = [];
 			for (const raw of rawIds) {
@@ -931,7 +871,6 @@ router.delete("/:id", auth, async (req, res) => {
 					oids.map((o) => String(o))
 				);
 
-				// Log what exists BEFORE delete
 				const preFiles = await filesColl
 					.find({ _id: { $in: oids } })
 					.toArray();
@@ -944,7 +883,6 @@ router.delete("/:id", auth, async (req, res) => {
 					chunksCount: preChunks.length,
 				});
 
-				// Delete from GridFS collections directly
 				const fileResult = await filesColl.deleteMany({
 					_id: { $in: oids },
 				});
@@ -958,7 +896,6 @@ router.delete("/:id", auth, async (req, res) => {
 					chunksDeleted: chunkResult.deletedCount,
 				});
 
-				// Log what remains AFTER delete
 				const postFiles = await filesColl
 					.find({ _id: { $in: oids } })
 					.toArray();

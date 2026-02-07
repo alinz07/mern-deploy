@@ -34,24 +34,17 @@ const RecordingSchema = new mongoose.Schema(
 			index: true,
 		},
 		// GridFS file ids
-		teacherFileId: {
-			type: mongoose.Schema.Types.ObjectId,
-			ref: "fs.files",
-		},
-		studentFileId: {
+		audioFileId: {
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "fs.files",
 		},
 
 		// transcription + IPA
-		teacherText: { type: String },
-		teacherIPA: { type: String },
-		studentText: { type: String },
-		studentIPA: { type: String },
+		audioText: { type: String },
+		audioIPA: { type: String },
 
 		// book-keeping
-		durationTeacherMs: { type: Number },
-		durationStudentMs: { type: Number },
+		durationAudiotMs: { type: Number },
 	},
 	{ timestamps: true }
 );
