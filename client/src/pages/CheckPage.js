@@ -23,6 +23,20 @@ const FIELD_MAP = [
 	["checknine", "z (z)"],
 	["checkten", "h (h)"],
 ];
+// 1 inch ≈ 96 CSS pixels
+const SOUND_IMAGE_MAP = {
+	checkone: "/sounds/oo.png",
+	checktwo: "/sounds/aa.png",
+	checkthree: "/sounds/ee.png",
+	checkfour: "/sounds/ss.png",
+	checkfive: "/sounds/sh.png",
+	checksix: "/sounds/mm.png",
+	checkseven: "/sounds/nn.png",
+	checkeight: "/sounds/jj.png",
+	checknine: "/sounds/zz.png",
+	checkten: "/sounds/hh.png",
+};
+
 const EQUIP_FIELDS = [
 	["left", "Left"],
 	["right", "Right"],
@@ -517,17 +531,50 @@ export default function CheckPage() {
 						<p style={{ color: "crimson", marginTop: 8 }}>{msg}</p>
 					)}
 
+					<div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+						<button
+							onClick={() => setAll(true)}
+							disabled={bulkSaving}
+						>
+							Mark all
+						</button>
+						<button
+							onClick={() => setAll(false)}
+							disabled={bulkSaving}
+						>
+							Clear all
+						</button>
+					</div>
+
 					<table className="table">
 						<thead>
 							<tr>
-								<th style={{ width: 180 }}>Field</th>
-								<th style={{ width: 120 }}>Status</th>
+								<th style={{ width: 110 }}>Image</th>
+								<th style={{ width: 180 }}>Sound</th>
+								<th style={{ width: 120 }}>Binaural</th>
 								<th>Comments</th>
 							</tr>
 						</thead>
 						<tbody>
 							{FIELD_MAP.map(([field, label]) => (
 								<tr key={field}>
+									<td>
+										<div className="sound-img-wrap">
+											{SOUND_IMAGE_MAP[field] ? (
+												<img
+													className="sound-img"
+													src={SOUND_IMAGE_MAP[field]}
+													alt={label}
+													loading="lazy"
+												/>
+											) : (
+												<div
+													className="sound-img sound-img--placeholder"
+													aria-hidden="true"
+												/>
+											)}
+										</div>
+									</td>
 									<td>{label}</td>
 									<td>
 										<label
@@ -655,21 +702,6 @@ export default function CheckPage() {
 							))}
 						</tbody>
 					</table>
-
-					<div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-						<button
-							onClick={() => setAll(true)}
-							disabled={bulkSaving}
-						>
-							Mark all
-						</button>
-						<button
-							onClick={() => setAll(false)}
-							disabled={bulkSaving}
-						>
-							Clear all
-						</button>
-					</div>
 				</div>
 
 				{/* CENTER: Recordings */}
