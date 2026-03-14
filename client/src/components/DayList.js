@@ -13,6 +13,7 @@ export default function DayList() {
 	const [monthOwnerId, setMonthOwnerId] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [msg, setMsg] = useState("");
+	const [viewer, setViewer] = useState(null);
 
 	// controls for adding a day
 	const [env, setEnv] = useState("online");
@@ -45,22 +46,32 @@ export default function DayList() {
 		const load = async () => {
 			setLoading(true);
 			try {
-				const [daysRes, monthRes] = await Promise.all([
+				const [daysRes, monthRes, meRes] = await Promise.all([
 					axios.get(
 						`${API}/api/days?monthId=${monthId}`,
-						tokenHeader()
+						tokenHeader(),
 					),
 					axios.get(`${API}/api/months/${monthId}`, tokenHeader()),
+					axios.get(`${API}/api/auth/me`, tokenHeader()),
 				]);
+
 				setDays(daysRes.data || []);
 				setMonthName(monthRes.data?.name || "");
-				setMonthOwnerId(monthRes.data?.userId || null);
+
+				const ownerId =
+					typeof monthRes.data?.userId === "object"
+						? monthRes.data?.userId?._id
+						: monthRes.data?.userId;
+
+				setMonthOwnerId(ownerId || null);
+				setViewer(meRes.data || null);
 			} catch (e) {
 				setMsg("Failed to load days");
 			} finally {
 				setLoading(false);
 			}
 		};
+
 		if (monthId) load();
 	}, [monthId]);
 
@@ -72,12 +83,15 @@ export default function DayList() {
 		}
 	}, []);
 
+	const isAdmin = viewer?.role === "admin";
+	const canSeeUserDetails = Boolean(monthOwnerId && isAdmin);
+
 	// compute min/max strings for the date input (no UTC conversion)
 	const dateBounds = useMemo(() => {
 		if (!monthName) return { min: undefined, max: undefined };
 		const [mName, yStr] = (monthName || "").split(" ");
 		const y = Number(yStr);
-		const monthIndex = new Date(`${mName} 1, ${y}`).getMonth(); // safe
+		const monthIndex = new Date(`${mName} 1, ${y}`).getMonth();
 		const first = new Date(y, monthIndex, 1);
 		const last = new Date(y, monthIndex + 1, 0);
 
@@ -88,7 +102,7 @@ export default function DayList() {
 		return { min: toYMD(first), max: toYMD(last) };
 	}, [monthName]);
 
-	// ✅ Only allow "Add Today" buttons when viewing the current month
+	// only allow "Add Today" buttons when viewing the current month
 	const isCurrentMonth = useMemo(() => {
 		if (!monthName) return false;
 
@@ -108,7 +122,7 @@ export default function DayList() {
 	const refreshDays = async () => {
 		const res = await axios.get(
 			`${API}/api/days?monthId=${monthId}`,
-			tokenHeader()
+			tokenHeader(),
 		);
 		setDays(res.data || []);
 	};
@@ -127,7 +141,7 @@ export default function DayList() {
 			const res = await axios.post(
 				`${API}/api/days/add`,
 				body,
-				tokenHeader()
+				tokenHeader(),
 			);
 			await refreshDays();
 			const action = res.data?.action;
@@ -155,7 +169,7 @@ export default function DayList() {
 			const res = await axios.post(
 				`${API}/api/days/add-today`,
 				{ monthId, environment: env, userId: monthOwnerId },
-				tokenHeader()
+				tokenHeader(),
 			);
 			await refreshDays();
 			const action = res.data?.action;
@@ -177,7 +191,6 @@ export default function DayList() {
 		}
 	};
 
-	// NEW: force-add "today" with environment = 'inperson'
 	const handleAddTodayInperson = async () => {
 		if (!monthId) return;
 		setSubmitting(true);
@@ -186,7 +199,7 @@ export default function DayList() {
 			const res = await axios.post(
 				`${API}/api/days/add-today`,
 				{ monthId, environment: "inperson", userId: monthOwnerId },
-				tokenHeader()
+				tokenHeader(),
 			);
 			await refreshDays();
 			const action = res.data?.action;
@@ -212,7 +225,6 @@ export default function DayList() {
 		e.preventDefault();
 		if (!dateStr || !monthName) return;
 
-		// Parse YYYY-MM-DD WITHOUT UTC shift
 		const [yyyy, mm, dd] = dateStr.split("-").map((s) => parseInt(s, 10));
 		if (!yyyy || !mm || !dd) {
 			setMsg("Invalid date");
@@ -221,7 +233,7 @@ export default function DayList() {
 
 		const [mName, yStr] = monthName.split(" ");
 		const monthIndex = new Date(`${mName} 1, ${yStr}`).getMonth();
-		const selected = new Date(yyyy, mm - 1, dd); // local time construction
+		const selected = new Date(yyyy, mm - 1, dd);
 
 		const sameMonth =
 			selected.getMonth() === monthIndex &&
@@ -233,13 +245,12 @@ export default function DayList() {
 		createDay(dd);
 	};
 
-	// delete a day (and cascade server-side)
 	const handleDeleteDay = async (day) => {
 		if (!day?._id) return;
 		const ok = window.confirm(
 			`Delete ${monthName} ${day.dayNumber} [${
 				day.environment || "online"
-			}]? This will remove its checks and comments.`
+			}]? This will remove its checks and comments.`,
 		);
 		if (!ok) return;
 
@@ -263,7 +274,6 @@ export default function DayList() {
 		}
 	};
 
-	// filtered view of days
 	const filteredDays = useMemo(() => {
 		if (filterEnv === "all") return [...days];
 		return days.filter((d) => (d.environment || "online") === filterEnv);
@@ -273,9 +283,24 @@ export default function DayList() {
 
 	return (
 		<div className="day-list">
-			<p>
-				<Link to="/">← Back to Months</Link>
-			</p>
+			<div
+				style={{
+					display: "flex",
+					gap: 16,
+					flexWrap: "wrap",
+					marginBottom: 12,
+				}}
+			>
+				<Link to="/">
+					← Back to {isAdmin ? "Admin Dashboard" : "User Dashboard"}
+				</Link>
+
+				{canSeeUserDetails && (
+					<Link to={`/admin/users/${monthOwnerId}`}>
+						← Back to User Details
+					</Link>
+				)}
+			</div>
 
 			<div
 				style={{
@@ -287,7 +312,6 @@ export default function DayList() {
 			>
 				<h3 style={{ margin: 0 }}>{monthName || "Days"}</h3>
 
-				{/* Environment filter */}
 				<label style={{ marginLeft: 8, fontSize: 14 }}>Filter:</label>
 				<select
 					value={filterEnv}
@@ -307,7 +331,6 @@ export default function DayList() {
 
 			{msg && <p className="message">{msg}</p>}
 
-			{/* Add Day Controls */}
 			<div
 				style={{
 					display: "flex",
@@ -376,7 +399,6 @@ export default function DayList() {
 				)}
 			</div>
 
-			{/* Days list */}
 			{filteredDays.length === 0 ? (
 				<p>
 					No days{filterEnv !== "all" ? ` for '${filterEnv}'` : ""}.
@@ -397,7 +419,7 @@ export default function DayList() {
 								{(() => {
 									const label = formatDayLabel(
 										monthName,
-										d.dayNumber
+										d.dayNumber,
 									);
 									const status = d?.transcription?.status;
 									const locked =

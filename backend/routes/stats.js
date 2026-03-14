@@ -54,14 +54,13 @@ function shiftMonth({ y, m, d }, delta) {
 function lastDayOfMonthTZ({ y, m }, tz = APP_TZ) {
 	const nextMonth = shiftMonth({ y, m, d: 1 }, +1);
 	const asDate = new Date(
-		`${MONTH_NAMES[nextMonth.m - 1]} 1, ${nextMonth.y} 00:00:00 GMT`
+		`${MONTH_NAMES[nextMonth.m - 1]} 1, ${nextMonth.y} 00:00:00 GMT`,
 	);
 	const prev = new Date(asDate.getTime() - 24 * 60 * 60 * 1000);
 	const { d } = tzParts(prev, tz);
 	return d;
 }
 
-/* ---------------- EXISTING STATS (unchanged) ---------------- */
 // /api/stats/admin-checks
 router.get("/admin-checks", auth, async (req, res) => {
 	const t0 = Date.now();
@@ -76,8 +75,6 @@ router.get("/admin-checks", auth, async (req, res) => {
 		const prevTZ = shiftMonth(nowTZ, -1);
 		const currLabel = monthLabelFromParts(nowTZ);
 		const prevLabel = monthLabelFromParts(prevTZ);
-		const daysElapsedThisMonth = nowTZ.d;
-		const daysInPrevMonth = lastDayOfMonthTZ(prevTZ, APP_TZ);
 
 		if (!AdminOrg) {
 			return res.json({
@@ -103,24 +100,19 @@ router.get("/admin-checks", auth, async (req, res) => {
 		}
 
 		const userIds = childUsers.map((u) => u._id);
+
 		const rowsMap = new Map(
 			childUsers.map((u) => [
 				String(u._id),
 				{
 					userId: String(u._id),
 					username: u.username || "(unknown)",
-					currOnlineDen: 0,
-					currOnlineSuc: 0,
-					currInpersonDen: 0,
-					currInpersonSuc: 0,
-					prevOnlineDen: 0,
-					prevOnlineSuc: 0,
-					prevInpersonDen: 0,
-					prevInpersonSuc: 0,
-					hasCurrMonth: false,
-					hasPrevMonth: false,
+					currOnlineMissed: 0,
+					currInpersonMissed: 0,
+					prevOnlineMissed: 0,
+					prevInpersonMissed: 0,
 				},
-			])
+			]),
 		);
 
 		const [monthsCurr, monthsPrev] = await Promise.all([
@@ -131,24 +123,29 @@ router.get("/admin-checks", auth, async (req, res) => {
 				.select({ _id: 1, userId: 1 })
 				.lean(),
 		]);
+
 		const currByUser = new Map(
-			monthsCurr.map((m) => [String(m.userId), String(m._id)])
+			monthsCurr.map((m) => [String(m.userId), String(m._id)]),
 		);
 		const prevByUser = new Map(
-			monthsPrev.map((m) => [String(m.userId), String(m._id)])
+			monthsPrev.map((m) => [String(m.userId), String(m._id)]),
 		);
-
-		for (const u of childUsers) {
-			const uid = String(u._id);
-			const r = rowsMap.get(uid);
-			r.hasCurrMonth = currByUser.has(uid);
-			r.hasPrevMonth = prevByUser.has(uid);
-		}
 
 		const monthIdsToLoad = [
 			...monthsCurr.map((m) => m._id),
 			...monthsPrev.map((m) => m._id),
 		];
+
+		if (monthIdsToLoad.length === 0) {
+			return res.json({
+				rows: Array.from(rowsMap.values()).sort((a, b) =>
+					a.username.localeCompare(b.username),
+				),
+				currentMonthLabel: currLabel,
+				previousMonthLabel: prevLabel,
+			});
+		}
+
 		const dayDocs = await Day.find({ month: { $in: monthIdsToLoad } })
 			.select({
 				_id: 1,
@@ -160,90 +157,71 @@ router.get("/admin-checks", auth, async (req, res) => {
 			.lean();
 
 		const dayById = new Map(dayDocs.map((d) => [String(d._id), d]));
-		for (const d of dayDocs) {
-			const uid = String(d.userId);
-			const r = rowsMap.get(uid);
-			if (!r) continue;
-			const env = d.environment === "inperson" ? "inperson" : "online";
-			const currMonthId = currByUser.get(uid);
-			const prevMonthId = prevByUser.get(uid);
 
-			if (currMonthId && String(d.month) === currMonthId) {
-				if (typeof d.dayNumber === "number" && d.dayNumber <= nowTZ.d) {
-					if (env === "online") r.currOnlineDen += 1;
-					else r.currInpersonDen += 1;
-				}
-			} else if (prevMonthId && String(d.month) === prevMonthId) {
-				if (env === "online") r.prevOnlineDen += 1;
-				else r.prevInpersonDen += 1;
-			}
-		}
-
-		const successfulChecks = await Check.find({
+		const checkDocs = await Check.find({
 			day: { $in: dayDocs.map((d) => d._id) },
-			checkone: true,
-			checktwo: true,
-			checkthree: true,
-			checkfour: true,
-			checkfive: true,
-			checksix: true,
-			checkseven: true,
-			checkeight: true,
-			checknine: true,
-			checkten: true,
 		})
-			.select({ _id: 0, day: 1 })
+			.select({
+				day: 1,
+				checkone: 1,
+				checktwo: 1,
+				checkthree: 1,
+				checkfour: 1,
+				checkfive: 1,
+				checksix: 1,
+				checkseven: 1,
+				checkeight: 1,
+				checknine: 1,
+				checkten: 1,
+			})
 			.lean();
 
-		for (const c of successfulChecks) {
+		const CHECK_FIELDS = [
+			"checkone",
+			"checktwo",
+			"checkthree",
+			"checkfour",
+			"checkfive",
+			"checksix",
+			"checkseven",
+			"checkeight",
+			"checknine",
+			"checkten",
+		];
+
+		for (const c of checkDocs) {
 			const d = dayById.get(String(c.day));
 			if (!d) continue;
+
 			const uid = String(d.userId);
 			const r = rowsMap.get(uid);
 			if (!r) continue;
+
 			const env = d.environment === "inperson" ? "inperson" : "online";
 			const currMonthId = currByUser.get(uid);
 			const prevMonthId = prevByUser.get(uid);
 
+			const missedCount = CHECK_FIELDS.reduce(
+				(sum, f) => sum + (c[f] === false ? 1 : 0),
+				0,
+			);
+
+			if (missedCount === 0) continue;
+
 			if (currMonthId && String(d.month) === currMonthId) {
 				if (typeof d.dayNumber === "number" && d.dayNumber <= nowTZ.d) {
-					if (env === "online") r.currOnlineSuc += 1;
-					else r.currInpersonSuc += 1;
+					if (env === "online") r.currOnlineMissed += missedCount;
+					else r.currInpersonMissed += missedCount;
 				}
 			} else if (prevMonthId && String(d.month) === prevMonthId) {
-				if (env === "online") r.prevOnlineSuc += 1;
-				else r.prevInpersonSuc += 1;
+				if (env === "online") r.prevOnlineMissed += missedCount;
+				else r.prevInpersonMissed += missedCount;
 			}
 		}
 
-		const pct = (s, den) => (den > 0 ? Math.round((s / den) * 100) : 0);
-
-		const rows = Array.from(rowsMap.values())
-			.map((r) => ({
-				userId: r.userId,
-				username: r.username,
-				currOnlinePercent: r.hasCurrMonth
-					? pct(r.currOnlineSuc, r.currOnlineDen)
-					: 0,
-				currInpersonPercent: r.hasCurrMonth
-					? pct(r.currInpersonSuc, r.currInpersonDen)
-					: 0,
-				prevOnlinePercent: r.hasPrevMonth
-					? pct(r.prevOnlineSuc, r.prevOnlineDen)
-					: 0,
-				prevInpersonPercent: r.hasPrevMonth
-					? pct(r.prevInpersonSuc, r.prevInpersonDen)
-					: 0,
-				currOnlineSuc: r.currOnlineSuc,
-				currOnlineDen: r.currOnlineDen,
-				currInpersonSuc: r.currInpersonSuc,
-				currInpersonDen: r.currInpersonDen,
-				prevOnlineSuc: r.prevOnlineSuc,
-				prevOnlineDen: r.prevOnlineDen,
-				prevInpersonSuc: r.prevInpersonSuc,
-				prevInpersonDen: r.prevInpersonDen,
-			}))
-			.sort((a, b) => a.username.localeCompare(b.username));
+		const rows = Array.from(rowsMap.values()).sort((a, b) =>
+			a.username.localeCompare(b.username),
+		);
 
 		return res.json({
 			rows,
@@ -258,7 +236,7 @@ router.get("/admin-checks", auth, async (req, res) => {
 	}
 });
 
-/* ---------------- Equipment completion stats (unchanged) ---------------- */
+/* ---------------- Equipment stats: count missed individual checks ---------------- */
 router.get("/admin-equip", auth, async (req, res) => {
 	const t0 = Date.now();
 	try {
@@ -266,6 +244,7 @@ router.get("/admin-equip", auth, async (req, res) => {
 		if (!adminId || !mongoose.isValidObjectId(adminId)) {
 			return res.status(401).json({ error: "Unauthorized" });
 		}
+
 		const AdminOrg = await AdminUser.findOne({ ownerUser: adminId }).lean();
 
 		const nowTZ = tzParts(new Date(), APP_TZ);
@@ -287,6 +266,7 @@ router.get("/admin-equip", auth, async (req, res) => {
 		})
 			.select({ _id: 1, username: 1 })
 			.lean();
+
 		if (childUsers.length === 0) {
 			return res.json({
 				rows: [],
@@ -294,7 +274,20 @@ router.get("/admin-equip", auth, async (req, res) => {
 				previousMonthLabel: prevLabel,
 			});
 		}
+
 		const userIds = childUsers.map((u) => u._id);
+
+		const rowsMap = new Map(
+			childUsers.map((u) => [
+				String(u._id),
+				{
+					userId: String(u._id),
+					username: u.username || "(unknown)",
+					currEquipMissed: 0,
+					prevEquipMissed: 0,
+				},
+			]),
+		);
 
 		const [monthsCurr, monthsPrev] = await Promise.all([
 			Month.find({ name: currLabel, userId: { $in: userIds } })
@@ -304,37 +297,23 @@ router.get("/admin-equip", auth, async (req, res) => {
 				.select({ _id: 1, userId: 1 })
 				.lean(),
 		]);
+
 		const currByUser = new Map(
-			monthsCurr.map((m) => [String(m.userId), String(m._id)])
+			monthsCurr.map((m) => [String(m.userId), String(m._id)]),
 		);
 		const prevByUser = new Map(
-			monthsPrev.map((m) => [String(m.userId), String(m._id)])
-		);
-
-		const rowsMap = new Map(
-			childUsers.map((u) => [
-				String(u._id),
-				{
-					userId: String(u._id),
-					username: u.username || "(unknown)",
-					hasCurrMonth: currByUser.has(String(u._id)),
-					hasPrevMonth: prevByUser.has(String(u._id)),
-					currEquipDen: 0,
-					currEquipSuc: 0,
-					prevEquipDen: 0,
-					prevEquipSuc: 0,
-				},
-			])
+			monthsPrev.map((m) => [String(m.userId), String(m._id)]),
 		);
 
 		const allMonthIds = [
 			...monthsCurr.map((m) => String(m._id)),
 			...monthsPrev.map((m) => String(m._id)),
 		];
+
 		if (allMonthIds.length === 0) {
 			return res.json({
 				rows: Array.from(rowsMap.values()).sort((a, b) =>
-					a.username.localeCompare(b.username)
+					a.username.localeCompare(b.username),
 				),
 				currentMonthLabel: currLabel,
 				previousMonthLabel: prevLabel,
@@ -361,8 +340,9 @@ router.get("/admin-equip", auth, async (req, res) => {
 		const dayDocs = await Day.find({ _id: { $in: dayIds } })
 			.select({ _id: 1, dayNumber: 1 })
 			.lean();
+
 		const dayNumById = new Map(
-			dayDocs.map((d) => [String(d._id), d.dayNumber || 0])
+			dayDocs.map((d) => [String(d._id), d.dayNumber || 0]),
 		);
 
 		for (const ec of echecks) {
@@ -375,40 +355,30 @@ router.get("/admin-equip", auth, async (req, res) => {
 				currByUser.get(uid) && ecMonthId === currByUser.get(uid);
 			const isPrev =
 				prevByUser.get(uid) && ecMonthId === prevByUser.get(uid);
+
 			if (!isCurr && !isPrev) continue;
 
-			const success = !!(ec.left && ec.right && ec.both && ec.fmMic);
+			const missedCount =
+				(ec.left === false ? 1 : 0) +
+				(ec.right === false ? 1 : 0) +
+				(ec.both === false ? 1 : 0) +
+				(ec.fmMic === false ? 1 : 0);
+
+			if (missedCount === 0) continue;
 
 			if (isCurr) {
 				const dn = dayNumById.get(String(ec.day)) || 0;
 				if (dn > 0 && dn <= nowTZ.d) {
-					r.currEquipDen += 1;
-					if (success) r.currEquipSuc += 1;
+					r.currEquipMissed += missedCount;
 				}
 			} else if (isPrev) {
-				r.prevEquipDen += 1;
-				if (success) r.prevEquipSuc += 1;
+				r.prevEquipMissed += missedCount;
 			}
 		}
 
-		const pct = (s, den) => (den > 0 ? Math.round((s / den) * 100) : 0);
-
-		const rows = Array.from(rowsMap.values())
-			.map((r) => ({
-				userId: r.userId,
-				username: r.username,
-				currEquipPercent: r.hasCurrMonth
-					? pct(r.currEquipSuc, r.currEquipDen)
-					: 0,
-				prevEquipPercent: r.hasPrevMonth
-					? pct(r.prevEquipSuc, r.prevEquipDen)
-					: 0,
-				currEquipSuc: r.currEquipSuc,
-				currEquipDen: r.currEquipDen,
-				prevEquipSuc: r.prevEquipSuc,
-				prevEquipDen: r.prevEquipDen,
-			}))
-			.sort((a, b) => a.username.localeCompare(b.username));
+		const rows = Array.from(rowsMap.values()).sort((a, b) =>
+			a.username.localeCompare(b.username),
+		);
 
 		return res.json({
 			rows,
@@ -425,17 +395,6 @@ router.get("/admin-equip", auth, async (req, res) => {
 	}
 });
 
-/* ---------------- NEW: per-field success by month (no luxon) ----------------
-   For each check field (checkone..checkten):
-   - Denominator (per month): number of Check docs for that user in that Month
-   - Numerator: those with the boolean true
---------------------------------------------------------------------------- */
-/* ---------------- NEW: per-field success by month (no luxon) ----------------
-   For each check field (checkone..checkten):
-   - Denominator (per month): number of Check docs for that user in that Month
-   - Numerator: those with the boolean true
-   - Current month is **to date**: only include Day.dayNumber <= today (Pacific)
---------------------------------------------------------------------------- */
 // /api/stats/user/:userId/check-fields  (day-first, PT "to-date")
 router.get("/user/:userId/check-fields", auth, async (req, res) => {
 	try {
@@ -444,7 +403,6 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			return res.status(400).json({ error: "Invalid userId" });
 		}
 
-		// Pacific-time month labels + today's day-of-month (PT)
 		const nowTZ = tzParts(new Date(), APP_TZ);
 		const prevTZ = shiftMonth(nowTZ, -1);
 		const currentName = monthLabelFromParts(nowTZ);
@@ -464,14 +422,14 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			"checkten",
 		];
 
-		// Build per-field true counters
-		const fieldSums = CHECK_FIELDS.reduce((acc, f) => {
-			acc[`${f}True`] = { $sum: { $cond: [`$check.${f}`, 1, 0] } };
+		// Build per-field FALSE counters
+		const fieldMissedSums = CHECK_FIELDS.reduce((acc, f) => {
+			acc[`${f}Missed`] = {
+				$sum: { $cond: [{ $eq: [`$check.${f}`, false] }, 1, 0] },
+			};
 			return acc;
 		}, {});
 
-		// Start from Day (like your admin endpoints), limit to PT "to date" for current month,
-		// then left-join to this user's Check for that Day, and only keep rows where it exists.
 		const results = await Day.aggregate([
 			{ $match: { userId: new mongoose.Types.ObjectId(userId) } },
 			{
@@ -483,8 +441,6 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 				},
 			},
 			{ $unwind: "$month" },
-
-			// Previous: keep all. Current: keep only dayNumber <= today (PT)
 			{
 				$match: {
 					$or: [
@@ -498,8 +454,6 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 					],
 				},
 			},
-
-			// Join the specific user's Check for this Day
 			{
 				$lookup: {
 					from: "checks",
@@ -514,7 +468,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 											$eq: [
 												"$user",
 												new mongoose.Types.ObjectId(
-													userId
+													userId,
 												),
 											],
 										},
@@ -524,7 +478,6 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 						},
 						{
 							$project: {
-								// only need booleans
 								checkone: 1,
 								checktwo: 1,
 								checkthree: 1,
@@ -542,30 +495,30 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 				},
 			},
 			{ $unwind: { path: "$check", preserveNullAndEmptyArrays: false } },
-
-			// Group by month name; denominator = number of Days (to-date for current) that HAVE a Check
 			{
 				$group: {
 					_id: "$month.name",
 					total: { $sum: 1 },
-					...fieldSums,
+					...fieldMissedSums,
 				},
 			},
 		]);
 
 		const byName = Object.fromEntries(results.map((r) => [r._id, r]));
+
 		function shape(name) {
 			const row = byName[name] || { total: 0 };
 			const total = row.total || 0;
 			const fields = {};
+
 			for (const f of CHECK_FIELDS) {
-				const t = row[`${f}True`] || 0;
+				const missed = row[`${f}Missed`] || 0;
 				fields[f] = {
-					true: t,
+					missed,
 					total,
-					pct: total ? Math.round((t / total) * 100) : 0,
 				};
 			}
+
 			return { name, fields, total };
 		}
 

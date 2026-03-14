@@ -23,6 +23,7 @@ const FIELD_MAP = [
 	["checknine", "z (z)"],
 	["checkten", "h (h)"],
 ];
+
 // 1 inch ≈ 96 CSS pixels
 const SOUND_IMAGE_MAP = {
 	checkone: "/sounds/oo.png",
@@ -81,11 +82,36 @@ export default function CheckPage() {
 	// lock ui for transcriptions
 	const [uiLocked, setUiLocked] = useState(false);
 
+	// logged-in viewer determines dashboard link text
+	const [viewer, setViewer] = useState(null);
+
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
 	});
 
 	const fieldKeys = useMemo(() => FIELD_MAP.map(([k]) => k), []);
+
+	// Load logged-in viewer for dashboard link label
+	useEffect(() => {
+		let cancelled = false;
+
+		const loadViewer = async () => {
+			try {
+				const res = await axios.get(
+					`${API}/api/auth/me`,
+					tokenHeader(),
+				);
+				if (!cancelled) setViewer(res.data || null);
+			} catch {
+				if (!cancelled) setViewer(null);
+			}
+		};
+
+		loadViewer();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 
 	// 1) Ensure a Check exists for this day (and user when admin passes userId)
 	useEffect(() => {
@@ -98,7 +124,7 @@ export default function CheckPage() {
 				const res = await axios.post(
 					`${API}/api/checks`,
 					body,
-					tokenHeader()
+					tokenHeader(),
 				);
 				setCheck(res.data);
 				setMsg("");
@@ -122,12 +148,12 @@ export default function CheckPage() {
 			try {
 				const res = await axios.get(
 					`${API}/api/comments/by-check/${check._id}/all`,
-					tokenHeader()
+					tokenHeader(),
 				);
 				const map = res.data || {};
-				const openInit = {},
-					textInit = {},
-					docInit = {};
+				const openInit = {};
+				const textInit = {};
+				const docInit = {};
 				for (const [field] of FIELD_MAP) {
 					const doc = map[field] || null;
 					docInit[field] = doc;
@@ -140,7 +166,7 @@ export default function CheckPage() {
 				setCommentOpen(openInit);
 				setCommentText(textInit);
 			} catch {
-				/* ignore */
+				// ignore
 			}
 		};
 		load();
@@ -156,6 +182,13 @@ export default function CheckPage() {
 	 * This ensures the backend sees the current user's own id, avoiding 403.
 	 */
 	const resolvedUserId = userIdFromQuery || check?.user || null;
+	const isAdmin = viewer?.role === "admin";
+	const dashboardLabel =
+		viewer == null
+			? "Dashboard"
+			: isAdmin
+				? "Admin Dashboard"
+				: "User Dashboard";
 
 	useEffect(() => {
 		const loadEquip = async () => {
@@ -171,7 +204,7 @@ export default function CheckPage() {
 							user: resolvedUserId,
 						},
 						...tokenHeader(),
-					}
+					},
 				);
 				setEcheck(r.data);
 				setEquipAllowed(true);
@@ -179,7 +212,7 @@ export default function CheckPage() {
 			} catch (e) {
 				const code = e?.response?.status;
 				if (code === 404) {
-					// not created yet — show the Enable button for *everyone*
+					// not created yet — show the Enable button for everyone
 					setEcheck(null);
 					setEquipAllowed(true);
 					setEquipMsg("");
@@ -202,12 +235,12 @@ export default function CheckPage() {
 			try {
 				const res = await axios.get(
 					`${API}/api/equip-comments/by-echeck/${echeck._id}/all`,
-					tokenHeader()
+					tokenHeader(),
 				);
 				const map = res.data || {};
-				const openInit = {},
-					textInit = {},
-					docInit = {};
+				const openInit = {};
+				const textInit = {};
+				const docInit = {};
 				for (const [field] of EQUIP_FIELDS) {
 					const doc = map[field] || null;
 					docInit[field] = doc;
@@ -241,7 +274,7 @@ export default function CheckPage() {
 				if (!cancelled && locked) {
 					sessionStorage.setItem(
 						"transcribeNotice",
-						"⚠️ That day is currently transcribing in the background. Please wait until it finishes."
+						"⚠️ That day is currently transcribing in the background. Please wait until it finishes.",
 					);
 					navigate(`/months/${monthId}`);
 				}
@@ -268,7 +301,7 @@ export default function CheckPage() {
 				const res = await axios.patch(
 					`${API}/api/checks/${check._id}`,
 					{ [field]: !prev },
-					tokenHeader()
+					tokenHeader(),
 				);
 				setCheck(res.data);
 				setMsg("");
@@ -283,7 +316,7 @@ export default function CheckPage() {
 				setSaving((s) => ({ ...s, [field]: false }));
 			}
 		},
-		[check, saving, bulkSaving]
+		[check, saving, bulkSaving],
 	);
 
 	const setAll = useCallback(
@@ -291,17 +324,17 @@ export default function CheckPage() {
 			if (!check || bulkSaving) return;
 			setBulkSaving(true);
 			setMsg("");
-			const payload = fieldKeys.reduce(
-				(acc, k) => ((acc[k] = value), acc),
-				{}
-			);
+			const payload = fieldKeys.reduce((acc, k) => {
+				acc[k] = value;
+				return acc;
+			}, {});
 			const prevState = { ...check };
 			setCheck((c) => ({ ...c, ...payload }));
 			try {
 				const res = await axios.patch(
 					`${API}/api/checks/${check._id}`,
 					payload,
-					tokenHeader()
+					tokenHeader(),
 				);
 				setCheck(res.data);
 			} catch (err) {
@@ -315,7 +348,7 @@ export default function CheckPage() {
 				setBulkSaving(false);
 			}
 		},
-		[check, fieldKeys, bulkSaving]
+		[check, fieldKeys, bulkSaving],
 	);
 
 	// --------- Comment handlers ----------
@@ -326,7 +359,7 @@ export default function CheckPage() {
 			const res = await axios.put(
 				`${API}/api/comments/by-check/${check._id}`,
 				{ field, commentText: commentText[field] },
-				tokenHeader()
+				tokenHeader(),
 			);
 			setCommentDoc((d) => ({ ...d, [field]: res.data }));
 			setMsg("Comment saved.");
@@ -373,24 +406,24 @@ export default function CheckPage() {
 				{
 					month: monthId,
 					day: dayId,
-					user: resolvedUserId, // <-- key change: use owner of the day when non-admin
+					user: resolvedUserId,
 					left: false,
 					right: false,
 					both: false,
 					fmMic: false,
 				},
-				tokenHeader()
+				tokenHeader(),
 			);
 			setEcheck(res.data);
 			setEquipMsg("");
 		} catch (e) {
 			const code = e?.response?.status;
 			if (code === 403) {
-				// If this still hits, backend forbids; hide the panel.
 				setEquipAllowed(false);
 			} else {
 				setEquipMsg(
-					e?.response?.data?.msg || "Failed to enable equipment check"
+					e?.response?.data?.msg ||
+						"Failed to enable equipment check",
 				);
 			}
 		}
@@ -405,7 +438,7 @@ export default function CheckPage() {
 			const res = await axios.patch(
 				`${API}/api/equipment-checks/${echeck._id}`,
 				{ [field]: !prev },
-				tokenHeader()
+				tokenHeader(),
 			);
 			setEcheck(res.data);
 			setEquipMsg("");
@@ -424,7 +457,7 @@ export default function CheckPage() {
 			const res = await axios.put(
 				`${API}/api/equip-comments/by-echeck/${echeck._id}`,
 				{ field, commentText: eCmtText[field] },
-				tokenHeader()
+				tokenHeader(),
 			);
 			setECmtDoc((d) => ({ ...d, [field]: res.data }));
 			setEquipMsg("Comment saved.");
@@ -444,7 +477,7 @@ export default function CheckPage() {
 				{
 					params: { field },
 					...tokenHeader(),
-				}
+				},
 			);
 			setECmtDoc((d) => ({ ...d, [field]: null }));
 			setECmtText((t) => ({ ...t, [field]: "" }));
@@ -507,11 +540,20 @@ export default function CheckPage() {
 			>
 				{/* LEFT: Daily Check */}
 				<div style={{ maxWidth: 760 }}>
-					<p style={{ marginBottom: 12 }}>
+					<div
+						style={{
+							display: "flex",
+							gap: 16,
+							flexWrap: "wrap",
+							marginBottom: 12,
+						}}
+					>
 						<Link to={monthId ? `/months/${monthId}` : `/`}>
-							← Back to DayList
+							← Return to DayList
 						</Link>
-					</p>
+
+						<Link to={`/`}>← Return to {dashboardLabel}</Link>
+					</div>
 
 					<div
 						style={{
@@ -651,7 +693,7 @@ export default function CheckPage() {
 																	[field]:
 																		e.target
 																			.value,
-																})
+																}),
 															)
 														}
 													/>
@@ -664,7 +706,7 @@ export default function CheckPage() {
 														<button
 															onClick={() =>
 																saveComment(
-																	field
+																	field,
 																)
 															}
 															disabled={
@@ -680,7 +722,7 @@ export default function CheckPage() {
 															<button
 																onClick={() =>
 																	deleteComment(
-																		field
+																		field,
 																	)
 																}
 																disabled={
@@ -750,7 +792,6 @@ export default function CheckPage() {
 							</button>
 						) : (
 							<>
-								{/* ONE combined table: Field | Status | Comment */}
 								<table className="table">
 									<thead>
 										<tr>
@@ -765,9 +806,6 @@ export default function CheckPage() {
 										{EQUIP_FIELDS.map(([field, label]) => (
 											<tr key={field}>
 												<td>{label}</td>
-
-												{/* Status cell */}
-												{/* Status cell (checkbox, like the left side) */}
 												<td>
 													<label
 														style={{
@@ -785,7 +823,7 @@ export default function CheckPage() {
 															}
 															onChange={() =>
 																toggleEquip(
-																	field
+																	field,
 																)
 															}
 															disabled={
@@ -802,8 +840,6 @@ export default function CheckPage() {
 														</span>
 													</label>
 												</td>
-
-												{/* Comment cell with +/− toggle */}
 												<td>
 													<div
 														style={{
@@ -825,7 +861,7 @@ export default function CheckPage() {
 																			!o[
 																				field
 																			],
-																	})
+																	}),
 																)
 															}
 															aria-label={
@@ -857,18 +893,18 @@ export default function CheckPage() {
 																		] || ""
 																	}
 																	onChange={(
-																		e
+																		e,
 																	) =>
 																		setECmtText(
 																			(
-																				t
+																				t,
 																			) => ({
 																				...t,
 																				[field]:
 																					e
 																						.target
 																						.value,
-																			})
+																			}),
 																		)
 																	}
 																/>
@@ -882,7 +918,7 @@ export default function CheckPage() {
 																	<button
 																		onClick={() =>
 																			saveEquipComment(
-																				field
+																				field,
 																			)
 																		}
 																		disabled={
@@ -900,7 +936,7 @@ export default function CheckPage() {
 																		<button
 																			onClick={() =>
 																				deleteEquipComment(
-																					field
+																					field,
 																				)
 																			}
 																			disabled={

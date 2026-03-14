@@ -149,10 +149,10 @@ export default function UserDetails() {
 	// Add month UI
 	const [showAddMonth, setShowAddMonth] = useState(false);
 	const [newMonthName, setNewMonthName] = useState(
-		MONTH_NAMES[new Date().getMonth()]
+		MONTH_NAMES[new Date().getMonth()],
 	);
 	const [newMonthYear, setNewMonthYear] = useState(
-		String(new Date().getFullYear())
+		String(new Date().getFullYear()),
 	);
 	const [creatingMonth, setCreatingMonth] = useState(false);
 	const [createMonthError, setCreateMonthError] = useState("");
@@ -192,7 +192,7 @@ export default function UserDetails() {
 		const name = `${newMonthName} ${newMonthYear}`;
 
 		const ok = window.confirm(
-			`Create month "${name}" for ${user?.username || "this user"}?`
+			`Create month "${name}" for ${user?.username || "this user"}?`,
 		);
 		if (!ok) return;
 
@@ -203,14 +203,14 @@ export default function UserDetails() {
 			await axios.post(
 				`${API}/api/months/new`,
 				{ name, userId },
-				tokenHeader()
+				tokenHeader(),
 			);
 
 			await fetchMonthsForUser(); // refresh table
 			setShowAddMonth(false);
 		} catch (e) {
 			setCreateMonthError(
-				e?.response?.data?.msg || "Failed to create month."
+				e?.response?.data?.msg || "Failed to create month.",
 			);
 		} finally {
 			setCreatingMonth(false);
@@ -225,7 +225,7 @@ export default function UserDetails() {
 			try {
 				const u1 = await axios.get(
 					`${API}/api/users/${userId}/data`,
-					tokenHeader()
+					tokenHeader(),
 				);
 				if (!alive) return;
 				setUser(u1.data);
@@ -233,7 +233,7 @@ export default function UserDetails() {
 				try {
 					const u2 = await axios.get(
 						`${API}/api/users/${userId}`,
-						tokenHeader()
+						tokenHeader(),
 					);
 					if (!alive) return;
 					setUser(u2.data);
@@ -241,11 +241,11 @@ export default function UserDetails() {
 					try {
 						const list = await axios.get(
 							`${API}/api/users`,
-							tokenHeader()
+							tokenHeader(),
 						);
 						if (!alive) return;
 						const found = (list.data || []).find(
-							(u) => String(u._id) === String(userId)
+							(u) => String(u._id) === String(userId),
 						);
 						setUser(found || null);
 						if (!found) setError("User not found.");
@@ -260,7 +260,7 @@ export default function UserDetails() {
 			try {
 				const s = await axios.get(
 					`${API}/api/stats/user/${userId}/check-fields`,
-					tokenHeader()
+					tokenHeader(),
 				);
 				if (!alive) return;
 				setStats(s.data);
@@ -276,7 +276,7 @@ export default function UserDetails() {
 			try {
 				const r = await axios.get(
 					`${API}/api/comments/by-user/${userId}/by-field?scope=current`,
-					tokenHeader()
+					tokenHeader(),
 				);
 				if (!alive) return;
 				setCommentsCurrent(r.data || {});
@@ -289,7 +289,7 @@ export default function UserDetails() {
 			try {
 				const r = await axios.get(
 					`${API}/api/comments/by-user/${userId}/by-field?scope=previous`,
-					tokenHeader()
+					tokenHeader(),
 				);
 				if (!alive) return;
 				setCommentsPrev(r.data || {});
@@ -318,13 +318,13 @@ export default function UserDetails() {
 		const cm = stats.currentMonth;
 		const pm = stats.previousMonth;
 		return CHECK_FIELDS.map((k) => {
-			const cur = cm?.fields?.[k] || { pct: 0, total: 0 };
-			const prv = pm?.fields?.[k] || { pct: 0, total: 0 };
+			const cur = cm?.fields?.[k] || { missed: 0, total: 0 };
+			const prv = pm?.fields?.[k] || { missed: 0, total: 0 };
 			return (
 				<tr key={k}>
 					<td>{labelize(k)}</td>
-					<td>{`${cur.pct}% out of ${cur.total}`}</td>
-					<td>{`${prv.pct}% out of ${prv.total}`}</td>
+					<td>{`${cur.missed} checks that needed love`}</td>
+					<td>{`${prv.missed} checks that needed love`}</td>
 				</tr>
 			);
 		});
@@ -370,7 +370,7 @@ export default function UserDetails() {
 					})}
 			</ul>
 		),
-		[userId]
+		[userId],
 	);
 
 	const commentsRows = useMemo(() => {
@@ -601,7 +601,7 @@ export default function UserDetails() {
 						type="button"
 						onClick={() =>
 							setMonthsSortDir((d) =>
-								d === "desc" ? "asc" : "desc"
+								d === "desc" ? "asc" : "desc",
 							)
 						}
 						title="Toggle month/year sort"

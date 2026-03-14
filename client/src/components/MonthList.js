@@ -30,13 +30,13 @@ function MonthList({ user }) {
 			try {
 				const res = await axios.get(
 					"https://mern-deploy-docker.onrender.com/api/months",
-					tokenHeader()
+					tokenHeader(),
 				);
 				setMonths(res.data || []);
 			} catch (err) {
 				console.error(
 					"Failed to fetch months:",
-					err.response?.data || err.message
+					err.response?.data || err.message,
 				);
 				setMessage("Error loading months");
 			} finally {
@@ -61,9 +61,9 @@ function MonthList({ user }) {
 	const uniqueYears = useMemo(
 		() =>
 			Array.from(
-				new Set(months.map((m) => (m.name || "").split(" ")[1]))
+				new Set(months.map((m) => (m.name || "").split(" ")[1])),
 			).sort(),
-		[months]
+		[months],
 	);
 
 	const handleAddMonth = async (offset) => {
@@ -74,7 +74,7 @@ function MonthList({ user }) {
 			const res = await axios.post(
 				"https://mern-deploy-docker.onrender.com/api/months/new",
 				{ name: monthToAdd },
-				tokenHeader()
+				tokenHeader(),
 			);
 			setMonths((prev) => [...prev, res.data]);
 			setMessage(`✅ Added: ${monthToAdd}`);
@@ -95,10 +95,9 @@ function MonthList({ user }) {
 		.filter((m) =>
 			selectedYear === "all"
 				? true
-				: (m.name || "").endsWith(selectedYear)
+				: (m.name || "").endsWith(selectedYear),
 		)
-		.sort((a, b) => parseMonthDate(a.name) - parseMonthDate(b.name));
-
+		.sort((a, b) => parseMonthDate(b.name) - parseMonthDate(a.name));
 	return (
 		<div className="month-list">
 			<h3>Your Months</h3>

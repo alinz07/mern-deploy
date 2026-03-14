@@ -60,12 +60,12 @@ function AdminDashboard() {
 			"November",
 			"December",
 		],
-		[]
+		[],
 	);
 
 	const now = new Date();
 	const [selectedMonthIndex, setSelectedMonthIndex] = useState(
-		now.getMonth()
+		now.getMonth(),
 	);
 	const [selectedYear, setSelectedYear] = useState(now.getFullYear());
 
@@ -119,10 +119,10 @@ function AdminDashboard() {
 			const res = await axios.put(
 				`https://mern-deploy-docker.onrender.com/api/users/${editId}`,
 				{ username, email },
-				tokenHeader()
+				tokenHeader(),
 			);
 			setUsers((prev) =>
-				prev.map((x) => (x._id === editId ? res.data : x))
+				prev.map((x) => (x._id === editId ? res.data : x)),
 			);
 			cancelEdit();
 		} catch (err) {
@@ -139,7 +139,7 @@ function AdminDashboard() {
 			try {
 				const res = await axios.get(
 					"https://mern-deploy-docker.onrender.com/api/users",
-					tokenHeader()
+					tokenHeader(),
 				);
 				setUsers(res.data);
 			} catch {
@@ -153,7 +153,7 @@ function AdminDashboard() {
 			try {
 				const res = await axios.get(
 					"https://mern-deploy-docker.onrender.com/api/months",
-					tokenHeader()
+					tokenHeader(),
 				);
 				setMonths(res.data);
 			} catch {
@@ -168,11 +168,11 @@ function AdminDashboard() {
 				const [checksRes, equipRes] = await Promise.all([
 					axios.get(
 						"https://mern-deploy-docker.onrender.com/api/stats/admin-checks",
-						tokenHeader()
+						tokenHeader(),
 					),
 					axios.get(
 						"https://mern-deploy-docker.onrender.com/api/stats/admin-equip",
-						tokenHeader()
+						tokenHeader(),
 					),
 				]);
 				setChecksStats(checksRes.data || { rows: [] });
@@ -188,7 +188,7 @@ function AdminDashboard() {
 			try {
 				const r = await axios.get(
 					"https://mern-deploy-docker.onrender.com/api/admin/join-code",
-					tokenHeader()
+					tokenHeader(),
 				);
 				setJoinCode(r.data?.joinCode || "");
 			} catch {
@@ -211,7 +211,7 @@ function AdminDashboard() {
 	// students only
 	const studentUsers = useMemo(
 		() => (users || []).filter((u) => u?.role !== "admin"),
-		[users]
+		[users],
 	);
 
 	const createMonthForSelectedStudent = async () => {
@@ -221,7 +221,7 @@ function AdminDashboard() {
 		const studentName = student?.username || "this student";
 
 		const ok = window.confirm(
-			`Create "${monthRecordName}" for ${studentName}?`
+			`Create "${monthRecordName}" for ${studentName}?`,
 		);
 		if (!ok) return;
 
@@ -232,18 +232,18 @@ function AdminDashboard() {
 			await axios.post(
 				"https://mern-deploy-docker.onrender.com/api/months/new",
 				{ name: monthRecordName, userId: selectedStudentId },
-				tokenHeader()
+				tokenHeader(),
 			);
 
 			// refresh months so Owner column is populated
 			const refreshed = await axios.get(
 				"https://mern-deploy-docker.onrender.com/api/months",
-				tokenHeader()
+				tokenHeader(),
 			);
 			setMonths(refreshed.data || []);
 
 			setMonthCreateMsg(
-				`✅ "${monthRecordName}" added for ${studentName}`
+				`✅ "${monthRecordName}" added for ${studentName}`,
 			);
 			setShowAddMonth(false);
 			setSelectedStudentId("");
@@ -276,7 +276,7 @@ function AdminDashboard() {
 		const term = usersSearch.trim().toLowerCase();
 		const list = term
 			? users.filter((u) =>
-					(u?.username || "").toLowerCase().includes(term)
+					(u?.username || "").toLowerCase().includes(term),
 				)
 			: users.slice();
 
@@ -293,7 +293,7 @@ function AdminDashboard() {
 	// Merge equipment stats into checks rows by userId
 	const mergedRows = useMemo(() => {
 		const byId = new Map(
-			(checksStats.rows || []).map((r) => [r.userId, { ...r }])
+			(checksStats.rows || []).map((r) => [r.userId, { ...r }]),
 		);
 		for (const er of equipStats.rows || []) {
 			const base = byId.get(er.userId) || {
@@ -302,14 +302,12 @@ function AdminDashboard() {
 			};
 			byId.set(er.userId, {
 				...base,
-				currEquipPercent: er.currEquipPercent || 0,
-				currEquipDen: er.currEquipDen || 0,
-				prevEquipPercent: er.prevEquipPercent || 0,
-				prevEquipDen: er.prevEquipDen || 0,
+				currEquipMissed: er.currEquipMissed ?? 0,
+				prevEquipMissed: er.prevEquipMissed ?? 0,
 			});
 		}
 		return Array.from(byId.values()).sort((a, b) =>
-			(a.username || "").localeCompare(b.username || "")
+			(a.username || "").localeCompare(b.username || ""),
 		);
 	}, [checksStats.rows, equipStats.rows]);
 
@@ -348,12 +346,7 @@ function AdminDashboard() {
 		return <p>Loading admin data…</p>;
 	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
 
-	const StatCell = ({ pct, den }) => (
-		<td>
-			{pct}% out of {den} day{den === 1 ? "" : "s"}
-		</td>
-	);
-
+	const StatCell = ({ count }) => <td>{count} checks that needed love</td>;
 	const copy = async () => {
 		if (!joinCode) return;
 		try {
@@ -416,7 +409,7 @@ function AdminDashboard() {
 						type="button"
 						onClick={() =>
 							setUsersSortDir((d) =>
-								d === "asc" ? "desc" : "asc"
+								d === "asc" ? "desc" : "asc",
 							)
 						}
 						title="Toggle username sort"
@@ -524,43 +517,43 @@ function AdminDashboard() {
 												onClick={() => {
 													if (
 														window.confirm(
-															`Delete user "${u.username}" and their data? This cannot be undone.`
+															`Delete user "${u.username}" and their data? This cannot be undone.`,
 														)
 													) {
 														setDeletingId(u._id);
 														axios
 															.delete(
 																`https://mern-deploy-docker.onrender.com/api/users/${u._id}`,
-																tokenHeader()
+																tokenHeader(),
 															)
 															.then(() => {
 																setUsers(
 																	(prev) =>
 																		prev.filter(
 																			(
-																				x
+																				x,
 																			) =>
 																				x._id !==
-																				u._id
-																		)
+																				u._id,
+																		),
 																);
 																setMonths(
 																	(prev) =>
 																		prev.filter(
 																			(
-																				m
+																				m,
 																			) =>
 																				m
 																					.userId
 																					?._id !==
-																				u._id
-																		)
+																				u._id,
+																		),
 																);
 															})
 															.finally(() =>
 																setDeletingId(
-																	null
-																)
+																	null,
+																),
 															);
 													}
 												}}
@@ -663,7 +656,7 @@ function AdminDashboard() {
 								value={selectedMonthIndex}
 								onChange={(e) =>
 									setSelectedMonthIndex(
-										Number(e.target.value)
+										Number(e.target.value),
 									)
 								}
 								style={{ padding: "6px 8px" }}
@@ -785,30 +778,12 @@ function AdminDashboard() {
 						mergedRows.map((r) => (
 							<tr key={r.userId}>
 								<td>{r.username}</td>
-								<StatCell
-									pct={r.currOnlinePercent ?? 0}
-									den={r.currOnlineDen ?? 0}
-								/>
-								<StatCell
-									pct={r.currInpersonPercent ?? 0}
-									den={r.currInpersonDen ?? 0}
-								/>
-								<StatCell
-									pct={r.prevOnlinePercent ?? 0}
-									den={r.prevOnlineDen ?? 0}
-								/>
-								<StatCell
-									pct={r.prevInpersonPercent ?? 0}
-									den={r.prevInpersonDen ?? 0}
-								/>
-								<StatCell
-									pct={r.currEquipPercent ?? 0}
-									den={r.currEquipDen ?? 0}
-								/>
-								<StatCell
-									pct={r.prevEquipPercent ?? 0}
-									den={r.prevEquipDen ?? 0}
-								/>
+								<StatCell count={r.currOnlineMissed ?? 0} />
+								<StatCell count={r.currInpersonMissed ?? 0} />
+								<StatCell count={r.prevOnlineMissed ?? 0} />
+								<StatCell count={r.prevInpersonMissed ?? 0} />
+								<StatCell count={r.currEquipMissed ?? 0} />
+								<StatCell count={r.prevEquipMissed ?? 0} />
 							</tr>
 						))
 					)}
