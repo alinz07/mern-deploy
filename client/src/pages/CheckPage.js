@@ -49,8 +49,6 @@ export default function CheckPage() {
 	const { dayId } = useParams();
 	const [searchParams] = useSearchParams();
 	const monthId = searchParams.get("monthId");
-	// If an admin is acting for a student, this will be present.
-	// For regular users on their own page, it's usually null.
 	const userIdFromQuery = searchParams.get("userId");
 	const navigate = useNavigate();
 
@@ -68,7 +66,7 @@ export default function CheckPage() {
 	const [commentSaving, setCommentSaving] = useState({});
 
 	// Equipment
-	const [equipAllowed, setEquipAllowed] = useState(true); // we only hide on hard 403
+	const [equipAllowed, setEquipAllowed] = useState(true);
 	const [echeck, setEcheck] = useState(null);
 	const [equipSaving, setEquipSaving] = useState({});
 	const [equipMsg, setEquipMsg] = useState("");
@@ -81,6 +79,10 @@ export default function CheckPage() {
 
 	// lock ui for transcriptions
 	const [uiLocked, setUiLocked] = useState(false);
+
+	// day-level lock
+	const [dayLocked, setDayLocked] = useState(false);
+	const [lockSaving, setLockSaving] = useState(false);
 
 	// logged-in viewer determines dashboard link text
 	const [viewer, setViewer] = useState(null);
@@ -113,7 +115,7 @@ export default function CheckPage() {
 		};
 	}, []);
 
-	// 1) Ensure a Check exists for this day (and user when admin passes userId)
+	// 1) Ensure a Check exists for this day
 	useEffect(() => {
 		const run = async () => {
 			setLoading(true);
@@ -141,7 +143,7 @@ export default function CheckPage() {
 		run();
 	}, [dayId, userIdFromQuery]);
 
-	// 2) Load all per-field comments; auto-open if a field already has text
+	// 2) Load all per-field comments
 	useEffect(() => {
 		const load = async () => {
 			if (!check?._id) return;
@@ -172,15 +174,6 @@ export default function CheckPage() {
 		load();
 	}, [check?._id]);
 
-	/**
-	 * 3) Load the EquipmentCheck row.
-	 *
-	 * IMPORTANT: resolve the user id we send to the API:
-	 *   - If an admin is acting for a student → use userIdFromQuery
-	 *   - Otherwise (regular users) → use the owner of the Day/Check (check.user)
-	 *
-	 * This ensures the backend sees the current user's own id, avoiding 403.
-	 */
 	const resolvedUserId = userIdFromQuery || check?.user || null;
 	const isAdmin = viewer?.role === "admin";
 	const dashboardLabel =
@@ -190,9 +183,11 @@ export default function CheckPage() {
 				? "Admin Dashboard"
 				: "User Dashboard";
 
+	const dayLockedForViewer = dayLocked && !isAdmin;
+
+	// 3) Load equipment row
 	useEffect(() => {
 		const loadEquip = async () => {
-			// need month, day, and a resolved user id
 			if (!monthId || !dayId || !resolvedUserId) return;
 			try {
 				const r = await axios.get(
@@ -212,12 +207,10 @@ export default function CheckPage() {
 			} catch (e) {
 				const code = e?.response?.status;
 				if (code === 404) {
-					// not created yet — show the Enable button for everyone
 					setEcheck(null);
 					setEquipAllowed(true);
 					setEquipMsg("");
 				} else if (code === 403) {
-					// tenant/role guard — hide only if truly forbidden
 					setEquipAllowed(false);
 				} else {
 					setEquipAllowed(true);
@@ -228,7 +221,7 @@ export default function CheckPage() {
 		loadEquip();
 	}, [monthId, dayId, resolvedUserId]);
 
-	// 4) When present, load per-field equipment comments
+	// 4) Load equipment comments
 	useEffect(() => {
 		const load = async () => {
 			if (!echeck?._id) return;
@@ -259,6 +252,7 @@ export default function CheckPage() {
 		load();
 	}, [echeck?._id]);
 
+	// 5) Day lock + transcription lock
 	useEffect(() => {
 		let cancelled = false;
 
@@ -270,6 +264,12 @@ export default function CheckPage() {
 
 				const st = res.data?.transcription?.status;
 				const locked = st === "queued" || st === "processing";
+				const wholeDayLocked =
+					res.data?.editingLock?.dayLocked === true;
+
+				if (!cancelled) {
+					setDayLocked(wholeDayLocked);
+				}
 
 				if (!cancelled && locked) {
 					sessionStorage.setItem(
@@ -279,7 +279,6 @@ export default function CheckPage() {
 					navigate(`/months/${monthId}`);
 				}
 			} catch (e) {
-				// if this fails, don't block; just log
 				console.error("[CheckPage] day lock check failed", e);
 			}
 		};
@@ -293,7 +292,8 @@ export default function CheckPage() {
 	// --------- Daily check handlers ----------
 	const toggleField = useCallback(
 		async (field) => {
-			if (!check || saving[field] || bulkSaving) return;
+			if (!check || saving[field] || bulkSaving || dayLockedForViewer)
+				return;
 			setSaving((s) => ({ ...s, [field]: true }));
 			const prev = check[field];
 			setCheck((c) => ({ ...c, [field]: !prev }));
@@ -316,12 +316,12 @@ export default function CheckPage() {
 				setSaving((s) => ({ ...s, [field]: false }));
 			}
 		},
-		[check, saving, bulkSaving],
+		[check, saving, bulkSaving, dayLockedForViewer],
 	);
 
 	const setAll = useCallback(
 		async (value) => {
-			if (!check || bulkSaving) return;
+			if (!check || bulkSaving || dayLockedForViewer) return;
 			setBulkSaving(true);
 			setMsg("");
 			const payload = fieldKeys.reduce((acc, k) => {
@@ -348,12 +348,37 @@ export default function CheckPage() {
 				setBulkSaving(false);
 			}
 		},
-		[check, fieldKeys, bulkSaving],
+		[check, fieldKeys, bulkSaving, dayLockedForViewer],
 	);
+
+	const toggleDayLock = async (nextLocked) => {
+		if (!isAdmin || lockSaving) return;
+
+		setLockSaving(true);
+		try {
+			const res = await axios.patch(
+				`${API}/api/days/${dayId}/day-lock`,
+				{ dayLocked: nextLocked },
+				tokenHeader(),
+			);
+
+			setDayLocked(res.data?.editingLock?.dayLocked === true);
+			setMsg("");
+		} catch (err) {
+			const m =
+				err?.response?.data?.msg ||
+				err?.response?.data?.error ||
+				"Failed to update day lock";
+			setMsg(m);
+		} finally {
+			setLockSaving(false);
+		}
+	};
 
 	// --------- Comment handlers ----------
 	const saveComment = async (field) => {
-		if (!check?._id || !commentText[field]?.trim()) return;
+		if (!check?._id || !commentText[field]?.trim() || dayLockedForViewer)
+			return;
 		setCommentSaving((s) => ({ ...s, [field]: true }));
 		try {
 			const res = await axios.put(
@@ -375,7 +400,7 @@ export default function CheckPage() {
 	};
 
 	const deleteComment = async (field) => {
-		if (!check?._id) return;
+		if (!check?._id || dayLockedForViewer) return;
 		setCommentSaving((s) => ({ ...s, [field]: true }));
 		try {
 			await axios.delete(`${API}/api/comments/by-check/${check._id}`, {
@@ -398,8 +423,8 @@ export default function CheckPage() {
 	};
 
 	// --------- Equipment handlers ----------
-	// Everyone can press Enable; we always send the resolved owner id.
 	const enableEquipmentCheck = async () => {
+		if (dayLockedForViewer) return;
 		try {
 			const res = await axios.post(
 				`${API}/api/equipment-checks`,
@@ -430,7 +455,7 @@ export default function CheckPage() {
 	};
 
 	const toggleEquip = async (field) => {
-		if (!echeck?._id || equipSaving[field]) return;
+		if (!echeck?._id || equipSaving[field] || dayLockedForViewer) return;
 		setEquipSaving((s) => ({ ...s, [field]: true }));
 		const prev = !!echeck[field];
 		setEcheck((c) => ({ ...c, [field]: !prev }));
@@ -451,7 +476,8 @@ export default function CheckPage() {
 	};
 
 	const saveEquipComment = async (field) => {
-		if (!echeck?._id || !eCmtText[field]?.trim()) return;
+		if (!echeck?._id || !eCmtText[field]?.trim() || dayLockedForViewer)
+			return;
 		setECmtSaving((s) => ({ ...s, [field]: true }));
 		try {
 			const res = await axios.put(
@@ -469,7 +495,7 @@ export default function CheckPage() {
 	};
 
 	const deleteEquipComment = async (field) => {
-		if (!echeck?._id) return;
+		if (!echeck?._id || dayLockedForViewer) return;
 		setECmtSaving((s) => ({ ...s, [field]: true }));
 		try {
 			await axios.delete(
@@ -538,7 +564,6 @@ export default function CheckPage() {
 					gap: 24,
 				}}
 			>
-				{/* LEFT: Daily Check */}
 				<div style={{ maxWidth: 760 }}>
 					<div
 						style={{
@@ -573,19 +598,46 @@ export default function CheckPage() {
 						<p style={{ color: "crimson", marginTop: 8 }}>{msg}</p>
 					)}
 
-					<div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+					{dayLockedForViewer && (
+						<p style={{ color: "#555", marginTop: 8 }}>
+							This day is currently locked by your teacher. You
+							cannot edit checks, comments, equipment, or
+							recordings.
+						</p>
+					)}
+
+					<div
+						style={{
+							display: "flex",
+							gap: 8,
+							marginTop: 8,
+							flexWrap: "wrap",
+						}}
+					>
 						<button
 							onClick={() => setAll(true)}
-							disabled={bulkSaving}
+							disabled={bulkSaving || dayLockedForViewer}
 						>
 							Mark all
 						</button>
 						<button
 							onClick={() => setAll(false)}
-							disabled={bulkSaving}
+							disabled={bulkSaving || dayLockedForViewer}
 						>
 							Clear all
 						</button>
+
+						{isAdmin && (
+							<button
+								type="button"
+								onClick={() => toggleDayLock(!dayLocked)}
+								disabled={lockSaving}
+							>
+								{dayLocked
+									? "Unlock day for non-admin users"
+									: "Lock day for non-admin users"}
+							</button>
+						)}
 					</div>
 
 					<table className="table">
@@ -633,7 +685,9 @@ export default function CheckPage() {
 													toggleField(field)
 												}
 												disabled={
-													saving[field] || bulkSaving
+													saving[field] ||
+													bulkSaving ||
+													dayLockedForViewer
 												}
 												aria-label={`Toggle ${label}`}
 											/>
@@ -696,6 +750,9 @@ export default function CheckPage() {
 																}),
 															)
 														}
+														disabled={
+															dayLockedForViewer
+														}
 													/>
 													<div
 														style={{
@@ -712,7 +769,8 @@ export default function CheckPage() {
 															disabled={
 																commentSaving[
 																	field
-																]
+																] ||
+																dayLockedForViewer
 															}
 															type="button"
 														>
@@ -728,7 +786,8 @@ export default function CheckPage() {
 																disabled={
 																	commentSaving[
 																		field
-																	]
+																	] ||
+																	dayLockedForViewer
 																}
 																type="button"
 															>
@@ -746,7 +805,6 @@ export default function CheckPage() {
 					</table>
 				</div>
 
-				{/* CENTER: Recordings */}
 				<div
 					style={{
 						maxWidth: 520,
@@ -767,11 +825,12 @@ export default function CheckPage() {
 							userId={resolvedUserId}
 							monthId={monthId}
 							onTranscribingChange={setUiLocked}
+							dayLockedForViewer={dayLockedForViewer}
+							isAdmin={isAdmin}
 						/>
 					)}
 				</div>
 
-				{/* RIGHT: Equipment Check */}
 				{equipAllowed && (
 					<aside
 						style={{
@@ -787,6 +846,7 @@ export default function CheckPage() {
 							<button
 								type="button"
 								onClick={enableEquipmentCheck}
+								disabled={dayLockedForViewer}
 							>
 								Enable equipment check
 							</button>
@@ -829,7 +889,8 @@ export default function CheckPage() {
 															disabled={
 																equipSaving[
 																	field
-																]
+																] ||
+																dayLockedForViewer
 															}
 															aria-label={`Toggle ${label}`}
 														/>
@@ -907,6 +968,9 @@ export default function CheckPage() {
 																			}),
 																		)
 																	}
+																	disabled={
+																		dayLockedForViewer
+																	}
 																/>
 																<div
 																	style={{
@@ -924,7 +988,8 @@ export default function CheckPage() {
 																		disabled={
 																			eCmtSaving[
 																				field
-																			]
+																			] ||
+																			dayLockedForViewer
 																		}
 																		type="button"
 																	>
@@ -942,7 +1007,8 @@ export default function CheckPage() {
 																			disabled={
 																				eCmtSaving[
 																					field
-																				]
+																				] ||
+																				dayLockedForViewer
 																			}
 																			type="button"
 																		>

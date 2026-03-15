@@ -14,7 +14,6 @@ const DaySchema = new mongoose.Schema(
 			ref: "User",
 			required: true,
 		},
-
 		environment: {
 			type: String,
 			enum: ["online", "inperson"],
@@ -33,8 +32,17 @@ const DaySchema = new mongoose.Schema(
 			finishedAt: { type: Date },
 			error: { type: String },
 		},
+		editingLock: {
+			dayLocked: { type: Boolean, default: false },
+			lockedBy: {
+				type: mongoose.Schema.Types.ObjectId,
+				ref: "User",
+				default: null,
+			},
+			lockedAt: { type: Date, default: null },
+		},
 	},
-	{ timestamps: true }
+	{ timestamps: true },
 );
 
 // One Day per (month,user,dayNumber)

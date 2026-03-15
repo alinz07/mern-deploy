@@ -89,7 +89,7 @@ async function addOrUpdateDayAndCheck({
 		const check = await Check.findOneAndUpdate(
 			{ day: day._id, user: ownerUserId },
 			{ $setOnInsert: { day: day._id, user: ownerUserId } },
-			{ new: true, upsert: true }
+			{ new: true, upsert: true },
 		);
 		return { day, check, action: treatExistingAs }; // "exists" for today, "updated" for add
 	}
@@ -104,7 +104,7 @@ async function addOrUpdateDayAndCheck({
 	const check = await Check.findOneAndUpdate(
 		{ day: day._id, user: ownerUserId },
 		{ $setOnInsert: { day: day._id, user: ownerUserId } },
-		{ new: true, upsert: true }
+		{ new: true, upsert: true },
 	);
 	return { day, check, action: "created" };
 }
@@ -212,6 +212,48 @@ router.get("/:dayId", auth, async (req, res) => {
 		return res.json(day);
 	} catch (e) {
 		console.error("GET /api/days/:dayId error", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
+
+// PATCH /api/days/:dayId/sound-lock  (admin only)
+router.patch("/:dayId/day-lock", auth, async (req, res) => {
+	try {
+		const { dayId } = req.params;
+		const { dayLocked } = req.body || {};
+
+		if (!mongoose.isValidObjectId(dayId)) {
+			return res.status(400).json({ msg: "Invalid dayId" });
+		}
+		if (typeof dayLocked !== "boolean") {
+			return res.status(400).json({ msg: "dayLocked must be boolean" });
+		}
+		if (req.user.role !== "admin") {
+			return res.status(403).json({ msg: "Admins only" });
+		}
+
+		const day = await Day.findById(dayId);
+		if (!day) return res.status(404).json({ msg: "Day not found" });
+
+		const month = await Month.findById(day.month).lean();
+		if (!month) return res.status(404).json({ msg: "Month not found" });
+
+		if (String(month.adminUser) !== String(req.user.adminUser)) {
+			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
+		}
+
+		day.editingLock = day.editingLock || {};
+		day.editingLock.dayLocked = dayLocked;
+		day.editingLock.lockedBy = dayLocked ? req.user.id : null;
+		day.editingLock.lockedAt = dayLocked ? new Date() : null;
+		await day.save();
+
+		return res.json({
+			dayId: day._id,
+			editingLock: day.editingLock,
+		});
+	} catch (e) {
+		console.error("PATCH /api/days/:dayId/sound-lock error", e);
 		return res.status(500).json({ msg: "Server error" });
 	}
 });

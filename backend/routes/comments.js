@@ -130,9 +130,9 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 		const tenantMatch = haveTenant
 			? {
 					"month.adminUser": new mongoose.Types.ObjectId(
-						req.user.adminUser
+						req.user.adminUser,
 					),
-			  }
+				}
 			: null;
 
 		const monthFilter = {
@@ -146,7 +146,7 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 									{ dayNumber: { $lte: daysElapsed } },
 								],
 							},
-					  ]
+						]
 					: []),
 			],
 		};
@@ -185,7 +185,7 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 											$eq: [
 												"$user",
 												new mongoose.Types.ObjectId(
-													userId
+													userId,
 												),
 											],
 										},
@@ -280,7 +280,11 @@ router.put("/by-check/:checkId", auth, async (req, res) => {
 			return res.status(ctx.error.status).json({ msg: ctx.error.msg });
 		if (!canAccess({ reqUser: req.user, ...ctx }))
 			return res.status(403).json({ msg: "Forbidden" });
-
+		if (ctx.day?.editingLock?.dayLocked && req.user.role !== "admin") {
+			return res
+				.status(403)
+				.json({ msg: "This day is locked by the teacher." });
+		}
 		const { check, day, month } = ctx;
 		const doc = await Comment.findOneAndUpdate(
 			{ check: check._id, field },
@@ -294,7 +298,7 @@ router.put("/by-check/:checkId", auth, async (req, res) => {
 					commentText: String(commentText),
 				},
 			},
-			{ new: true, upsert: true }
+			{ new: true, upsert: true },
 		);
 		return res.json(doc);
 	} catch (e) {
@@ -327,7 +331,11 @@ router.delete("/by-check/:checkId", auth, async (req, res) => {
 			return res.status(ctx.error.status).json({ msg: ctx.error.msg });
 		if (!canAccess({ reqUser: req.user, ...ctx }))
 			return res.status(403).json({ msg: "Forbidden" });
-
+		if (ctx.day?.editingLock?.dayLocked && req.user.role !== "admin") {
+			return res
+				.status(403)
+				.json({ msg: "This day is locked by the teacher." });
+		}
 		const out = await Comment.deleteOne({ check: checkId, field });
 		return res.json({ deleted: out.deletedCount > 0 });
 	} catch {

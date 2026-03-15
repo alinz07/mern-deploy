@@ -45,13 +45,19 @@ router.post("/", auth, async (req, res) => {
 		)
 			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
 
+		if (d?.editingLock?.dayLocked && req.user.role !== "admin") {
+			return res
+				.status(403)
+				.json({ msg: "This day is locked by the teacher." });
+		}
+
 		const doc = await EquipmentCheck.findOneAndUpdate(
 			{ user, month, day },
 			{
 				$setOnInsert: { user, month, day },
 				$set: { left, right, both, fmMic },
 			},
-			{ new: true, upsert: true }
+			{ new: true, upsert: true },
 		);
 		res.json(doc);
 	} catch (e) {
@@ -164,7 +170,7 @@ router.get("/by-user/:userId", auth, async (req, res) => {
 		if (!mongoose.isValidObjectId(userId))
 			return res.status(400).json({ msg: "Invalid id" });
 		res.json(
-			await EquipmentCheck.find({ user: userId }).sort({ createdAt: -1 })
+			await EquipmentCheck.find({ user: userId }).sort({ createdAt: -1 }),
 		);
 	} catch (e) {
 		res.status(500).json({ msg: "Server error" });

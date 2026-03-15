@@ -72,7 +72,7 @@ router.post("/", auth, async (req, res) => {
 			const guard = await assertSameTenantByDayAndUser(
 				dayId,
 				targetUserId,
-				req.user.adminUser
+				req.user.adminUser,
 			);
 			if (!guard.ok)
 				return res.status(guard.status).json({ msg: guard.msg });
@@ -82,7 +82,7 @@ router.post("/", auth, async (req, res) => {
 		const check = await Check.findOneAndUpdate(
 			{ day: dayId, user: ownerUserId },
 			{ $setOnInsert: { day: dayId, user: ownerUserId } },
-			{ new: true, upsert: true }
+			{ new: true, upsert: true },
 		);
 		res.json(check);
 	} catch (err) {
@@ -117,7 +117,7 @@ router.get("/", auth, async (req, res) => {
 			const guard = await assertSameTenantByDayAndUser(
 				dayId,
 				targetUserId,
-				req.user.adminUser
+				req.user.adminUser,
 			);
 			if (!guard.ok)
 				return res.status(guard.status).json({ msg: guard.msg });
@@ -153,7 +153,17 @@ router.patch("/:id", auth, async (req, res) => {
 		if (String(doc.user) !== req.user.id && req.user.role !== "admin") {
 			return res.status(403).json({ msg: "Forbidden" });
 		}
+		const dayDoc = await Day.findById(doc.day).select("editingLock").lean();
+		if (!dayDoc) {
+			return res.status(404).json({ msg: "Day not found" });
+		}
 
+		const dayLocked = !!dayDoc.editingLock?.dayLocked;
+		if (dayLocked && req.user.role !== "admin") {
+			return res.status(403).json({
+				msg: "This day is locked by the teacher.",
+			});
+		}
 		[
 			"checkone",
 			"checktwo",

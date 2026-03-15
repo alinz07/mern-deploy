@@ -99,28 +99,23 @@ function RecordingCard({
 	onChanged,
 	localKey,
 	onSavedLocal,
+	dayLockedForViewer = false,
 }) {
 	const [doc, setDoc] = useState(initialDoc);
 	const [msg, setMsg] = useState("");
 	const [removed, setRemoved] = useState(false);
 
-	// Which Daily Check this recording is for
 	const [field, setField] = useState(initialDoc?.field || DEFAULT_FIELD);
 
-	// Saved-audio playback URL (from server)
 	const [audioUrl, setAudioUrl] = useState(null);
-
-	// Local preview URL (unsaved)
 	const [audioLocalUrl, setAudioLocalUrl] = useState(null);
 
 	const audio = useSideRecorder();
 
-	// Keep dropdown in sync with server data
 	useEffect(() => {
 		if (doc?.field) setField(doc.field);
 	}, [doc?.field]);
 
-	// Fetch saved audio (GridFS) when doc.audioFileId changes
 	useEffect(() => {
 		if (removed) return;
 
@@ -136,7 +131,7 @@ function RecordingCard({
 					{
 						...tokenHeader(),
 						responseType: "blob",
-					}
+					},
 				);
 				const url = URL.createObjectURL(res.data);
 				revoke.push(url);
@@ -145,7 +140,7 @@ function RecordingCard({
 				console.warn(
 					"[RecordingCard] Failed to fetch audio",
 					fileId,
-					e?.response?.status
+					e?.response?.status,
 				);
 				setAudioUrl(null);
 			}
@@ -158,7 +153,6 @@ function RecordingCard({
 		};
 	}, [doc?.audioFileId, removed]);
 
-	// When audio.blob changes, create/revoke a local object URL
 	useEffect(() => {
 		if (!audio.blob) {
 			if (audioLocalUrl) URL.revokeObjectURL(audioLocalUrl);
@@ -173,11 +167,15 @@ function RecordingCard({
 
 	const hasId = !!doc?._id;
 
-	// EARLY ESCAPE: once removed, never render again
 	if (removed) return null;
 
 	const saveUpload = async () => {
 		try {
+			if (dayLockedForViewer) {
+				setMsg("This day is locked by the teacher.");
+				return;
+			}
+
 			if (!audio.blob) {
 				setMsg("Please record audio first.");
 				return;
@@ -209,9 +207,6 @@ function RecordingCard({
 			setMsg(hasId ? "Replaced audio." : "Upload saved.");
 			audio.clear();
 
-			// Notify parent:
-			// - CREATE: pass the saved doc up so parent can insert it immediately
-			// - REPLACE/DELETE: keep existing behavior
 			if (!hasId) onChanged?.(data);
 			else onChanged?.();
 
@@ -225,7 +220,11 @@ function RecordingCard({
 	};
 
 	const deleteRecording = async () => {
-		// Unsaved card: just remove it from the parent's local list
+		if (dayLockedForViewer) {
+			setMsg("This day is locked by the teacher.");
+			return;
+		}
+
 		if (!doc?._id) {
 			audio.clear();
 			setRemoved(true);
@@ -234,13 +233,11 @@ function RecordingCard({
 		}
 
 		const ok = window.confirm(
-			"Delete this recording (audio + transcript)?"
+			"Delete this recording (audio + transcript)?",
 		);
 		if (!ok) return;
 
 		const id = String(doc._id);
-
-		// Optimistically hide this card immediately
 		setRemoved(true);
 
 		try {
@@ -249,8 +246,6 @@ function RecordingCard({
 		} catch (e) {
 			console.error("[RecordingCard] delete error", e);
 			setMsg(e?.response?.data?.msg || "Delete failed");
-			// If you want the card to reappear on failure:
-			// setRemoved(false);
 		}
 	};
 
@@ -292,6 +287,7 @@ function RecordingCard({
 						value={field}
 						onChange={(e) => setField(e.target.value)}
 						style={{ padding: 2 }}
+						disabled={dayLockedForViewer}
 					>
 						{FIELD_OPTIONS.map(([value, label]) => (
 							<option key={value} value={value}>
@@ -319,19 +315,31 @@ function RecordingCard({
 					}}
 				>
 					{audio.status !== "recording" ? (
-						<button onClick={audio.start}>{recordLabel}</button>
+						<button
+							onClick={audio.start}
+							disabled={dayLockedForViewer}
+						>
+							{recordLabel}
+						</button>
 					) : (
-						<button onClick={audio.stop}>{recordLabel}</button>
+						<button
+							onClick={audio.stop}
+							disabled={dayLockedForViewer}
+						>
+							{recordLabel}
+						</button>
 					)}
 
-					<button onClick={audio.clear} disabled={!audio.blob}>
+					<button
+						onClick={audio.clear}
+						disabled={!audio.blob || dayLockedForViewer}
+					>
 						Clear
 					</button>
 
 					<span>Duration: {formatMs(durationMs)}</span>
 				</div>
 
-				{/* Playback: prefer local unsaved recording, else saved file */}
 				{audioLocalUrl ? (
 					<audio
 						controls
@@ -358,7 +366,7 @@ function RecordingCard({
 			<div style={{ display: "flex", gap: 8, marginTop: 10 }}>
 				<button
 					onClick={saveUpload}
-					disabled={!audio.blob}
+					disabled={!audio.blob || dayLockedForViewer}
 					title={
 						hasIdNow
 							? "Replace audio on this record"
@@ -371,6 +379,7 @@ function RecordingCard({
 				<button
 					onClick={deleteRecording}
 					style={{ marginLeft: "auto" }}
+					disabled={dayLockedForViewer}
 				>
 					{hasIdNow ? "Delete Recording" : "Discard"}
 				</button>
@@ -381,12 +390,14 @@ function RecordingCard({
 	);
 }
 
-// -------- PAGE SHELL (list, add, refresh) --------
+// -------- PAGE SHELL --------
 function RecordingPage({
 	dayId: dayIdProp,
 	userId: userIdProp,
 	monthId: monthIdProp,
 	onTranscribingChange,
+	dayLockedForViewer = false,
+	isAdmin = false,
 }) {
 	const [params] = useSearchParams();
 	const navigate = useNavigate();
@@ -395,14 +406,13 @@ function RecordingPage({
 	const userIdFromQuery = params.get("user");
 	const monthIdFromQuery = params.get("month");
 
-	// Prefer explicit props (used on CheckPage), fall back to query params
 	const dayId = dayIdProp || dayIdFromQuery;
 	const userId = userIdProp || userIdFromQuery;
 	const monthId = monthIdProp || monthIdFromQuery;
 
 	const [items, setItems] = useState([]);
 	const [loading, setLoading] = useState(true);
-	const [locals, setLocals] = useState([]); // unsaved placeholders
+	const [locals, setLocals] = useState([]);
 	const [msg, setMsg] = useState("");
 
 	const [transcribing, setTranscribing] = useState(false);
@@ -428,7 +438,7 @@ function RecordingPage({
 			setLoading(true);
 			const { data } = await axios.get(
 				`${API}/api/recordings/by-day?day=${dayId}&user=${userId}`,
-				tokenHeader()
+				tokenHeader(),
 			);
 			setItems(data || []);
 		} catch (e) {
@@ -444,6 +454,10 @@ function RecordingPage({
 	}, [dayId, userId]);
 
 	const addNewCard = () => {
+		if (dayLockedForViewer) {
+			setMsg("This day is locked by the teacher.");
+			return;
+		}
 		const key = `local-${Date.now()}`;
 		setLocals((xs) => [...xs, key]);
 	};
@@ -457,6 +471,11 @@ function RecordingPage({
 	};
 
 	const transcribeAll = async () => {
+		if (dayLockedForViewer) {
+			setMsg("This day is locked by the teacher.");
+			return;
+		}
+
 		if (hasUnsaved) {
 			setMsg(UNSAVED_WARNING);
 			return;
@@ -466,7 +485,6 @@ function RecordingPage({
 			return;
 		}
 
-		// Only transcribe saved recordings that actually have audio
 		const idsWithAudio = items
 			.filter((rec) => rec.audioFileId)
 			.map((rec) => rec._id);
@@ -485,7 +503,7 @@ function RecordingPage({
 				"",
 				"Only do this if you are finished editing checks, comments, equipment,",
 				"and recordings for this day.",
-			].join("\n")
+			].join("\n"),
 		);
 
 		if (!ok) return;
@@ -493,19 +511,19 @@ function RecordingPage({
 		setTranscribing(true);
 		onTranscribingChange?.(true);
 		setMsg(
-			"✅ Transcription will run in the background. Redirecting to Day List now..."
+			"✅ Transcription will run in the background. Redirecting to Day List now...",
 		);
 
 		try {
 			await axios.post(
 				`${API}/api/recordings/transcribe-day`,
 				{ dayId, userId },
-				{ headers: { "x-auth-token": localStorage.getItem("token") } }
+				{ headers: { "x-auth-token": localStorage.getItem("token") } },
 			);
 
 			sessionStorage.setItem(
 				"transcribeNotice",
-				"✅ Transcription started in the background. This day will be locked until it finishes."
+				"✅ Transcription started in the background. This day will be locked until it finishes.",
 			);
 
 			navigate(`/months/${monthId}`);
@@ -515,7 +533,7 @@ function RecordingPage({
 			onTranscribingChange?.(false);
 			setMsg(
 				err?.response?.data?.msg ||
-					"Error starting background transcription. Please try again."
+					"Error starting background transcription. Please try again.",
 			);
 		}
 	};
@@ -542,7 +560,7 @@ function RecordingPage({
 							escapeCsv(_id || ""),
 							escapeCsv(audioText),
 							escapeCsv(audioIPA),
-						].join(",")
+						].join(","),
 					);
 				}
 			});
@@ -578,16 +596,25 @@ function RecordingPage({
 					display: "flex",
 					gap: 8,
 					alignItems: "center",
+					flexWrap: "wrap",
 				}}
 			>
-				<button onClick={addNewCard} disabled={transcribing}>
+				<button
+					onClick={addNewCard}
+					disabled={transcribing || dayLockedForViewer}
+				>
 					+ Add new recording
 				</button>
 
 				<button
 					type="button"
 					onClick={transcribeAll}
-					disabled={!hasAnyAudio || transcribing || hasUnsaved}
+					disabled={
+						!hasAnyAudio ||
+						transcribing ||
+						hasUnsaved ||
+						dayLockedForViewer
+					}
 				>
 					{transcribing ? "Transcribing..." : "Transcribe all"}
 				</button>
@@ -607,7 +634,13 @@ function RecordingPage({
 
 			{msg && <div style={{ marginTop: 8, opacity: 0.8 }}>{msg}</div>}
 
-			{/* Unsaved placeholders (locals) */}
+			{dayLockedForViewer && (
+				<div style={{ marginTop: 8, opacity: 0.8 }}>
+					This day is locked by the teacher. Recording changes are
+					disabled.
+				</div>
+			)}
+
 			{locals.map((k) => (
 				<RecordingCard
 					key={k}
@@ -616,6 +649,7 @@ function RecordingPage({
 					userId={userId}
 					monthId={monthId}
 					initialDoc={null}
+					dayLockedForViewer={dayLockedForViewer}
 					onChanged={(savedDoc) => {
 						if (savedDoc && savedDoc._id) {
 							setItems((xs) => [
@@ -630,7 +664,6 @@ function RecordingPage({
 				/>
 			))}
 
-			{/* Saved recordings */}
 			{items.map((doc) => (
 				<RecordingCard
 					key={doc._id}
@@ -638,6 +671,7 @@ function RecordingPage({
 					userId={userId}
 					monthId={monthId}
 					initialDoc={doc}
+					dayLockedForViewer={dayLockedForViewer}
 					onChanged={(maybeDeletedId) => {
 						if (maybeDeletedId) removeById(maybeDeletedId);
 						else load();

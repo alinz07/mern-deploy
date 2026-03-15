@@ -21,7 +21,7 @@ let transcribeWorkerRunning = false;
 async function enqueueDayTranscription({ dayId, userId, token }) {
 	transcribeQueue.push({ dayId, userId, token });
 	runTranscribeWorker().catch((e) =>
-		console.error("[transcribeWorker] fatal", e)
+		console.error("[transcribeWorker] fatal", e),
 	);
 }
 
@@ -49,7 +49,7 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 				"transcription.startedAt": new Date(),
 				"transcription.error": null,
 			},
-		}
+		},
 	);
 
 	try {
@@ -69,7 +69,7 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 						"transcription.status": "done",
 						"transcription.finishedAt": new Date(),
 					},
-				}
+				},
 			);
 			return;
 		}
@@ -86,13 +86,13 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify({}),
-				}
+				},
 			);
 
 			if (!resp.ok) {
 				const txt = await resp.text().catch(() => "");
 				throw new Error(
-					`Transcribe failed (${resp.status}): ${txt.slice(0, 300)}`
+					`Transcribe failed (${resp.status}): ${txt.slice(0, 300)}`,
 				);
 			}
 		}
@@ -104,7 +104,7 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 					"transcription.status": "done",
 					"transcription.finishedAt": new Date(),
 				},
-			}
+			},
 		);
 	} catch (err) {
 		console.error("[transcribeWorker] job error", err);
@@ -118,97 +118,10 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 						: String(err),
 					"transcription.finishedAt": new Date(),
 				},
-			}
+			},
 		);
 	}
 }
-
-// POST /api/recordings/transcribe-day  (queue transcription in background)
-router.post("/transcribe-day", auth, async (req, res) => {
-	try {
-		const { dayId, userId } = req.body;
-
-		if (
-			!mongoose.isValidObjectId(dayId) ||
-			!mongoose.isValidObjectId(userId)
-		) {
-			return res.status(400).json({ msg: "Invalid ids" });
-		}
-
-		// must be the student OR an admin
-		if (req.user.role !== "admin" && req.user.id !== userId) {
-			return res.status(403).json({ msg: "Forbidden" });
-		}
-
-		const day = await Day.findById(dayId).lean();
-		if (!day) return res.status(404).json({ msg: "Day not found" });
-
-		// day/user match
-		if (String(day.userId) !== String(userId)) {
-			return res.status(400).json({ msg: "Day/user mismatch" });
-		}
-
-		// tenant check via month
-		const month = await Month.findById(day.month).lean();
-		if (!month) return res.status(404).json({ msg: "Month not found" });
-		if (String(month.adminUser) !== String(req.user.adminUser)) {
-			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
-		}
-
-		// refuse if already locked (unless stale)
-		const now = Date.now();
-		const staleCutoff = new Date(now - TRANSCRIBE_STALE_MS);
-
-		const updated = await Day.findOneAndUpdate(
-			{
-				_id: dayId,
-				$or: [
-					{
-						"transcription.status": {
-							$nin: ["queued", "processing"],
-						},
-					},
-					{
-						"transcription.status": "queued",
-						"transcription.requestedAt": { $lt: staleCutoff },
-					},
-					{
-						"transcription.status": "processing",
-						"transcription.startedAt": { $lt: staleCutoff },
-					},
-					{ transcription: { $exists: false } },
-				],
-			},
-			{
-				$set: {
-					"transcription.status": "queued",
-					"transcription.requestedAt": new Date(),
-					"transcription.startedAt": null,
-					"transcription.finishedAt": null,
-					"transcription.error": null,
-				},
-			},
-			{ new: true }
-		).lean();
-
-		if (!updated) {
-			return res
-				.status(409)
-				.json({ msg: "This day is already transcribing." });
-		}
-
-		const token = req.header("x-auth-token");
-		await enqueueDayTranscription({ dayId, userId, token });
-
-		return res.status(202).json({
-			ok: true,
-			status: updated.transcription?.status || "queued",
-		});
-	} catch (e) {
-		console.error("POST /api/recordings/transcribe-day error", e);
-		return res.status(500).json({ msg: "Server error" });
-	}
-});
 
 // ---- storage helpers ----
 function getBucket() {
@@ -267,6 +180,112 @@ async function assertTenantAndPermForDay({ req, dayId, userId }) {
 	return { ok: true, day };
 }
 
+function assertDayEditAllowed({ req, day }) {
+	const dayLocked = !!day?.editingLock?.dayLocked;
+	if (dayLocked && req.user.role !== "admin") {
+		return {
+			ok: false,
+			status: 423,
+			msg: "This day is locked by the teacher.",
+		};
+	}
+	return { ok: true };
+}
+
+// POST /api/recordings/transcribe-day  (queue transcription in background)
+router.post("/transcribe-day", auth, async (req, res) => {
+	try {
+		const { dayId, userId } = req.body;
+
+		if (
+			!mongoose.isValidObjectId(dayId) ||
+			!mongoose.isValidObjectId(userId)
+		) {
+			return res.status(400).json({ msg: "Invalid ids" });
+		}
+
+		// must be the student OR an admin
+		if (req.user.role !== "admin" && req.user.id !== userId) {
+			return res.status(403).json({ msg: "Forbidden" });
+		}
+
+		const day = await Day.findById(dayId).lean();
+		if (!day) return res.status(404).json({ msg: "Day not found" });
+
+		// day/user match
+		if (String(day.userId) !== String(userId)) {
+			return res.status(400).json({ msg: "Day/user mismatch" });
+		}
+
+		// tenant check via month
+		const month = await Month.findById(day.month).lean();
+		if (!month) return res.status(404).json({ msg: "Month not found" });
+		if (String(month.adminUser) !== String(req.user.adminUser)) {
+			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
+		}
+
+		// NEW: block only non-admin users when the day is teacher-locked
+		if (day?.editingLock?.dayLocked && req.user.role !== "admin") {
+			return res.status(423).json({
+				msg: "This day is locked by the teacher.",
+			});
+		}
+
+		// refuse if already locked (unless stale)
+		const now = Date.now();
+		const staleCutoff = new Date(now - TRANSCRIBE_STALE_MS);
+
+		const updated = await Day.findOneAndUpdate(
+			{
+				_id: dayId,
+				$or: [
+					{
+						"transcription.status": {
+							$nin: ["queued", "processing"],
+						},
+					},
+					{
+						"transcription.status": "queued",
+						"transcription.requestedAt": { $lt: staleCutoff },
+					},
+					{
+						"transcription.status": "processing",
+						"transcription.startedAt": { $lt: staleCutoff },
+					},
+					{ transcription: { $exists: false } },
+				],
+			},
+			{
+				$set: {
+					"transcription.status": "queued",
+					"transcription.requestedAt": new Date(),
+					"transcription.startedAt": null,
+					"transcription.finishedAt": null,
+					"transcription.error": null,
+				},
+			},
+			{ new: true },
+		).lean();
+
+		if (!updated) {
+			return res
+				.status(409)
+				.json({ msg: "This day is already transcribing." });
+		}
+
+		const token = req.header("x-auth-token");
+		await enqueueDayTranscription({ dayId, userId, token });
+
+		return res.status(202).json({
+			ok: true,
+			status: updated.transcription?.status || "queued",
+		});
+	} catch (e) {
+		console.error("POST /api/recordings/transcribe-day error", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
+
 // POST /api/recordings  (create or replace audio for a day/field)
 // multipart/form-data:
 // - dayId, userId, field, durationAudioMs
@@ -287,6 +306,11 @@ router.post("/", auth, upload.single("audio"), async (req, res) => {
 
 		const perm = await assertTenantAndPermForDay({ req, dayId, userId });
 		if (!perm.ok) return res.status(perm.status).json({ msg: perm.msg });
+
+		const editPerm = assertDayEditAllowed({ req, day: perm.day });
+		if (!editPerm.ok) {
+			return res.status(editPerm.status).json({ msg: editPerm.msg });
+		}
 
 		const bucket = getBucket();
 
@@ -336,6 +360,8 @@ router.post("/", auth, upload.single("audio"), async (req, res) => {
 });
 
 // GET /api/recordings/by-day?day=...&user=...
+// NOTE: viewing is still allowed on locked days for the owner/admin.
+// This route intentionally does NOT apply assertDayEditAllowed.
 router.get("/by-day", auth, async (req, res) => {
 	try {
 		const { day, user } = req.query;
@@ -343,7 +369,6 @@ router.get("/by-day", auth, async (req, res) => {
 			return res.status(400).json({ msg: "Invalid query params" });
 		}
 
-		// Make sure requester is owner or same-tenant admin, and tenant matches month
 		const perm = await assertTenantAndPermForDay({
 			req,
 			dayId: day,
@@ -400,6 +425,13 @@ router.post("/:id/upload", auth, upload.single("audio"), async (req, res) => {
 			});
 		}
 
+		// NEW: block only non-admin users when day is locked
+		if (day?.editingLock?.dayLocked && req.user.role !== "admin") {
+			return res.status(423).json({
+				msg: "This day is locked by the teacher.",
+			});
+		}
+
 		// Tenant check via month
 		const month = await Month.findById(day.month).lean();
 		if (!month) return res.status(404).json({ msg: "Month not found" });
@@ -438,11 +470,11 @@ router.post("/:id/upload", auth, upload.single("audio"), async (req, res) => {
 				file.originalname || defaultName,
 				{
 					contentType: file.mimetype || "audio/webm",
-				}
+				},
 			);
 			await new Promise((resolve, reject) => {
 				stream.end(file.buffer, (err) =>
-					err ? reject(err) : resolve()
+					err ? reject(err) : resolve(),
 				);
 			});
 			const newId = stream.id;
@@ -482,7 +514,7 @@ router.post("/:id/upload", auth, upload.single("audio"), async (req, res) => {
 					console.error(
 						"[recordings/:id/upload] hard-delete old file error",
 						String(oldId),
-						err?.message || err
+						err?.message || err,
 					);
 				}
 			}
@@ -493,7 +525,7 @@ router.post("/:id/upload", auth, upload.single("audio"), async (req, res) => {
 		rec.audioFileId = await replaceOne(
 			rec.audioFileId,
 			audioFile,
-			"audio.webm"
+			"audio.webm",
 		);
 
 		if (req.body.durationAudioMs != null) {
@@ -542,7 +574,7 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 		const internalJob = req.get("x-transcribe-job") === "1";
 		if (!internalJob) {
 			const day = await Day.findById(rec.day)
-				.select("transcription.status")
+				.select("transcription.status editingLock")
 				.lean();
 			const st = day?.transcription?.status;
 			if (st === "queued" || st === "processing") {
@@ -550,10 +582,16 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 					msg: "This day is currently transcribing. Please wait until it finishes.",
 				});
 			}
+
+			// NEW: block only non-admin users when day is locked
+			if (day?.editingLock?.dayLocked && req.user.role !== "admin") {
+				return res.status(423).json({
+					msg: "This day is locked by the teacher.",
+				});
+			}
 		}
 
 		// ---- run Python worker (faster-whisper + phonemizer) via child_process ----
-		// Stream from GridFS -> temp .webm -> transcode to 16k mono .wav -> python
 		const fs = require("fs");
 		const os = require("os");
 		const { spawn } = require("child_process");
@@ -573,7 +611,7 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 				bucket
 					.openDownloadStream(fileId)
 					.on("error", (err) =>
-						reject(Object.assign(err, { stage: "dump" }))
+						reject(Object.assign(err, { stage: "dump" })),
 					)
 					.pipe(ws)
 					.on("finish", () => resolve(file));
@@ -624,7 +662,7 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 				const child = require("child_process").spawn(
 					"python3",
 					[path.join(__dirname, "../utils/transcribe.py"), inputPath],
-					{ stdio: ["ignore", "pipe", "pipe"] }
+					{ stdio: ["ignore", "pipe", "pipe"] },
 				);
 				let out = "";
 				let err = "";
@@ -684,7 +722,7 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 					stage: err.stage || "dump",
 					msg: "Failed to dump from GridFS",
 					error: String(err),
-				})
+				}),
 			);
 		}
 
@@ -700,7 +738,7 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 					code: err.code ?? null,
 					signal: err.signal ?? null,
 					stderrTail: err.stderr ? tail(err.stderr) : "",
-				})
+				}),
 			);
 		}
 
@@ -713,7 +751,7 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 					stage: "python",
 					msg: "Transcription failed",
 					audio: audioRes,
-				})
+				}),
 			);
 		}
 
@@ -750,14 +788,14 @@ router.get("/:id/csv", auth, async (req, res) => {
 		];
 		const csv = rows
 			.map((cols) =>
-				cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")
+				cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","),
 			)
 			.join("\n");
 
 		res.setHeader("Content-Type", "text/csv");
 		res.setHeader(
 			"Content-Disposition",
-			`attachment; filename=recording-${id}.csv`
+			`attachment; filename=recording-${id}.csv`,
 		);
 		res.send(csv);
 	} catch {
@@ -773,7 +811,7 @@ router.delete("/:id", auth, async (req, res) => {
 		"user.id=",
 		req.user && req.user.id,
 		"role=",
-		req.user && req.user.role
+		req.user && req.user.role,
 	);
 
 	try {
@@ -792,12 +830,19 @@ router.delete("/:id", auth, async (req, res) => {
 		}
 
 		const day = await Day.findById(rec.day)
-			.select("month transcription.status")
+			.select("month transcription.status editingLock")
 			.lean();
 		const st = day?.transcription?.status;
 		if (st === "queued" || st === "processing") {
 			return res.status(423).json({
 				msg: "This day is currently transcribing. Please wait until it finishes.",
+			});
+		}
+
+		// NEW: block only non-admin users when day is locked
+		if (day?.editingLock?.dayLocked && req.user.role !== "admin") {
+			return res.status(423).json({
+				msg: "This day is locked by the teacher.",
 			});
 		}
 
@@ -818,7 +863,7 @@ router.delete("/:id", auth, async (req, res) => {
 				"requester=",
 				req.user.id,
 				"owner=",
-				String(rec.user)
+				String(rec.user),
 			);
 			return res.status(403).json({ msg: "Forbidden" });
 		}
@@ -855,7 +900,7 @@ router.delete("/:id", auth, async (req, res) => {
 						"raw=",
 						raw,
 						"error=",
-						err.message || err
+						err.message || err,
 					);
 				}
 			}
@@ -863,12 +908,12 @@ router.delete("/:id", auth, async (req, res) => {
 			if (!oids.length) {
 				console.log(
 					"[recordings.js] no file ObjectIds to hard-delete for recording",
-					id
+					id,
 				);
 			} else {
 				console.log(
 					"[recordings.js] hard-delete starting for OIDs=",
-					oids.map((o) => String(o))
+					oids.map((o) => String(o)),
 				);
 
 				const preFiles = await filesColl
@@ -911,14 +956,14 @@ router.delete("/:id", auth, async (req, res) => {
 		} catch (err) {
 			console.error(
 				"[recordings.js] hard-delete fatal error",
-				err.message || err
+				err.message || err,
 			);
 		}
 
 		console.log("[recordings.js] DELETE success", id);
 		return res.json({ ok: true, id });
 	} catch (e) {
-		console.error("[recordings.js] DELETE fatal error", e);
+		console.error("[recordings.js] DELETE error", e);
 		return res.status(500).json({ msg: "Server error" });
 	}
 });
