@@ -422,110 +422,163 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			"checkten",
 		];
 
-		// Build per-field FALSE counters
-		const fieldMissedSums = CHECK_FIELDS.reduce((acc, f) => {
-			acc[`${f}Missed`] = {
-				$sum: { $cond: [{ $eq: [`$check.${f}`, false] }, 1, 0] },
-			};
-			return acc;
-		}, {});
+		const EQUIP_FIELDS = ["left", "right", "both", "fmMic"];
 
-		const results = await Day.aggregate([
-			{ $match: { userId: new mongoose.Types.ObjectId(userId) } },
-			{
-				$lookup: {
-					from: "months",
-					localField: "month",
-					foreignField: "_id",
-					as: "month",
-				},
-			},
-			{ $unwind: "$month" },
-			{
-				$match: {
-					$or: [
-						{ "month.name": previousName },
-						{
-							$and: [
-								{ "month.name": currentName },
-								{ dayNumber: { $lte: daysElapsed } },
-							],
-						},
-					],
-				},
-			},
-			{
-				$lookup: {
-					from: "checks",
-					let: { dayId: "$_id" },
-					pipeline: [
-						{
-							$match: {
-								$expr: {
-									$and: [
-										{ $eq: ["$day", "$$dayId"] },
-										{
-											$eq: [
-												"$user",
-												new mongoose.Types.ObjectId(
-													userId,
-												),
-											],
-										},
-									],
-								},
-							},
-						},
-						{
-							$project: {
-								checkone: 1,
-								checktwo: 1,
-								checkthree: 1,
-								checkfour: 1,
-								checkfive: 1,
-								checksix: 1,
-								checkseven: 1,
-								checkeight: 1,
-								checknine: 1,
-								checkten: 1,
-							},
-						},
-					],
-					as: "check",
-				},
-			},
-			{ $unwind: { path: "$check", preserveNullAndEmptyArrays: false } },
-			{
-				$group: {
-					_id: "$month.name",
-					total: { $sum: 1 },
-					...fieldMissedSums,
-				},
-			},
+		const monthDocs = await Month.find({
+			userId,
+			name: { $in: [currentName, previousName] },
+		})
+			.select({ _id: 1, name: 1 })
+			.lean();
+
+		const monthNameById = new Map(
+			monthDocs.map((m) => [String(m._id), m.name]),
+		);
+
+		const dayDocs = await Day.find({
+			userId: new mongoose.Types.ObjectId(userId),
+			month: { $in: monthDocs.map((m) => m._id) },
+		})
+			.select({ _id: 1, month: 1, dayNumber: 1 })
+			.lean();
+
+		const scopedDaysByMonth = {
+			[currentName]: [],
+			[previousName]: [],
+		};
+
+		for (const d of dayDocs) {
+			const monthName = monthNameById.get(String(d.month));
+			if (!monthName) continue;
+
+			if (monthName === currentName) {
+				if (
+					typeof d.dayNumber === "number" &&
+					d.dayNumber <= daysElapsed
+				) {
+					scopedDaysByMonth[currentName].push(d);
+				}
+			} else if (monthName === previousName) {
+				scopedDaysByMonth[previousName].push(d);
+			}
+		}
+
+		const scopedDayIds = [
+			...scopedDaysByMonth[currentName].map((d) => d._id),
+			...scopedDaysByMonth[previousName].map((d) => d._id),
+		];
+
+		const [checkDocs, equipDocs] = await Promise.all([
+			scopedDayIds.length
+				? Check.find({
+						user: userId,
+						day: { $in: scopedDayIds },
+					})
+						.select({
+							day: 1,
+							checkone: 1,
+							checktwo: 1,
+							checkthree: 1,
+							checkfour: 1,
+							checkfive: 1,
+							checksix: 1,
+							checkseven: 1,
+							checkeight: 1,
+							checknine: 1,
+							checkten: 1,
+						})
+						.lean()
+				: [],
+			scopedDayIds.length
+				? EquipmentCheck.find({
+						user: userId,
+						day: { $in: scopedDayIds },
+					})
+						.select({
+							day: 1,
+							left: 1,
+							right: 1,
+							both: 1,
+							fmMic: 1,
+						})
+						.lean()
+				: [],
 		]);
 
-		const byName = Object.fromEntries(results.map((r) => [r._id, r]));
+		const checkByDayId = new Map(checkDocs.map((c) => [String(c.day), c]));
+		const equipByDayId = new Map(equipDocs.map((e) => [String(e.day), e]));
 
-		function shape(name) {
-			const row = byName[name] || { total: 0 };
-			const total = row.total || 0;
+		function buildMonthShape(name) {
+			const days = scopedDaysByMonth[name] || [];
+			const totalDays = days.length;
+
+			let equipmentAllPresentDays = 0;
+
+			for (const d of days) {
+				const eq = equipByDayId.get(String(d._id));
+				if (
+					eq &&
+					eq.left === true &&
+					eq.right === true &&
+					eq.both === true &&
+					eq.fmMic === true
+				) {
+					equipmentAllPresentDays += 1;
+				}
+			}
+
+			const equipmentAllPresentPct = totalDays
+				? Math.round((equipmentAllPresentDays / totalDays) * 100)
+				: 0;
+
 			const fields = {};
 
-			for (const f of CHECK_FIELDS) {
-				const missed = row[`${f}Missed`] || 0;
-				fields[f] = {
+			for (const field of CHECK_FIELDS) {
+				let missed = 0;
+				const equipmentMissing = {
+					left: 0,
+					right: 0,
+					both: 0,
+					fmMic: 0,
+				};
+
+				for (const d of days) {
+					const check = checkByDayId.get(String(d._id));
+					if (!check) continue;
+
+					if (check[field] === false) {
+						missed += 1;
+
+						const eq = equipByDayId.get(String(d._id));
+						if (!eq) continue;
+
+						for (const ef of EQUIP_FIELDS) {
+							if (eq[ef] === false) {
+								equipmentMissing[ef] += 1;
+							}
+						}
+					}
+				}
+
+				fields[field] = {
 					missed,
-					total,
+					equipmentMissing,
 				};
 			}
 
-			return { name, fields, total };
+			return {
+				name,
+				totalDays,
+				equipmentAllPresentDays,
+				equipmentAllPresentPct,
+				fields,
+			};
 		}
 
 		return res.json({
 			userId,
-			currentMonth: shape(currentName),
-			previousMonth: shape(previousName),
+			currentMonth: buildMonthShape(currentName),
+			previousMonth: buildMonthShape(previousName),
 		});
 	} catch (err) {
 		console.error("[STATS][USER-FIELDS][ERROR]", err?.message, err?.stack);

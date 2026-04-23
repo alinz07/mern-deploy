@@ -14,6 +14,7 @@ import UserEquipmentPage from "./pages/UserEquipmentPage";
 import "./index.css";
 import UserDetails from "./pages/UserDetails";
 import RecordingPage from "./pages/RecordingPage";
+import "./utils/axiosConfig";
 
 const App = () => {
 	const [user, setUser] = useState(null);
@@ -34,7 +35,7 @@ const App = () => {
 			.catch((err) => {
 				console.error(
 					"Auth failed:",
-					err.response?.data || err.message
+					err.response?.data || err.message,
 				);
 				localStorage.removeItem("token");
 				setAuthToken(null);

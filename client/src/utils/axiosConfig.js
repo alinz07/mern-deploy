@@ -5,7 +5,7 @@ const normalizeBase = (s) => (s.endsWith("/") ? s.slice(0, -1) : s);
 
 // Default to your current Render backend if no env var is set
 const API_BASE = normalizeBase(
-	process.env.REACT_APP_API_BASE || "https://mern-deploy-docker.onrender.com"
+	process.env.REACT_APP_API_BASE || "http://localhost:8000",
 );
 
 // Any old hardcoded bases you want to auto-rewrite

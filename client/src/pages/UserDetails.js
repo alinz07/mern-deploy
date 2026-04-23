@@ -34,6 +34,13 @@ const CHECK_LABELS = {
 	checkten: "h (h)",
 };
 
+const EQUIP_LABELS = {
+	left: "Left",
+	right: "Right",
+	both: "Both",
+	fmMic: "FM Mic",
+};
+
 const MONTH_NAMES = [
 	"January",
 	"February",
@@ -72,6 +79,18 @@ const monthRecencyTs = (m) => {
 
 function labelize(key) {
 	return CHECK_LABELS[key] || key;
+}
+
+function dayWord(n) {
+	return n === 1 ? "day" : "days";
+}
+
+function equipmentLine(label, count, missedDays) {
+	if (!count) return null;
+	if (missedDays > 0 && count === missedDays) {
+		return `${label} missing on all ${count} ${dayWord(count)}`;
+	}
+	return `${label} missing on ${count} ${dayWord(count)}`;
 }
 
 // Format from real ISO (if present)
@@ -313,23 +332,79 @@ export default function UserDetails() {
 		};
 	}, [userId, userFromState, fetchMonthsForUser]);
 
+	const renderStatsCell = (cell) => {
+		const missed = cell?.missed || 0;
+		const equip = cell?.equipmentMissing || {};
+
+		const lines = [
+			equipmentLine(EQUIP_LABELS.left, equip.left || 0, missed),
+			equipmentLine(EQUIP_LABELS.right, equip.right || 0, missed),
+			equipmentLine(EQUIP_LABELS.both, equip.both || 0, missed),
+			equipmentLine(EQUIP_LABELS.fmMic, equip.fmMic || 0, missed),
+		].filter(Boolean);
+
+		return (
+			<div>
+				<div>
+					{missed} {dayWord(missed)} with a missed check
+				</div>
+				{lines.map((line, idx) => (
+					<div key={idx} style={{ marginTop: 4 }}>
+						{line}
+					</div>
+				))}
+			</div>
+		);
+	};
+
+	const renderEquipSummaryCell = (month) => {
+		const pct = month?.equipmentAllPresentPct || 0;
+		const allDays = month?.equipmentAllPresentDays || 0;
+		const totalDays = month?.totalDays || 0;
+
+		return (
+			<div>
+				<div>{pct}% of days had all equipment</div>
+				<div style={{ marginTop: 4, opacity: 0.75 }}>
+					{allDays}/{totalDays} {dayWord(totalDays)}
+				</div>
+			</div>
+		);
+	};
+
 	const statRows = useMemo(() => {
 		if (!stats) return null;
+
 		const cm = stats.currentMonth;
 		const pm = stats.previousMonth;
-		return CHECK_FIELDS.map((k) => {
-			const cur = cm?.fields?.[k] || { missed: 0, total: 0 };
-			const prv = pm?.fields?.[k] || { missed: 0, total: 0 };
-			return (
-				<tr key={k}>
-					<td>{labelize(k)}</td>
-					<td>{`${cur.missed} checks that needed love`}</td>
-					<td>{`${prv.missed} checks that needed love`}</td>
-				</tr>
-			);
-		});
-	}, [stats]);
 
+		return [
+			<tr key="equipment-summary">
+				<td>All equipment present</td>
+				<td>{renderEquipSummaryCell(cm)}</td>
+				<td>{renderEquipSummaryCell(pm)}</td>
+			</tr>,
+
+			...CHECK_FIELDS.map((k) => {
+				const cur = cm?.fields?.[k] || {
+					missed: 0,
+					equipmentMissing: {},
+				};
+				const prv = pm?.fields?.[k] || {
+					missed: 0,
+					equipmentMissing: {},
+				};
+
+				return (
+					<tr key={k}>
+						<td>{labelize(k)}</td>
+						<td>{renderStatsCell(cur)}</td>
+						<td>{renderStatsCell(prv)}</td>
+					</tr>
+				);
+			}),
+		];
+	}, [stats]);
 	const renderCommentList = useCallback(
 		(list) => (
 			<ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
@@ -630,20 +705,20 @@ export default function UserDetails() {
 					<h3 style={{ marginTop: 8 }}>
 						Sound Check Success{" "}
 						<small>
-							({stats.currentMonth?.name} vs{" "}
-							{stats.previousMonth?.name})
+							{stats.currentMonth?.name} vs{" "}
+							{stats.previousMonth?.name}
 						</small>
 					</h3>
 					<table className="table grid">
 						<thead>
 							<tr>
-								<th>Field</th>
-								<th>({stats.currentMonth?.name})</th>
-								<th>({stats.previousMonth?.name})</th>
+								<th>Sound</th>
+								<th>{stats.currentMonth?.name}</th>
+								<th>{stats.previousMonth?.name}</th>
 							</tr>
 						</thead>
 						<tbody>{statRows}</tbody>
-					</table>
+					</table>{" "}
 				</div>
 
 				{/* Right: per-field comments (current & previous) */}

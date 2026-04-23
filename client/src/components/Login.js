@@ -19,21 +19,17 @@ const Login = ({ setUser }) => {
 		e.preventDefault();
 		setMessage("");
 		try {
-			const res = await axios.post(
-				"https://mern-deploy-docker.onrender.com/api/auth/login",
-				{ username, password }
-			);
-
+			const res = await axios.post("/api/auth/login", {
+				username,
+				password,
+			});
 			if (res.data?.token) {
 				// 1) Persist token and set axios default header
 				localStorage.setItem("token", res.data.token);
 				setAuthToken(res.data.token);
 
 				// 2) Get the current user
-				const me = await axios.get(
-					"https://mern-deploy-docker.onrender.com/api/auth/me"
-				);
-
+				const me = await axios.get("/api/auth/me");
 				if (typeof setUser === "function") {
 					setUser(me.data);
 				}
