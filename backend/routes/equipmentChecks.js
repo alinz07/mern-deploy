@@ -21,7 +21,7 @@ function requireAdmin(req, res) {
 // POST /api/equipment-checks
 router.post("/", auth, async (req, res) => {
 	try {
-		const { user, month, day, left, right, both, fmMic } = req.body || {};
+		const { user, month, day, left, right, fmMic } = req.body || {};
 		if (![user, month, day].every(mongoose.isValidObjectId))
 			return res.status(400).json({ msg: "user, month, day required" });
 
@@ -55,7 +55,7 @@ router.post("/", auth, async (req, res) => {
 			{ user, month, day },
 			{
 				$setOnInsert: { user, month, day },
-				$set: { left, right, both, fmMic },
+				$set: { left, right, fmMic },
 			},
 			{ new: true, upsert: true },
 		);
@@ -117,7 +117,7 @@ router.patch("/:id", auth, async (req, res) => {
 		)
 			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
 
-		["left", "right", "both", "fmMic"].forEach((f) => {
+		["left", "right", "fmMic"].forEach((f) => {
 			if (typeof req.body[f] === "boolean") doc[f] = req.body[f];
 		});
 

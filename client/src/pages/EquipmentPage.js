@@ -58,7 +58,7 @@ export default function EquipmentPage() {
 			}
 		};
 		run();
-	}, []);
+	}, [nav]);
 
 	const startCreate = () => {
 		setCreating(true);

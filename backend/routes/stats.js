@@ -61,6 +61,41 @@ function lastDayOfMonthTZ({ y, m }, tz = APP_TZ) {
 	return d;
 }
 
+function isEquipmentAllPresent(eq) {
+	return eq && eq.left === true && eq.right === true && eq.fmMic === true;
+}
+
+function newEquipmentMissingCounts() {
+	return {
+		left: 0,
+		right: 0,
+		both: 0,
+		fmMic: 0,
+	};
+}
+
+function addEquipmentMissingCounts(target, eq) {
+	if (!eq) return;
+
+	const leftMissing = eq.left === false;
+	const rightMissing = eq.right === false;
+
+	if (leftMissing && rightMissing) {
+		target.both += 1;
+	} else {
+		if (leftMissing) target.left += 1;
+		if (rightMissing) target.right += 1;
+	}
+
+	if (eq.fmMic === false) target.fmMic += 1;
+}
+
+function countEquipmentMissing(eq) {
+	const counts = newEquipmentMissingCounts();
+	addEquipmentMissingCounts(counts, eq);
+	return counts.left + counts.right + counts.both + counts.fmMic;
+}
+
 // /api/stats/admin-checks
 router.get("/admin-checks", auth, async (req, res) => {
 	const t0 = Date.now();
@@ -331,7 +366,6 @@ router.get("/admin-equip", auth, async (req, res) => {
 				day: 1,
 				left: 1,
 				right: 1,
-				both: 1,
 				fmMic: 1,
 			})
 			.lean();
@@ -358,11 +392,7 @@ router.get("/admin-equip", auth, async (req, res) => {
 
 			if (!isCurr && !isPrev) continue;
 
-			const missedCount =
-				(ec.left === false ? 1 : 0) +
-				(ec.right === false ? 1 : 0) +
-				(ec.both === false ? 1 : 0) +
-				(ec.fmMic === false ? 1 : 0);
+			const missedCount = countEquipmentMissing(ec);
 
 			if (missedCount === 0) continue;
 
@@ -421,8 +451,6 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			"checknine",
 			"checkten",
 		];
-
-		const EQUIP_FIELDS = ["left", "right", "both", "fmMic"];
 
 		const monthDocs = await Month.find({
 			userId,
@@ -498,7 +526,6 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 							day: 1,
 							left: 1,
 							right: 1,
-							both: 1,
 							fmMic: 1,
 						})
 						.lean()
@@ -516,13 +543,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 
 			for (const d of days) {
 				const eq = equipByDayId.get(String(d._id));
-				if (
-					eq &&
-					eq.left === true &&
-					eq.right === true &&
-					eq.both === true &&
-					eq.fmMic === true
-				) {
+				if (isEquipmentAllPresent(eq)) {
 					equipmentAllPresentDays += 1;
 				}
 			}
@@ -535,12 +556,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 
 			for (const field of CHECK_FIELDS) {
 				let missed = 0;
-				const equipmentMissing = {
-					left: 0,
-					right: 0,
-					both: 0,
-					fmMic: 0,
-				};
+				const equipmentMissing = newEquipmentMissingCounts();
 
 				for (const d of days) {
 					const check = checkByDayId.get(String(d._id));
@@ -550,13 +566,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 						missed += 1;
 
 						const eq = equipByDayId.get(String(d._id));
-						if (!eq) continue;
-
-						for (const ef of EQUIP_FIELDS) {
-							if (eq[ef] === false) {
-								equipmentMissing[ef] += 1;
-							}
-						}
+						addEquipmentMissingCounts(equipmentMissing, eq);
 					}
 				}
 

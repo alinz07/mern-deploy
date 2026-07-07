@@ -41,7 +41,6 @@ const SOUND_IMAGE_MAP = {
 const EQUIP_FIELDS = [
 	["left", "Left"],
 	["right", "Right"],
-	["both", "Both"],
 	["fmMic", "FM Mic"],
 ];
 
@@ -434,7 +433,6 @@ export default function CheckPage() {
 					user: resolvedUserId,
 					left: false,
 					right: false,
-					both: false,
 					fmMic: false,
 				},
 				tokenHeader(),

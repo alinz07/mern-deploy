@@ -7,7 +7,7 @@ const Day = require("../models/Day");
 const Month = require("../models/Month");
 const User = require("../models/User");
 
-const VALID_FIELDS = ["left", "right", "both", "fmMic"];
+const VALID_FIELDS = ["left", "right", "fmMic"];
 
 async function loadContext(echeckId) {
 	const echeck = await EquipmentCheck.findById(echeckId).lean();

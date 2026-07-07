@@ -24,7 +24,6 @@ const EquipmentCheckSchema = new mongoose.Schema(
 
 		left: { type: Boolean, default: false },
 		right: { type: Boolean, default: false },
-		both: { type: Boolean, default: false },
 		fmMic: { type: Boolean, default: false },
 	},
 	{ timestamps: true }

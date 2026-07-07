@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const VALID_FIELDS = ["left", "right", "both", "fmMic"];
+const VALID_FIELDS = ["left", "right", "fmMic"];
 
 const EquipCommentSchema = new mongoose.Schema(
 	{
