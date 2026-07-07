@@ -14,18 +14,18 @@ const CheckSchema = new mongoose.Schema(
 			required: true,
 		},
 
-		checkone: { type: Boolean, default: false },
-		checktwo: { type: Boolean, default: false },
-		checkthree: { type: Boolean, default: false },
-		checkfour: { type: Boolean, default: false },
-		checkfive: { type: Boolean, default: false },
-		checksix: { type: Boolean, default: false },
-		checkseven: { type: Boolean, default: false },
-		checkeight: { type: Boolean, default: false },
-		checknine: { type: Boolean, default: false },
-		checkten: { type: Boolean, default: false },
+		checkone: { type: Boolean, default: true },
+		checktwo: { type: Boolean, default: true },
+		checkthree: { type: Boolean, default: true },
+		checkfour: { type: Boolean, default: true },
+		checkfive: { type: Boolean, default: true },
+		checksix: { type: Boolean, default: true },
+		checkseven: { type: Boolean, default: true },
+		checkeight: { type: Boolean, default: true },
+		checknine: { type: Boolean, default: true },
+		checkten: { type: Boolean, default: true },
 	},
-	{ timestamps: true }
+	{ timestamps: true },
 );
 
 // one Check per (day,user)

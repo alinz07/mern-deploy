@@ -1,5 +1,11 @@
 // client/pages/UserDetails.js
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, {
+	useEffect,
+	useMemo,
+	useState,
+	useCallback,
+	useRef,
+} from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import axios from "axios";
 
@@ -93,6 +99,20 @@ function equipmentLine(label, count, missedDays) {
 	return `${label} missing on ${count} ${dayWord(count)}`;
 }
 
+function equipmentMissingLabels(equipmentMissing = {}) {
+	return [
+		equipmentMissing.left ? EQUIP_LABELS.left : null,
+		equipmentMissing.right ? EQUIP_LABELS.right : null,
+		equipmentMissing.both ? EQUIP_LABELS.both : null,
+		equipmentMissing.fmMic ? EQUIP_LABELS.fmMic : null,
+	].filter(Boolean);
+}
+
+function currentMonthName() {
+	const d = new Date();
+	return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 // Format from real ISO (if present)
 const fmtPTDateISO = (iso) => {
 	if (iso == null) return null;
@@ -150,17 +170,18 @@ export default function UserDetails() {
 	const [user, setUser] = useState(userFromState);
 	const [stats, setStats] = useState(null);
 
-	// separate maps for current/previous comments
-	const [commentsCurrent, setCommentsCurrent] = useState(null);
-	const [commentsPrev, setCommentsPrev] = useState(null);
+	const [commentsSelected, setCommentsSelected] = useState(null);
 
-	// expand/collapse per column
+	// expand/collapse per comments row
 	const [openCur, setOpenCur] = useState({});
-	const [openPrev, setOpenPrev] = useState({});
 	const [error, setError] = useState("");
 
 	// ===== Months table (same data source as AdminDashboard) =====
 	const [months, setMonths] = useState([]);
+	const [selectedMonthId, setSelectedMonthId] = useState("");
+	const [monthsTableYear, setMonthsTableYear] = useState(
+		String(new Date().getFullYear()),
+	);
 	const [loadingMonths, setLoadingMonths] = useState(true);
 	const [monthsError, setMonthsError] = useState("");
 	const [monthsSortDir, setMonthsSortDir] = useState("desc"); // newest->oldest
@@ -175,14 +196,34 @@ export default function UserDetails() {
 	);
 	const [creatingMonth, setCreatingMonth] = useState(false);
 	const [createMonthError, setCreateMonthError] = useState("");
+	const statsMonthPickerRef = useRef(null);
 
 	const toggleCur = useCallback((field) => {
 		setOpenCur((p) => ({ ...p, [field]: !p[field] }));
 	}, []);
 
-	const togglePrev = useCallback((field) => {
-		setOpenPrev((p) => ({ ...p, [field]: !p[field] }));
+	const scrollStatsPickerToTop = useCallback(() => {
+		const el = statsMonthPickerRef.current;
+		if (!el) return;
+
+		const scroller = document.scrollingElement || document.documentElement;
+		const top = el.getBoundingClientRect().top + scroller.scrollTop - 8;
+		scroller.scrollTo({ top, behavior: "auto" });
 	}, []);
+
+	const onStatsMonthChange = useCallback(
+		(e) => {
+			e.currentTarget.blur();
+			setStats(null);
+			setCommentsSelected(null);
+			setSelectedMonthId(e.target.value);
+
+			[0, 80, 180].forEach((delay) => {
+				window.setTimeout(scrollStatsPickerToTop, delay);
+			});
+		},
+		[scrollStatsPickerToTop],
+	);
 
 	// ✅ Single source of truth for months fetching (used by useEffect + after create)
 	const fetchMonthsForUser = useCallback(async () => {
@@ -199,8 +240,24 @@ export default function UserDetails() {
 			});
 
 			setMonths(filtered);
+			setSelectedMonthId((prev) => {
+				if (prev && filtered.some((m) => String(m._id) === prev)) {
+					return prev;
+				}
+
+				const current = filtered.find(
+					(m) => m.name === currentMonthName(),
+				);
+				if (current) return String(current._id);
+
+				const newest = filtered
+					.slice()
+					.sort((a, b) => monthRecencyTs(b) - monthRecencyTs(a))[0];
+				return newest ? String(newest._id) : "";
+			});
 		} catch {
 			setMonths([]);
+			setSelectedMonthId("");
 			setMonthsError("Failed to load months.");
 		} finally {
 			setLoadingMonths(false);
@@ -275,54 +332,9 @@ export default function UserDetails() {
 			}
 		};
 
-		const fetchStats = async () => {
-			try {
-				const s = await axios.get(
-					`${API}/api/stats/user/${userId}/check-fields`,
-					tokenHeader(),
-				);
-				if (!alive) return;
-				setStats(s.data);
-			} catch {
-				if (alive) {
-					setError("Session expired. Please sign in again.");
-					localStorage.removeItem("token");
-				}
-			}
-		};
-
-		const fetchCommentsCurrent = async () => {
-			try {
-				const r = await axios.get(
-					`${API}/api/comments/by-user/${userId}/by-field?scope=current`,
-					tokenHeader(),
-				);
-				if (!alive) return;
-				setCommentsCurrent(r.data || {});
-			} catch {
-				if (alive) setCommentsCurrent({});
-			}
-		};
-
-		const fetchCommentsPrev = async () => {
-			try {
-				const r = await axios.get(
-					`${API}/api/comments/by-user/${userId}/by-field?scope=previous`,
-					tokenHeader(),
-				);
-				if (!alive) return;
-				setCommentsPrev(r.data || {});
-			} catch {
-				if (alive) setCommentsPrev({});
-			}
-		};
-
 		(async () => {
 			await Promise.all([
 				fetchUser(),
-				fetchStats(),
-				fetchCommentsCurrent(),
-				fetchCommentsPrev(),
 				fetchMonthsForUser(),
 			]);
 		})();
@@ -331,6 +343,47 @@ export default function UserDetails() {
 			alive = false;
 		};
 	}, [userId, userFromState, fetchMonthsForUser]);
+
+	useEffect(() => {
+		let alive = true;
+
+		const fetchSelectedMonthData = async () => {
+			if (!selectedMonthId) {
+				setStats(null);
+				setCommentsSelected({});
+				return;
+			}
+
+			try {
+				const [statsRes, commentsRes] = await Promise.all([
+					axios.get(
+						`${API}/api/stats/user/${userId}/check-fields`,
+						{
+							params: { monthId: selectedMonthId },
+							...tokenHeader(),
+						},
+					),
+					axios.get(`${API}/api/comments/by-user/${userId}/by-field`, {
+						params: { monthId: selectedMonthId },
+						...tokenHeader(),
+					}),
+				]);
+				if (!alive) return;
+				setStats(statsRes.data);
+				setCommentsSelected(commentsRes.data || {});
+			} catch {
+				if (alive) {
+					setError("Session expired. Please sign in again.");
+					localStorage.removeItem("token");
+				}
+			}
+		};
+
+		fetchSelectedMonthData();
+		return () => {
+			alive = false;
+		};
+	}, [userId, selectedMonthId]);
 
 	const renderStatsCell = (cell) => {
 		const missed = cell?.missed || 0;
@@ -372,39 +425,87 @@ export default function UserDetails() {
 		);
 	};
 
+	const renderEquipmentMissingDays = useCallback(
+		(cell) => {
+			const days = cell?.equipmentMissingDays || [];
+			if (!days.length) {
+				return (
+					<span style={{ opacity: 0.7 }}>
+						No equipment missing on missed-check days
+					</span>
+				);
+			}
+
+			return (
+				<ul style={{ margin: "0 0 0 16px", padding: 0 }}>
+					{days
+						.slice()
+						.sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
+						.map((d, idx) => {
+							const niceDate =
+								fmtFromMonthName(d.monthName, d.dayNumber) ||
+								(typeof d.dayNumber === "number"
+									? `Day ${d.dayNumber}`
+									: "Day ?");
+							const labels = equipmentMissingLabels(
+								d.equipmentMissing,
+							);
+							const detail = labels.length
+								? labels.join(", ")
+								: "Equipment missing";
+
+							return (
+								<li key={`${d.dayId || idx}-${idx}`}>
+									<Link
+										to={`/days/${d.dayId}/check?userId=${userId}${
+											d.monthId
+												? `&monthId=${d.monthId}`
+												: ""
+										}`}
+										title="Open this day's check"
+										target="_blank"
+										rel="noopener noreferrer"
+									>
+										<strong>{niceDate}:</strong> {detail}
+									</Link>
+								</li>
+							);
+						})}
+				</ul>
+			);
+		},
+		[userId],
+	);
+
 	const statRows = useMemo(() => {
 		if (!stats) return null;
 
-		const cm = stats.currentMonth;
-		const pm = stats.previousMonth;
+		const selected = stats.selectedMonth;
 
 		return [
 			<tr key="equipment-summary">
 				<td>All equipment present</td>
-				<td>{renderEquipSummaryCell(cm)}</td>
-				<td>{renderEquipSummaryCell(pm)}</td>
+				<td>{renderEquipSummaryCell(selected)}</td>
+				<td />
 			</tr>,
 
 			...CHECK_FIELDS.map((k) => {
-				const cur = cm?.fields?.[k] || {
+				const cell = selected?.fields?.[k] || {
 					missed: 0,
 					equipmentMissing: {},
-				};
-				const prv = pm?.fields?.[k] || {
-					missed: 0,
-					equipmentMissing: {},
+					equipmentMissingDays: [],
 				};
 
 				return (
 					<tr key={k}>
 						<td>{labelize(k)}</td>
-						<td>{renderStatsCell(cur)}</td>
-						<td>{renderStatsCell(prv)}</td>
+						<td>{renderStatsCell(cell)}</td>
+						<td>{renderEquipmentMissingDays(cell)}</td>
 					</tr>
 				);
 			}),
 		];
-	}, [stats]);
+	}, [stats, renderEquipmentMissingDays]);
 	const renderCommentList = useCallback(
 		(list) => (
 			<ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
@@ -449,21 +550,17 @@ export default function UserDetails() {
 	);
 
 	const commentsRows = useMemo(() => {
-		const curMap = commentsCurrent || {};
-		const prevMap = commentsPrev || {};
+		const selectedMap = commentsSelected || {};
 		return CHECK_FIELDS.map((f) => {
-			const curList = curMap[f] || [];
-			const prevList = prevMap[f] || [];
-			const hasCur = curList.length > 0;
-			const hasPrev = prevList.length > 0;
+			const list = selectedMap[f] || [];
+			const hasComments = list.length > 0;
 
 			return (
 				<tr key={f}>
 					<td>{labelize(f)}</td>
 
-					{/* Current month column */}
 					<td>
-						{hasCur ? (
+						{hasComments ? (
 							<>
 								<button
 									className="linklike"
@@ -473,28 +570,7 @@ export default function UserDetails() {
 										? "collapse"
 										: "expand all comments"}
 								</button>
-								{openCur[f] && renderCommentList(curList)}
-							</>
-						) : (
-							<span className="muted">
-								no comments for {labelize(f)}
-							</span>
-						)}
-					</td>
-
-					{/* Previous month column */}
-					<td>
-						{hasPrev ? (
-							<>
-								<button
-									className="linklike"
-									onClick={() => togglePrev(f)}
-								>
-									{openPrev[f]
-										? "collapse"
-										: "expand all comments"}
-								</button>
-								{openPrev[f] && renderCommentList(prevList)}
+								{openCur[f] && renderCommentList(list)}
 							</>
 						) : (
 							<span className="muted">
@@ -505,15 +581,7 @@ export default function UserDetails() {
 				</tr>
 			);
 		});
-	}, [
-		commentsCurrent,
-		commentsPrev,
-		openCur,
-		openPrev,
-		toggleCur,
-		togglePrev,
-		renderCommentList,
-	]);
+	}, [commentsSelected, openCur, toggleCur, renderCommentList]);
 
 	const sortedMonths = useMemo(() => {
 		const list = (months || []).slice();
@@ -524,6 +592,28 @@ export default function UserDetails() {
 		});
 		return list;
 	}, [months, monthsSortDir]);
+
+	const monthsTableYearOptions = useMemo(() => {
+		const years = new Set(
+			(months || [])
+				.map((m) => nameToDate(m?.name)?.getFullYear())
+				.filter((y) => Number.isInteger(y))
+				.map(String),
+		);
+		years.add(String(new Date().getFullYear()));
+		return Array.from(years).sort((a, b) => Number(b) - Number(a));
+	}, [months]);
+
+	const visibleMonths = useMemo(
+		() =>
+			sortedMonths.filter((m) => {
+				const parsed = nameToDate(m.name);
+				return (
+					parsed && String(parsed.getFullYear()) === monthsTableYear
+				);
+			}),
+		[sortedMonths, monthsTableYear],
+	);
 
 	const monthsTableRows = useMemo(() => {
 		if (loadingMonths) {
@@ -547,20 +637,20 @@ export default function UserDetails() {
 				</tr>
 			);
 		}
-		if (!sortedMonths.length) {
+		if (!visibleMonths.length) {
 			return (
 				<tr>
 					<td
 						colSpan={2}
 						style={{ opacity: 0.7, fontStyle: "italic" }}
 					>
-						No months found for this user.
+						No months found for {monthsTableYear}.
 					</td>
 				</tr>
 			);
 		}
 
-		return sortedMonths.map((m) => {
+		return visibleMonths.map((m) => {
 			const parsed = nameToDate(m.name);
 			const startLabel = parsed ? parsed.toLocaleDateString() : "—";
 			return (
@@ -574,7 +664,16 @@ export default function UserDetails() {
 				</tr>
 			);
 		});
-	}, [sortedMonths, loadingMonths, monthsError]);
+	}, [visibleMonths, loadingMonths, monthsError, monthsTableYear]);
+
+	const selectedMonth = stats?.selectedMonth || null;
+	const selectedMonthFromList = sortedMonths.find(
+		(m) => String(m._id) === selectedMonthId,
+	);
+	const selectedMonthLabel =
+		selectedMonthFromList?.name ||
+		selectedMonth?.name ||
+		"Selected month";
 
 	if (error)
 		return (
@@ -583,7 +682,9 @@ export default function UserDetails() {
 			</div>
 		);
 
-	if (!user || !stats) return <div className="container">Loading…</div>;
+	if (!user || loadingMonths || (!stats && !selectedMonthId)) {
+		return <div className="container">Loading...</div>;
+	}
 
 	return (
 		<div className="container">
@@ -612,6 +713,18 @@ export default function UserDetails() {
 					}}
 				>
 					<h3 style={{ margin: 0 }}>Months</h3>
+
+					<select
+						value={monthsTableYear}
+						onChange={(e) => setMonthsTableYear(e.target.value)}
+						title="Filter months table by year"
+					>
+						{monthsTableYearOptions.map((year) => (
+							<option key={year} value={year}>
+								{year}
+							</option>
+						))}
+					</select>
 
 					<button
 						onClick={() => {
@@ -699,25 +812,50 @@ export default function UserDetails() {
 				</table>
 			</div>
 
+			<div
+				ref={statsMonthPickerRef}
+				style={{
+					display: "flex",
+					alignItems: "center",
+					gap: 12,
+					flexWrap: "wrap",
+					marginTop: 8,
+					marginBottom: 8,
+				}}
+			>
+				<h3 style={{ margin: 0 }}>Month</h3>
+				<select
+					value={selectedMonthId}
+					onChange={onStatsMonthChange}
+					disabled={!sortedMonths.length}
+				>
+					{sortedMonths.map((m) => (
+						<option key={m._id} value={m._id}>
+							{m.name}
+						</option>
+					))}
+				</select>
+			</div>
+
 			<div className="udetails-grid">
 				{/* Left: per-field success */}
 				<div>
-					<h3 style={{ marginTop: 8 }}>
-						Sound Check Success{" "}
-						<small>
-							{stats.currentMonth?.name} vs{" "}
-							{stats.previousMonth?.name}
-						</small>
-					</h3>
+					<h3 style={{ marginTop: 8 }}>Sound Check Success</h3>
 					<table className="table grid">
 						<thead>
 							<tr>
 								<th>Sound</th>
-								<th>{stats.currentMonth?.name}</th>
-								<th>{stats.previousMonth?.name}</th>
+								<th>{selectedMonthLabel}</th>
+								<th>Days Equipment Was Missing</th>
 							</tr>
 						</thead>
-						<tbody>{statRows}</tbody>
+						<tbody>
+							{statRows || (
+								<tr>
+									<td colSpan={3}>Loading stats...</td>
+								</tr>
+							)}
+						</tbody>
 					</table>{" "}
 				</div>
 
@@ -725,20 +863,24 @@ export default function UserDetails() {
 				<div>
 					<h3 style={{ marginTop: 8 }}>
 						Comments by Sound{" "}
-						<small>
-							({stats.currentMonth?.name} vs{" "}
-							{stats.previousMonth?.name})
-						</small>
+						<small>({selectedMonthLabel})</small>
 					</h3>
 					<table className="table grid">
 						<thead>
 							<tr>
 								<th>Field</th>
-								<th>({stats.currentMonth?.name})</th>
-								<th>({stats.previousMonth?.name})</th>
+								<th>{selectedMonthLabel}</th>
 							</tr>
 						</thead>
-						<tbody>{commentsRows}</tbody>
+						<tbody>
+							{commentsSelected == null ? (
+								<tr>
+									<td colSpan={2}>Loading comments...</td>
+								</tr>
+							) : (
+								commentsRows
+							)}
+						</tbody>
 					</table>
 				</div>
 			</div>

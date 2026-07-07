@@ -9,6 +9,12 @@ const User = require("../models/User");
 // NEW: cascade
 const EquipComment = require("../models/EquipComment");
 
+const EQUIPMENT_DEFAULTS = {
+	left: true,
+	right: true,
+	fmMic: true,
+};
+
 // admin-only guard
 function requireAdmin(req, res) {
 	if (req.user.role !== "admin") {
@@ -21,7 +27,7 @@ function requireAdmin(req, res) {
 // POST /api/equipment-checks
 router.post("/", auth, async (req, res) => {
 	try {
-		const { user, month, day, left, right, fmMic } = req.body || {};
+		const { user, month, day } = req.body || {};
 		if (![user, month, day].every(mongoose.isValidObjectId))
 			return res.status(400).json({ msg: "user, month, day required" });
 
@@ -51,12 +57,25 @@ router.post("/", auth, async (req, res) => {
 				.json({ msg: "This day is locked by the teacher." });
 		}
 
+		const nextValues = {};
+		["left", "right", "fmMic"].forEach((f) => {
+			if (typeof req.body[f] === "boolean") nextValues[f] = req.body[f];
+		});
+		const insertValues = { ...EQUIPMENT_DEFAULTS };
+		Object.keys(nextValues).forEach((f) => {
+			delete insertValues[f];
+		});
+
+		const update = {
+			$setOnInsert: { user, month, day, ...insertValues },
+		};
+		if (Object.keys(nextValues).length > 0) {
+			update.$set = nextValues;
+		}
+
 		const doc = await EquipmentCheck.findOneAndUpdate(
 			{ user, month, day },
-			{
-				$setOnInsert: { user, month, day },
-				$set: { left, right, fmMic },
-			},
+			update,
 			{ new: true, upsert: true },
 		);
 		res.json(doc);

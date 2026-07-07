@@ -96,6 +96,10 @@ function countEquipmentMissing(eq) {
 	return counts.left + counts.right + counts.both + counts.fmMic;
 }
 
+function hasEquipmentMissing(counts) {
+	return Object.values(counts || {}).some((count) => count > 0);
+}
+
 // /api/stats/admin-checks
 router.get("/admin-checks", auth, async (req, res) => {
 	const t0 = Date.now();
@@ -425,7 +429,7 @@ router.get("/admin-equip", auth, async (req, res) => {
 	}
 });
 
-// /api/stats/user/:userId/check-fields  (day-first, PT "to-date")
+// /api/stats/user/:userId/check-fields?monthId=...
 router.get("/user/:userId/check-fields", auth, async (req, res) => {
 	try {
 		const { userId } = req.params;
@@ -434,9 +438,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 		}
 
 		const nowTZ = tzParts(new Date(), APP_TZ);
-		const prevTZ = shiftMonth(nowTZ, -1);
 		const currentName = monthLabelFromParts(nowTZ);
-		const previousName = monthLabelFromParts(prevTZ);
 		const daysElapsed = nowTZ.d;
 
 		const CHECK_FIELDS = [
@@ -452,49 +454,68 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			"checkten",
 		];
 
-		const monthDocs = await Month.find({
+		const monthFilter = {
 			userId,
-			name: { $in: [currentName, previousName] },
-		})
-			.select({ _id: 1, name: 1 })
+		};
+		if (req.query.monthId) {
+			if (!mongoose.isValidObjectId(req.query.monthId)) {
+				return res.status(400).json({ error: "Invalid monthId" });
+			}
+			monthFilter._id = req.query.monthId;
+		} else {
+			monthFilter.name = currentName;
+		}
+
+		const monthDoc = await Month.findOne(monthFilter)
+			.select({ _id: 1, name: 1, adminUser: 1, userId: 1 })
 			.lean();
 
-		const monthNameById = new Map(
-			monthDocs.map((m) => [String(m._id), m.name]),
-		);
+		if (!monthDoc) {
+			return res.json({
+				userId,
+				selectedMonth: {
+					id: req.query.monthId || null,
+					name: req.query.monthId ? "" : currentName,
+					totalDays: 0,
+					equipmentAllPresentDays: 0,
+					equipmentAllPresentPct: 0,
+					fields: Object.fromEntries(
+						CHECK_FIELDS.map((field) => [
+							field,
+							{
+								missed: 0,
+								equipmentMissing: newEquipmentMissingCounts(),
+								equipmentMissingDays: [],
+							},
+						]),
+					),
+				},
+			});
+		}
+
+		const sameTenant = String(monthDoc.adminUser) === String(req.user.adminUser);
+		const isOwner = String(monthDoc.userId) === String(req.user.id);
+		if (!sameTenant || (req.user.role !== "admin" && !isOwner)) {
+			return res.status(403).json({ error: "Forbidden" });
+		}
 
 		const dayDocs = await Day.find({
 			userId: new mongoose.Types.ObjectId(userId),
-			month: { $in: monthDocs.map((m) => m._id) },
+			month: monthDoc._id,
 		})
 			.select({ _id: 1, month: 1, dayNumber: 1 })
 			.lean();
 
-		const scopedDaysByMonth = {
-			[currentName]: [],
-			[previousName]: [],
-		};
+		const scopedDays =
+			monthDoc.name === currentName
+				? dayDocs.filter(
+						(d) =>
+							typeof d.dayNumber === "number" &&
+							d.dayNumber <= daysElapsed,
+					)
+				: dayDocs;
 
-		for (const d of dayDocs) {
-			const monthName = monthNameById.get(String(d.month));
-			if (!monthName) continue;
-
-			if (monthName === currentName) {
-				if (
-					typeof d.dayNumber === "number" &&
-					d.dayNumber <= daysElapsed
-				) {
-					scopedDaysByMonth[currentName].push(d);
-				}
-			} else if (monthName === previousName) {
-				scopedDaysByMonth[previousName].push(d);
-			}
-		}
-
-		const scopedDayIds = [
-			...scopedDaysByMonth[currentName].map((d) => d._id),
-			...scopedDaysByMonth[previousName].map((d) => d._id),
-		];
+		const scopedDayIds = scopedDays.map((d) => d._id);
 
 		const [checkDocs, equipDocs] = await Promise.all([
 			scopedDayIds.length
@@ -535,8 +556,8 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 		const checkByDayId = new Map(checkDocs.map((c) => [String(c.day), c]));
 		const equipByDayId = new Map(equipDocs.map((e) => [String(e.day), e]));
 
-		function buildMonthShape(name) {
-			const days = scopedDaysByMonth[name] || [];
+		function buildMonthShape(month) {
+			const days = scopedDays;
 			const totalDays = days.length;
 
 			let equipmentAllPresentDays = 0;
@@ -557,6 +578,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			for (const field of CHECK_FIELDS) {
 				let missed = 0;
 				const equipmentMissing = newEquipmentMissingCounts();
+				const equipmentMissingDays = [];
 
 				for (const d of days) {
 					const check = checkByDayId.get(String(d._id));
@@ -567,17 +589,31 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 
 						const eq = equipByDayId.get(String(d._id));
 						addEquipmentMissingCounts(equipmentMissing, eq);
+						const dayEquipmentMissing =
+							newEquipmentMissingCounts();
+						addEquipmentMissingCounts(dayEquipmentMissing, eq);
+						if (hasEquipmentMissing(dayEquipmentMissing)) {
+							equipmentMissingDays.push({
+								dayId: String(d._id),
+								monthId: String(month._id),
+								monthName: month.name,
+								dayNumber: d.dayNumber,
+								equipmentMissing: dayEquipmentMissing,
+							});
+						}
 					}
 				}
 
 				fields[field] = {
 					missed,
 					equipmentMissing,
+					equipmentMissingDays,
 				};
 			}
 
 			return {
-				name,
+				id: String(month._id),
+				name: month.name,
 				totalDays,
 				equipmentAllPresentDays,
 				equipmentAllPresentPct,
@@ -587,8 +623,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 
 		return res.json({
 			userId,
-			currentMonth: buildMonthShape(currentName),
-			previousMonth: buildMonthShape(previousName),
+			selectedMonth: buildMonthShape(monthDoc),
 		});
 	} catch (err) {
 		console.error("[STATS][USER-FIELDS][ERROR]", err?.message, err?.stack);

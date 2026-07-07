@@ -14,6 +14,25 @@ const EquipComment = require("../models/EquipComment");
 
 const APP_TZ = "America/Los_Angeles";
 
+const CHECK_DEFAULTS = {
+	checkone: true,
+	checktwo: true,
+	checkthree: true,
+	checkfour: true,
+	checkfive: true,
+	checksix: true,
+	checkseven: true,
+	checkeight: true,
+	checknine: true,
+	checkten: true,
+};
+
+const EQUIPMENT_DEFAULTS = {
+	left: true,
+	right: true,
+	fmMic: true,
+};
+
 async function assertMonthTenant(monthId, adminUserId) {
 	const m = await Month.findById(monthId).lean();
 	if (!m) return { ok: false, status: 404, msg: "Month not found" };
@@ -85,13 +104,31 @@ async function addOrUpdateDayAndCheck({
 			day.environment = environment;
 			await day.save();
 		}
-		// Ensure Check exists
+		// Ensure Check + EquipmentCheck exist
 		const check = await Check.findOneAndUpdate(
 			{ day: day._id, user: ownerUserId },
-			{ $setOnInsert: { day: day._id, user: ownerUserId } },
+			{
+				$setOnInsert: {
+					day: day._id,
+					user: ownerUserId,
+					...CHECK_DEFAULTS,
+				},
+			},
 			{ new: true, upsert: true },
 		);
-		return { day, check, action: treatExistingAs }; // "exists" for today, "updated" for add
+		const equipmentCheck = await EquipmentCheck.findOneAndUpdate(
+			{ day: day._id, month: monthId, user: ownerUserId },
+			{
+				$setOnInsert: {
+					day: day._id,
+					month: monthId,
+					user: ownerUserId,
+					...EQUIPMENT_DEFAULTS,
+				},
+			},
+			{ new: true, upsert: true },
+		);
+		return { day, check, equipmentCheck, action: treatExistingAs }; // "exists" for today, "updated" for add
 	}
 
 	// 2) Create new Day + Check
@@ -103,10 +140,28 @@ async function addOrUpdateDayAndCheck({
 	});
 	const check = await Check.findOneAndUpdate(
 		{ day: day._id, user: ownerUserId },
-		{ $setOnInsert: { day: day._id, user: ownerUserId } },
+		{
+			$setOnInsert: {
+				day: day._id,
+				user: ownerUserId,
+				...CHECK_DEFAULTS,
+			},
+		},
 		{ new: true, upsert: true },
 	);
-	return { day, check, action: "created" };
+	const equipmentCheck = await EquipmentCheck.findOneAndUpdate(
+		{ day: day._id, month: monthId, user: ownerUserId },
+		{
+			$setOnInsert: {
+				day: day._id,
+				month: monthId,
+				user: ownerUserId,
+				...EQUIPMENT_DEFAULTS,
+			},
+		},
+		{ new: true, upsert: true },
+	);
+	return { day, check, equipmentCheck, action: "created" };
 }
 
 // POST /api/days/add

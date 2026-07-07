@@ -22,9 +22,9 @@ const EquipmentCheckSchema = new mongoose.Schema(
 			index: true,
 		},
 
-		left: { type: Boolean, default: false },
-		right: { type: Boolean, default: false },
-		fmMic: { type: Boolean, default: false },
+		left: { type: Boolean, default: true },
+		right: { type: Boolean, default: true },
+		fmMic: { type: Boolean, default: true },
 	},
 	{ timestamps: true }
 );

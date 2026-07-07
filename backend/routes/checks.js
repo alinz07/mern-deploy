@@ -7,6 +7,19 @@ const Day = require("../models/Day");
 const Month = require("../models/Month");
 const User = require("../models/User");
 
+const CHECK_DEFAULTS = {
+	checkone: true,
+	checktwo: true,
+	checkthree: true,
+	checkfour: true,
+	checkfive: true,
+	checksix: true,
+	checkseven: true,
+	checkeight: true,
+	checknine: true,
+	checkten: true,
+};
+
 // helper: assert day & user are in caller's tenant (admin only)
 async function assertSameTenantByDayAndUser(dayId, targetUserId, adminUserId) {
 	if (
@@ -81,7 +94,13 @@ router.post("/", auth, async (req, res) => {
 
 		const check = await Check.findOneAndUpdate(
 			{ day: dayId, user: ownerUserId },
-			{ $setOnInsert: { day: dayId, user: ownerUserId } },
+			{
+				$setOnInsert: {
+					day: dayId,
+					user: ownerUserId,
+					...CHECK_DEFAULTS,
+				},
+			},
 			{ new: true, upsert: true },
 		);
 		res.json(check);

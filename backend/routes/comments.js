@@ -109,6 +109,13 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 		const scope = (req.query.scope || "current").toLowerCase(); // current|previous|both
 		if (!mongoose.isValidObjectId(userId))
 			return res.status(400).json({ msg: "Invalid userId" });
+		const requestedMonthId = req.query.monthId;
+		if (
+			requestedMonthId &&
+			!mongoose.isValidObjectId(requestedMonthId)
+		) {
+			return res.status(400).json({ msg: "Invalid monthId" });
+		}
 
 		// permission: self or admin in same tenant
 		if (req.user.role !== "admin" && req.user.id !== userId) {
@@ -121,8 +128,10 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 		const previousName = monthLabelFromParts(prevTZ);
 		const daysElapsed = nowTZ.d;
 
-		const wantCurrent = scope === "current" || scope === "both";
-		const wantPrevious = scope === "previous" || scope === "both";
+		const wantCurrent =
+			!!requestedMonthId || scope === "current" || scope === "both";
+		const wantPrevious =
+			!requestedMonthId && (scope === "previous" || scope === "both");
 		if (!wantCurrent && !wantPrevious) return res.json({});
 
 		// Tenant guard only if adminUser is a valid ObjectId
@@ -135,21 +144,37 @@ router.get("/by-user/:userId/by-field", auth, async (req, res) => {
 				}
 			: null;
 
-		const monthFilter = {
-			$or: [
-				...(wantPrevious ? [{ "month.name": previousName }] : []),
-				...(wantCurrent
-					? [
-							{
-								$and: [
-									{ "month.name": currentName },
-									{ dayNumber: { $lte: daysElapsed } },
-								],
-							},
-						]
-					: []),
-			],
-		};
+		const monthFilter = requestedMonthId
+			? {
+					$and: [
+						{
+							"month._id": new mongoose.Types.ObjectId(
+								requestedMonthId,
+							),
+						},
+						{
+							$or: [
+								{ "month.name": { $ne: currentName } },
+								{ dayNumber: { $lte: daysElapsed } },
+							],
+						},
+					],
+				}
+			: {
+					$or: [
+						...(wantPrevious ? [{ "month.name": previousName }] : []),
+						...(wantCurrent
+							? [
+									{
+										$and: [
+											{ "month.name": currentName },
+											{ dayNumber: { $lte: daysElapsed } },
+										],
+									},
+								]
+							: []),
+					],
+				};
 
 		const pipeline = [
 			{ $match: { userId: new mongoose.Types.ObjectId(userId) } },

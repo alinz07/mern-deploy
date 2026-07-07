@@ -184,6 +184,20 @@ export default function CheckPage() {
 
 	const dayLockedForViewer = dayLocked && !isAdmin;
 
+	const openCheckCommentDraft = useCallback(
+		(field) => {
+			setCommentOpen((o) => ({ ...o, [field]: true }));
+		},
+		[],
+	);
+
+	const openEquipCommentDraft = useCallback(
+		(field) => {
+			setECmtOpen((o) => ({ ...o, [field]: true }));
+		},
+		[],
+	);
+
 	// 3) Load equipment row
 	useEffect(() => {
 		const loadEquip = async () => {
@@ -200,15 +214,43 @@ export default function CheckPage() {
 						...tokenHeader(),
 					},
 				);
-				setEcheck(r.data);
+				if (r.data) {
+					setEcheck(r.data);
+				} else {
+					const created = await axios.post(
+						`${API}/api/equipment-checks`,
+						{
+							month: monthId,
+							day: dayId,
+							user: resolvedUserId,
+						},
+						tokenHeader(),
+					);
+					setEcheck(created.data);
+				}
 				setEquipAllowed(true);
 				setEquipMsg("");
 			} catch (e) {
 				const code = e?.response?.status;
 				if (code === 404) {
-					setEcheck(null);
-					setEquipAllowed(true);
-					setEquipMsg("");
+					try {
+						const created = await axios.post(
+							`${API}/api/equipment-checks`,
+							{
+								month: monthId,
+								day: dayId,
+								user: resolvedUserId,
+							},
+							tokenHeader(),
+						);
+						setEcheck(created.data);
+						setEquipAllowed(true);
+						setEquipMsg("");
+					} catch {
+						setEcheck(null);
+						setEquipAllowed(true);
+						setEquipMsg("Failed to load equipment check.");
+					}
 				} else if (code === 403) {
 					setEquipAllowed(false);
 				} else {
@@ -295,14 +337,16 @@ export default function CheckPage() {
 				return;
 			setSaving((s) => ({ ...s, [field]: true }));
 			const prev = check[field];
+			const next = !prev;
 			setCheck((c) => ({ ...c, [field]: !prev }));
 			try {
 				const res = await axios.patch(
 					`${API}/api/checks/${check._id}`,
-					{ [field]: !prev },
+					{ [field]: next },
 					tokenHeader(),
 				);
 				setCheck(res.data);
+				if (next === false) openCheckCommentDraft(field);
 				setMsg("");
 			} catch (err) {
 				const m =
@@ -315,7 +359,13 @@ export default function CheckPage() {
 				setSaving((s) => ({ ...s, [field]: false }));
 			}
 		},
-		[check, saving, bulkSaving, dayLockedForViewer],
+		[
+			check,
+			saving,
+			bulkSaving,
+			dayLockedForViewer,
+			openCheckCommentDraft,
+		],
 	);
 
 	const setAll = useCallback(
@@ -336,6 +386,9 @@ export default function CheckPage() {
 					tokenHeader(),
 				);
 				setCheck(res.data);
+				if (value === false) {
+					fieldKeys.forEach(openCheckCommentDraft);
+				}
 			} catch (err) {
 				const m =
 					err?.response?.data?.msg ||
@@ -347,7 +400,7 @@ export default function CheckPage() {
 				setBulkSaving(false);
 			}
 		},
-		[check, fieldKeys, bulkSaving, dayLockedForViewer],
+		[check, fieldKeys, bulkSaving, dayLockedForViewer, openCheckCommentDraft],
 	);
 
 	const toggleDayLock = async (nextLocked) => {
@@ -422,48 +475,20 @@ export default function CheckPage() {
 	};
 
 	// --------- Equipment handlers ----------
-	const enableEquipmentCheck = async () => {
-		if (dayLockedForViewer) return;
-		try {
-			const res = await axios.post(
-				`${API}/api/equipment-checks`,
-				{
-					month: monthId,
-					day: dayId,
-					user: resolvedUserId,
-					left: false,
-					right: false,
-					fmMic: false,
-				},
-				tokenHeader(),
-			);
-			setEcheck(res.data);
-			setEquipMsg("");
-		} catch (e) {
-			const code = e?.response?.status;
-			if (code === 403) {
-				setEquipAllowed(false);
-			} else {
-				setEquipMsg(
-					e?.response?.data?.msg ||
-						"Failed to enable equipment check",
-				);
-			}
-		}
-	};
-
 	const toggleEquip = async (field) => {
 		if (!echeck?._id || equipSaving[field] || dayLockedForViewer) return;
 		setEquipSaving((s) => ({ ...s, [field]: true }));
 		const prev = !!echeck[field];
+		const next = !prev;
 		setEcheck((c) => ({ ...c, [field]: !prev }));
 		try {
 			const res = await axios.patch(
 				`${API}/api/equipment-checks/${echeck._id}`,
-				{ [field]: !prev },
+				{ [field]: next },
 				tokenHeader(),
 			);
 			setEcheck(res.data);
+			if (next === false) openEquipCommentDraft(field);
 			setEquipMsg("");
 		} catch (e) {
 			setEcheck((c) => ({ ...c, [field]: prev }));
@@ -841,13 +866,9 @@ export default function CheckPage() {
 							<p style={{ color: "crimson" }}>{equipMsg}</p>
 						)}
 						{!echeck ? (
-							<button
-								type="button"
-								onClick={enableEquipmentCheck}
-								disabled={dayLockedForViewer}
-							>
-								Enable equipment check
-							</button>
+							<p style={{ opacity: 0.7, fontSize: 14 }}>
+								Loading equipment check...
+							</p>
 						) : (
 							<>
 								<table className="table">
