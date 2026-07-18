@@ -4,7 +4,6 @@ import React, {
 	useMemo,
 	useState,
 	useCallback,
-	useRef,
 } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import axios from "axios";
@@ -171,6 +170,7 @@ export default function UserDetails() {
 	const [stats, setStats] = useState(null);
 
 	const [commentsSelected, setCommentsSelected] = useState(null);
+	const [monthDataLoading, setMonthDataLoading] = useState(false);
 
 	// expand/collapse per comments row
 	const [openCur, setOpenCur] = useState({});
@@ -185,6 +185,7 @@ export default function UserDetails() {
 	const [loadingMonths, setLoadingMonths] = useState(true);
 	const [monthsError, setMonthsError] = useState("");
 	const [monthsSortDir, setMonthsSortDir] = useState("desc"); // newest->oldest
+	const [showMonthsTable, setShowMonthsTable] = useState(false);
 
 	// Add month UI
 	const [showAddMonth, setShowAddMonth] = useState(false);
@@ -196,34 +197,14 @@ export default function UserDetails() {
 	);
 	const [creatingMonth, setCreatingMonth] = useState(false);
 	const [createMonthError, setCreateMonthError] = useState("");
-	const statsMonthPickerRef = useRef(null);
 
 	const toggleCur = useCallback((field) => {
 		setOpenCur((p) => ({ ...p, [field]: !p[field] }));
 	}, []);
 
-	const scrollStatsPickerToTop = useCallback(() => {
-		const el = statsMonthPickerRef.current;
-		if (!el) return;
-
-		const scroller = document.scrollingElement || document.documentElement;
-		const top = el.getBoundingClientRect().top + scroller.scrollTop - 8;
-		scroller.scrollTo({ top, behavior: "auto" });
+	const onStatsMonthChange = useCallback((e) => {
+		setSelectedMonthId(e.target.value);
 	}, []);
-
-	const onStatsMonthChange = useCallback(
-		(e) => {
-			e.currentTarget.blur();
-			setStats(null);
-			setCommentsSelected(null);
-			setSelectedMonthId(e.target.value);
-
-			[0, 80, 180].forEach((delay) => {
-				window.setTimeout(scrollStatsPickerToTop, delay);
-			});
-		},
-		[scrollStatsPickerToTop],
-	);
 
 	// ✅ Single source of truth for months fetching (used by useEffect + after create)
 	const fetchMonthsForUser = useCallback(async () => {
@@ -333,10 +314,7 @@ export default function UserDetails() {
 		};
 
 		(async () => {
-			await Promise.all([
-				fetchUser(),
-				fetchMonthsForUser(),
-			]);
+			await Promise.all([fetchUser(), fetchMonthsForUser()]);
 		})();
 
 		return () => {
@@ -351,22 +329,24 @@ export default function UserDetails() {
 			if (!selectedMonthId) {
 				setStats(null);
 				setCommentsSelected({});
+				setMonthDataLoading(false);
 				return;
 			}
 
+			setMonthDataLoading(true);
 			try {
 				const [statsRes, commentsRes] = await Promise.all([
+					axios.get(`${API}/api/stats/user/${userId}/check-fields`, {
+						params: { monthId: selectedMonthId },
+						...tokenHeader(),
+					}),
 					axios.get(
-						`${API}/api/stats/user/${userId}/check-fields`,
+						`${API}/api/comments/by-user/${userId}/by-field`,
 						{
 							params: { monthId: selectedMonthId },
 							...tokenHeader(),
 						},
 					),
-					axios.get(`${API}/api/comments/by-user/${userId}/by-field`, {
-						params: { monthId: selectedMonthId },
-						...tokenHeader(),
-					}),
 				]);
 				if (!alive) return;
 				setStats(statsRes.data);
@@ -376,6 +356,8 @@ export default function UserDetails() {
 					setError("Session expired. Please sign in again.");
 					localStorage.removeItem("token");
 				}
+			} finally {
+				if (alive) setMonthDataLoading(false);
 			}
 		};
 
@@ -417,23 +399,20 @@ export default function UserDetails() {
 
 		return (
 			<div>
-				<div>{pct}% of days had all equipment</div>
-				<div style={{ marginTop: 4, opacity: 0.75 }}>
-					{allDays}/{totalDays} {dayWord(totalDays)}
-				</div>
+				{allDays}/{totalDays} {dayWord(totalDays)} had all equipment.{" "}
+				{pct}%
 			</div>
 		);
 	};
 
 	const renderEquipmentMissingDays = useCallback(
-		(cell) => {
+		(
+			cell,
+			emptyText = "No equipment missing on missed-check days",
+		) => {
 			const days = cell?.equipmentMissingDays || [];
 			if (!days.length) {
-				return (
-					<span style={{ opacity: 0.7 }}>
-						No equipment missing on missed-check days
-					</span>
-				);
+				return <span style={{ opacity: 0.7 }}>{emptyText}</span>;
 			}
 
 			return (
@@ -477,38 +456,9 @@ export default function UserDetails() {
 		[userId],
 	);
 
-	const statRows = useMemo(() => {
-		if (!stats) return null;
-
-		const selected = stats.selectedMonth;
-
-		return [
-			<tr key="equipment-summary">
-				<td>All equipment present</td>
-				<td>{renderEquipSummaryCell(selected)}</td>
-				<td />
-			</tr>,
-
-			...CHECK_FIELDS.map((k) => {
-				const cell = selected?.fields?.[k] || {
-					missed: 0,
-					equipmentMissing: {},
-					equipmentMissingDays: [],
-				};
-
-				return (
-					<tr key={k}>
-						<td>{labelize(k)}</td>
-						<td>{renderStatsCell(cell)}</td>
-						<td>{renderEquipmentMissingDays(cell)}</td>
-					</tr>
-				);
-			}),
-		];
-	}, [stats, renderEquipmentMissingDays]);
 	const renderCommentList = useCallback(
 		(list) => (
-			<ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
+			<ul style={{ margin: "0 0 0 16px", padding: 0 }}>
 				{list
 					.slice()
 					.sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
@@ -549,39 +499,88 @@ export default function UserDetails() {
 		[userId],
 	);
 
-	const commentsRows = useMemo(() => {
-		const selectedMap = commentsSelected || {};
-		return CHECK_FIELDS.map((f) => {
-			const list = selectedMap[f] || [];
+	const renderCommentCell = useCallback(
+		(field) => {
+			if (commentsSelected == null) return "Loading comments...";
+
+			const list = commentsSelected[field] || [];
 			const hasComments = list.length > 0;
 
-			return (
-				<tr key={f}>
-					<td>{labelize(f)}</td>
+			if (!hasComments) {
+				return (
+					<span className="muted">
+						no comments for {labelize(field)}
+					</span>
+				);
+			}
 
-					<td>
-						{hasComments ? (
-							<>
-								<button
-									className="linklike"
-									onClick={() => toggleCur(f)}
-								>
-									{openCur[f]
-										? "collapse"
-										: "expand all comments"}
-								</button>
-								{openCur[f] && renderCommentList(list)}
-							</>
-						) : (
-							<span className="muted">
-								no comments for {labelize(f)}
-							</span>
-						)}
-					</td>
-				</tr>
+			if (!openCur[field]) {
+				return (
+					<button
+						className="linklike"
+						onClick={() => toggleCur(field)}
+					>
+						expand all comments
+					</button>
+				);
+			}
+
+			return (
+				<div style={{ position: "relative", paddingRight: 78 }}>
+					<button
+						className="linklike"
+						onClick={() => toggleCur(field)}
+						style={{
+							position: "absolute",
+							top: 0,
+							right: 0,
+						}}
+					>
+						collapse
+					</button>
+					{renderCommentList(list)}
+				</div>
 			);
-		});
-	}, [commentsSelected, openCur, toggleCur, renderCommentList]);
+		},
+		[commentsSelected, openCur, toggleCur, renderCommentList],
+	);
+
+	const statRows = useMemo(() => {
+		if (!stats) return null;
+
+		const selected = stats.selectedMonth;
+
+		return [
+			<tr key="equipment-summary">
+				<td>Hearing Assistive Technology</td>
+				<td>{renderEquipSummaryCell(selected)}</td>
+				<td>
+					{renderEquipmentMissingDays(
+						selected,
+						"No equipment missing this month",
+					)}
+				</td>
+				<td />
+			</tr>,
+
+			...CHECK_FIELDS.map((k) => {
+				const cell = selected?.fields?.[k] || {
+					missed: 0,
+					equipmentMissing: {},
+					equipmentMissingDays: [],
+				};
+
+				return (
+					<tr key={k}>
+						<td>{labelize(k)}</td>
+						<td>{renderStatsCell(cell)}</td>
+						<td>{renderEquipmentMissingDays(cell)}</td>
+						<td>{renderCommentCell(k)}</td>
+					</tr>
+				);
+			}),
+		];
+	}, [stats, renderEquipmentMissingDays, renderCommentCell]);
 
 	const sortedMonths = useMemo(() => {
 		const list = (months || []).slice();
@@ -671,9 +670,7 @@ export default function UserDetails() {
 		(m) => String(m._id) === selectedMonthId,
 	);
 	const selectedMonthLabel =
-		selectedMonthFromList?.name ||
-		selectedMonth?.name ||
-		"Selected month";
+		selectedMonth?.name || selectedMonthFromList?.name || "Selected month";
 
 	if (error)
 		return (
@@ -714,6 +711,16 @@ export default function UserDetails() {
 				>
 					<h3 style={{ margin: 0 }}>Months</h3>
 
+					<button
+						type="button"
+						onClick={() => setShowMonthsTable((p) => !p)}
+						aria-expanded={showMonthsTable}
+					>
+						{showMonthsTable ? "Hide months" : "Show months"}
+					</button>
+
+					{showMonthsTable && (
+						<>
 					<select
 						value={monthsTableYear}
 						onChange={(e) => setMonthsTableYear(e.target.value)}
@@ -799,9 +806,12 @@ export default function UserDetails() {
 							? "Newest → Oldest"
 							: "Oldest → Newest"}
 					</button>
+						</>
+					)}
 				</div>
 
-				<table className="table grid" style={{ marginTop: 10 }}>
+				{showMonthsTable && (
+					<table className="table grid" style={{ marginTop: 10 }}>
 					<thead>
 						<tr>
 							<th>Month</th>
@@ -809,11 +819,21 @@ export default function UserDetails() {
 						</tr>
 					</thead>
 					<tbody>{monthsTableRows}</tbody>
-				</table>
+					</table>
+				)}
 			</div>
 
+			<h3
+				style={{
+					margin: "18px 0 10px",
+					textAlign: "center",
+					fontSize: "2rem",
+				}}
+			>
+				Sound Check Success
+			</h3>
+
 			<div
-				ref={statsMonthPickerRef}
 				style={{
 					display: "flex",
 					alignItems: "center",
@@ -835,54 +855,35 @@ export default function UserDetails() {
 						</option>
 					))}
 				</select>
+				{monthDataLoading && (
+					<span className="muted">
+						Loading {selectedMonthFromList?.name || "month"}...
+					</span>
+				)}
 			</div>
 
-			<div className="udetails-grid">
-				{/* Left: per-field success */}
-				<div>
-					<h3 style={{ marginTop: 8 }}>Sound Check Success</h3>
-					<table className="table grid">
-						<thead>
+			<div>
+				<table className="table grid">
+					<thead>
+						<tr>
+							<th style={{ textAlign: "center" }}>Sound</th>
+							<th style={{ textAlign: "center" }}>Statistics</th>
+							<th style={{ textAlign: "center" }}>
+								Days Equipment Was Missing
+							</th>
+							<th style={{ textAlign: "center" }}>
+								Comments ({selectedMonthLabel})
+							</th>
+						</tr>
+					</thead>
+					<tbody>
+						{statRows || (
 							<tr>
-								<th>Sound</th>
-								<th>{selectedMonthLabel}</th>
-								<th>Days Equipment Was Missing</th>
+								<td colSpan={4}>Loading stats...</td>
 							</tr>
-						</thead>
-						<tbody>
-							{statRows || (
-								<tr>
-									<td colSpan={3}>Loading stats...</td>
-								</tr>
-							)}
-						</tbody>
-					</table>{" "}
-				</div>
-
-				{/* Right: per-field comments (current & previous) */}
-				<div>
-					<h3 style={{ marginTop: 8 }}>
-						Comments by Sound{" "}
-						<small>({selectedMonthLabel})</small>
-					</h3>
-					<table className="table grid">
-						<thead>
-							<tr>
-								<th>Field</th>
-								<th>{selectedMonthLabel}</th>
-							</tr>
-						</thead>
-						<tbody>
-							{commentsSelected == null ? (
-								<tr>
-									<td colSpan={2}>Loading comments...</td>
-								</tr>
-							) : (
-								commentsRows
-							)}
-						</tbody>
-					</table>
-				</div>
+						)}
+					</tbody>
+				</table>
 			</div>
 		</div>
 	);

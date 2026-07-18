@@ -479,6 +479,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 					totalDays: 0,
 					equipmentAllPresentDays: 0,
 					equipmentAllPresentPct: 0,
+					equipmentMissingDays: [],
 					fields: Object.fromEntries(
 						CHECK_FIELDS.map((field) => [
 							field,
@@ -561,11 +562,24 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 			const totalDays = days.length;
 
 			let equipmentAllPresentDays = 0;
+			const equipmentMissingDays = [];
 
 			for (const d of days) {
 				const eq = equipByDayId.get(String(d._id));
 				if (isEquipmentAllPresent(eq)) {
 					equipmentAllPresentDays += 1;
+				}
+
+				const dayEquipmentMissing = newEquipmentMissingCounts();
+				addEquipmentMissingCounts(dayEquipmentMissing, eq);
+				if (hasEquipmentMissing(dayEquipmentMissing)) {
+					equipmentMissingDays.push({
+						dayId: String(d._id),
+						monthId: String(month._id),
+						monthName: month.name,
+						dayNumber: d.dayNumber,
+						equipmentMissing: dayEquipmentMissing,
+					});
 				}
 			}
 
@@ -617,6 +631,7 @@ router.get("/user/:userId/check-fields", auth, async (req, res) => {
 				totalDays,
 				equipmentAllPresentDays,
 				equipmentAllPresentPct,
+				equipmentMissingDays,
 				fields,
 			};
 		}
