@@ -40,7 +40,15 @@ const Login = ({ setUser }) => {
 			}
 		} catch (err) {
 			console.error("Login error:", err.response?.data || err.message);
-			setMessage("Failed to login - wrong credentials");
+			if (err.response?.data?.msg) {
+				setMessage(err.response.data.msg);
+			} else if (err.request) {
+				setMessage(
+					"Login request could not reach the backend. Make sure npm run dev is running and the database connection succeeded.",
+				);
+			} else {
+				setMessage("Login failed before the request was sent.");
+			}
 		}
 	};
 

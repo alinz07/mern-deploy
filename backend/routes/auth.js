@@ -1,6 +1,7 @@
 // server/routes/auth.js
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const config = require("../config");
@@ -168,12 +169,31 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
 	const { username, password } = req.body;
 	try {
+		if (mongoose.connection.readyState !== 1) {
+			return res.status(503).json({
+				msg: "Database is not connected. Restart the backend now that internet is available.",
+				code: "DB_NOT_CONNECTED",
+			});
+		}
+		if (!username || !password) {
+			return res
+				.status(400)
+				.json({ msg: "Username and password are required" });
+		}
+
 		let user = await User.findOne({ username });
-		if (!user) return res.status(400).json({ msg: "Invalid credentials" });
+		if (!user)
+			return res.status(401).json({
+				msg: "No account found with that username.",
+				code: "USER_NOT_FOUND",
+			});
 
 		const isMatch = await bcrypt.compare(password, user.password);
 		if (!isMatch)
-			return res.status(400).json({ msg: "Invalid credentials" });
+			return res.status(401).json({
+				msg: "Password does not match that username.",
+				code: "PASSWORD_MISMATCH",
+			});
 
 		const payload = {
 			user: {
@@ -193,8 +213,22 @@ router.post("/login", async (req, res) => {
 			}
 		);
 	} catch (err) {
-		console.error(err.message);
-		res.status(500).send("Server Error");
+		console.error("Login error:", err);
+		const dbErrorNames = [
+			"MongoNetworkError",
+			"MongoServerSelectionError",
+			"MongooseServerSelectionError",
+		];
+		if (dbErrorNames.includes(err?.name)) {
+			return res.status(503).json({
+				msg: "Database connection failed. Check internet/VPN/MongoDB Atlas access, then restart the backend.",
+				code: "DB_CONNECTION_FAILED",
+			});
+		}
+		res.status(500).json({
+			msg: "Login failed because of a server error.",
+			code: "LOGIN_SERVER_ERROR",
+		});
 	}
 });
 

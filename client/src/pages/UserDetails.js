@@ -1,10 +1,5 @@
 // client/pages/UserDetails.js
-import React, {
-	useEffect,
-	useMemo,
-	useState,
-	useCallback,
-} from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import axios from "axios";
 
@@ -406,10 +401,7 @@ export default function UserDetails() {
 	};
 
 	const renderEquipmentMissingDays = useCallback(
-		(
-			cell,
-			emptyText = "No equipment missing on missed-check days",
-		) => {
+		(cell, emptyText = "No equipment missing on missed-check days") => {
 			const days = cell?.equipmentMissingDays || [];
 			if (!days.length) {
 				return <span style={{ opacity: 0.7 }}>{emptyText}</span>;
@@ -721,104 +713,108 @@ export default function UserDetails() {
 
 					{showMonthsTable && (
 						<>
-					<select
-						value={monthsTableYear}
-						onChange={(e) => setMonthsTableYear(e.target.value)}
-						title="Filter months table by year"
-					>
-						{monthsTableYearOptions.map((year) => (
-							<option key={year} value={year}>
-								{year}
-							</option>
-						))}
-					</select>
-
-					<button
-						onClick={() => {
-							setCreateMonthError("");
-							setShowAddMonth((p) => !p);
-						}}
-					>
-						{showAddMonth ? "Cancel" : "Add Month"}
-					</button>
-
-					{showAddMonth && (
-						<div
-							style={{
-								display: "flex",
-								alignItems: "center",
-								gap: 8,
-								flexWrap: "wrap",
-							}}
-						>
 							<select
-								value={newMonthName}
+								value={monthsTableYear}
 								onChange={(e) =>
-									setNewMonthName(e.target.value)
+									setMonthsTableYear(e.target.value)
 								}
+								title="Filter months table by year"
 							>
-								{MONTH_NAMES.map((m) => (
-									<option key={m} value={m}>
-										{m}
-									</option>
-								))}
-							</select>
-
-							<select
-								value={newMonthYear}
-								onChange={(e) =>
-									setNewMonthYear(e.target.value)
-								}
-							>
-								{YEAR_OPTIONS.map((y) => (
-									<option key={y} value={y}>
-										{y}
+								{monthsTableYearOptions.map((year) => (
+									<option key={year} value={year}>
+										{year}
 									</option>
 								))}
 							</select>
 
 							<button
-								onClick={onCreateMonth}
-								disabled={creatingMonth}
+								onClick={() => {
+									setCreateMonthError("");
+									setShowAddMonth((p) => !p);
+								}}
 							>
-								{creatingMonth ? "Creating..." : "Create"}
+								{showAddMonth ? "Cancel" : "Add Month"}
 							</button>
 
-							{createMonthError && (
-								<span style={{ color: "crimson" }}>
-									{createMonthError}
-								</span>
-							)}
-						</div>
-					)}
+							{showAddMonth && (
+								<div
+									style={{
+										display: "flex",
+										alignItems: "center",
+										gap: 8,
+										flexWrap: "wrap",
+									}}
+								>
+									<select
+										value={newMonthName}
+										onChange={(e) =>
+											setNewMonthName(e.target.value)
+										}
+									>
+										{MONTH_NAMES.map((m) => (
+											<option key={m} value={m}>
+												{m}
+											</option>
+										))}
+									</select>
 
-					<button
-						type="button"
-						onClick={() =>
-							setMonthsSortDir((d) =>
-								d === "desc" ? "asc" : "desc",
-							)
-						}
-						title="Toggle month/year sort"
-					>
-						Sort:{" "}
-						{monthsSortDir === "desc"
-							? "Newest → Oldest"
-							: "Oldest → Newest"}
-					</button>
+									<select
+										value={newMonthYear}
+										onChange={(e) =>
+											setNewMonthYear(e.target.value)
+										}
+									>
+										{YEAR_OPTIONS.map((y) => (
+											<option key={y} value={y}>
+												{y}
+											</option>
+										))}
+									</select>
+
+									<button
+										onClick={onCreateMonth}
+										disabled={creatingMonth}
+									>
+										{creatingMonth
+											? "Creating..."
+											: "Create"}
+									</button>
+
+									{createMonthError && (
+										<span style={{ color: "crimson" }}>
+											{createMonthError}
+										</span>
+									)}
+								</div>
+							)}
+
+							<button
+								type="button"
+								onClick={() =>
+									setMonthsSortDir((d) =>
+										d === "desc" ? "asc" : "desc",
+									)
+								}
+								title="Toggle month/year sort"
+							>
+								Sort:{" "}
+								{monthsSortDir === "desc"
+									? "Newest → Oldest"
+									: "Oldest → Newest"}
+							</button>
 						</>
 					)}
 				</div>
 
 				{showMonthsTable && (
 					<table className="table grid" style={{ marginTop: 10 }}>
-					<thead>
-						<tr>
-							<th>Month</th>
-							<th>Month Start</th>
-						</tr>
-					</thead>
-					<tbody>{monthsTableRows}</tbody>
+						<thead>
+							<tr>
+								<th>Month</th>
+								<th>Month Start</th>
+							</tr>
+						</thead>
+						<tbody>{monthsTableRows}</tbody>
 					</table>
 				)}
 			</div>
