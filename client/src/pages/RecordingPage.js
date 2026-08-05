@@ -21,6 +21,9 @@ const FIELD_OPTIONS = [
 ];
 
 const DEFAULT_FIELD = "checkone";
+function getFieldLabel(value) {
+	return FIELD_OPTIONS.find(([field]) => field === value)?.[1] || value;
+}
 const UNSAVED_WARNING =
 	"⚠️ You have unsaved recordings. Save them before Transcribe All.";
 
@@ -99,6 +102,7 @@ function RecordingCard({
 	onChanged,
 	localKey,
 	onSavedLocal,
+	existingRecordings = [],
 	dayLockedForViewer = false,
 }) {
 	const [doc, setDoc] = useState(initialDoc);
@@ -178,6 +182,20 @@ function RecordingCard({
 
 			if (!audio.blob) {
 				setMsg("Please record audio first.");
+				return;
+			}
+
+			const duplicate = existingRecordings.find(
+				(rec) =>
+					rec?.field === field &&
+					String(rec?._id || "") !== String(doc?._id || ""),
+			);
+			if (duplicate) {
+				setMsg(
+					`A recording for ${getFieldLabel(
+						field,
+					)} has already been saved for this day.`,
+				);
 				return;
 			}
 
@@ -287,7 +305,7 @@ function RecordingCard({
 						value={field}
 						onChange={(e) => setField(e.target.value)}
 						style={{ padding: 2 }}
-						disabled={dayLockedForViewer}
+						disabled={hasIdNow || dayLockedForViewer}
 					>
 						{FIELD_OPTIONS.map(([value, label]) => (
 							<option key={value} value={value}>
@@ -431,6 +449,7 @@ function RecordingPage({
 	}, [hasUnsaved, transcribing]);
 
 	const hasAnyAudio = items.some((rec) => rec.audioFileId);
+	const savedRecordingCount = items.filter((rec) => rec.audioFileId).length;
 
 	const load = async () => {
 		if (!dayId || !userId) return;
@@ -485,18 +504,16 @@ function RecordingPage({
 			return;
 		}
 
-		const idsWithAudio = items
-			.filter((rec) => rec.audioFileId)
-			.map((rec) => rec._id);
-
-		if (!idsWithAudio.length) {
+		if (!savedRecordingCount) {
 			alert("Please record and save audio before transcribing.");
 			return;
 		}
 
 		const ok = window.confirm(
 			[
-				"Transcribe all saved recordings on this day?",
+				`Transcribe ${savedRecordingCount} saved recording${
+					savedRecordingCount === 1 ? "" : "s"
+				} for this student on this day?`,
 				"",
 				"Transcription will run in the background.",
 				"You will be redirected to the Day List immediately.",
@@ -649,6 +666,7 @@ function RecordingPage({
 					userId={userId}
 					monthId={monthId}
 					initialDoc={null}
+					existingRecordings={items}
 					dayLockedForViewer={dayLockedForViewer}
 					onChanged={(savedDoc) => {
 						if (savedDoc && savedDoc._id) {
@@ -671,6 +689,7 @@ function RecordingPage({
 					userId={userId}
 					monthId={monthId}
 					initialDoc={doc}
+					existingRecordings={items}
 					dayLockedForViewer={dayLockedForViewer}
 					onChanged={(maybeDeletedId) => {
 						if (maybeDeletedId) removeById(maybeDeletedId);

@@ -44,7 +44,7 @@ const RecordingSchema = new mongoose.Schema(
 		audioIPA: { type: String },
 
 		// book-keeping
-		durationAudiotMs: { type: Number },
+		durationAudioMs: { type: Number },
 	},
 	{ timestamps: true }
 );

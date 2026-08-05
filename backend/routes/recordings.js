@@ -312,6 +312,19 @@ router.post("/", auth, upload.single("audio"), async (req, res) => {
 			return res.status(editPerm.status).json({ msg: editPerm.msg });
 		}
 
+		const existing = await Recording.findOne({
+			day: dayId,
+			user: userId,
+			field,
+		})
+			.select("_id")
+			.lean();
+		if (existing) {
+			return res.status(409).json({
+				msg: "A recording for this sound check has already been saved for this day.",
+			});
+		}
+
 		const bucket = getBucket();
 
 		const saveOne = async (file) =>
@@ -329,32 +342,23 @@ router.post("/", auth, upload.single("audio"), async (req, res) => {
 		const audioFile = req.file || null;
 		const audioFileId = await saveOne(audioFile);
 
-		// Enforce ONE recording per (day, user, field) by upserting.
-		const filter = { day: dayId, user: userId, field };
-
-		const set = {};
-		if (audioFileId) set.audioFileId = audioFileId;
-		if (durationAudioMs != null)
-			set.durationAudioMs = Number(durationAudioMs);
-
-		const update = {
-			$set: set,
-			$setOnInsert: {
-				day: dayId,
-				user: userId,
-				field,
-			},
-		};
-
-		const rec = await Recording.findOneAndUpdate(filter, update, {
-			new: true,
-			upsert: true,
-			setDefaultsOnInsert: true,
+		const rec = await Recording.create({
+			day: dayId,
+			user: userId,
+			field,
+			audioFileId,
+			durationAudioMs:
+				durationAudioMs != null ? Number(durationAudioMs) : undefined,
 		});
 
 		return res.json(rec);
 	} catch (e) {
 		console.error("POST /api/recordings error", e);
+		if (e?.code === 11000) {
+			return res.status(409).json({
+				msg: "A recording for this sound check has already been saved for this day.",
+			});
+		}
 		return res.status(500).json({ msg: "Server error" });
 	}
 });
