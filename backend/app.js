@@ -41,8 +41,9 @@ mongoose
 	.connect(process.env.MONGODB_URI)
 	.then(() => {
 		const PORT = process.env.PORT || 8000;
-		app.listen(PORT, () => {
-			console.log(`App is Listening on PORT ${PORT}`);
+		const HOST = process.env.HOST || "0.0.0.0";
+		app.listen(PORT, HOST, () => {
+			console.log(`App is Listening on ${HOST}:${PORT}`);
 		});
 	})
 	.catch((err) => {
