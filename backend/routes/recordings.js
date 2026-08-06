@@ -19,6 +19,12 @@ const transcribeQueue = [];
 let transcribeWorkerRunning = false;
 
 async function enqueueDayTranscription({ dayId, userId, token }) {
+	console.log("[transcribeQueue] enqueue", {
+		dayId: String(dayId),
+		userId: String(userId),
+		hasToken: !!token,
+		queueLengthBefore: transcribeQueue.length,
+	});
 	transcribeQueue.push({ dayId, userId, token });
 	runTranscribeWorker().catch((e) =>
 		console.error("[transcribeWorker] fatal", e),
@@ -40,6 +46,12 @@ async function runTranscribeWorker() {
 }
 
 async function processDayTranscriptionJob({ dayId, userId, token }) {
+	console.log("[transcribeWorker] start job", {
+		dayId: String(dayId),
+		userId: String(userId),
+		hasToken: !!token,
+	});
+
 	// mark processing
 	await Day.updateOne(
 		{ _id: dayId },
@@ -55,13 +67,30 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 	try {
 		// find recordings for this day/user
 		const recs = await Recording.find({ day: dayId, user: userId })
-			.select("_id audioFileId")
+			.select("_id field audioFileId audioText audioIPA")
 			.lean();
 
 		const ids = recs.filter((r) => r.audioFileId).map((r) => String(r._id));
+		console.log("[transcribeWorker] recordings found", {
+			dayId: String(dayId),
+			userId: String(userId),
+			recordingCount: recs.length,
+			withAudioCount: ids.length,
+			recordings: recs.map((r) => ({
+				id: String(r._id),
+				field: r.field,
+				hasAudio: !!r.audioFileId,
+				hasText: !!r.audioText,
+				hasIPA: !!r.audioIPA,
+			})),
+		});
 
 		// nothing to do
 		if (!ids.length) {
+			console.log("[transcribeWorker] no audio recordings, marking done", {
+				dayId: String(dayId),
+				userId: String(userId),
+			});
 			await Day.updateOne(
 				{ _id: dayId },
 				{
@@ -76,6 +105,7 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 
 		// run sequentially to avoid OOM / spikes
 		for (const id of ids) {
+			console.log("[transcribeWorker] transcribing recording", { id });
 			const resp = await fetch(
 				`${selfBase}/api/recordings/${id}/transcribe`,
 				{
@@ -91,12 +121,31 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 
 			if (!resp.ok) {
 				const txt = await resp.text().catch(() => "");
+				console.error("[transcribeWorker] recording failed", {
+					id,
+					status: resp.status,
+					body: txt.slice(0, 1000),
+				});
 				throw new Error(
 					`Transcribe failed (${resp.status}): ${txt.slice(0, 300)}`,
 				);
 			}
+
+			const body = await resp.json().catch(() => null);
+			console.log("[transcribeWorker] recording complete", {
+				id,
+				hasText: !!body?.audioText,
+				hasIPA: !!body?.audioIPA,
+				textPreview: body?.audioText ? body.audioText.slice(0, 120) : "",
+				ipaPreview: body?.audioIPA ? body.audioIPA.slice(0, 120) : "",
+			});
 		}
 
+		console.log("[transcribeWorker] job done", {
+			dayId: String(dayId),
+			userId: String(userId),
+			transcribedCount: ids.length,
+		});
 		await Day.updateOne(
 			{ _id: dayId },
 			{
@@ -196,6 +245,12 @@ function assertDayEditAllowed({ req, day }) {
 router.post("/transcribe-day", auth, async (req, res) => {
 	try {
 		const { dayId, userId } = req.body;
+		console.log("[recordings/transcribe-day] request", {
+			dayId,
+			userId,
+			requesterId: req.user?.id,
+			requesterRole: req.user?.role,
+		});
 
 		if (
 			!mongoose.isValidObjectId(dayId) ||
@@ -275,6 +330,11 @@ router.post("/transcribe-day", auth, async (req, res) => {
 
 		const token = req.header("x-auth-token");
 		await enqueueDayTranscription({ dayId, userId, token });
+		console.log("[recordings/transcribe-day] queued", {
+			dayId,
+			userId,
+			status: updated.transcription?.status || "queued",
+		});
 
 		return res.status(202).json({
 			ok: true,
@@ -576,6 +636,15 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 		}
 
 		const internalJob = req.get("x-transcribe-job") === "1";
+		console.log("[recordings/:id/transcribe] start", {
+			id,
+			field: rec.field,
+			userId: String(rec.user),
+			dayId: String(rec.day),
+			internalJob,
+			hasAudio: !!rec.audioFileId,
+			audioFileId: rec.audioFileId ? String(rec.audioFileId) : null,
+		});
 		if (!internalJob) {
 			const day = await Day.findById(rec.day)
 				.select("transcription.status editingLock")
@@ -719,6 +788,11 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 		// DUMP
 		try {
 			aPath = await dump(rec.audioFileId);
+			console.log("[recordings/:id/transcribe] dump complete", {
+				id,
+				aPath,
+				hasPath: !!aPath,
+			});
 		} catch (err) {
 			console.error("dump error", err);
 			return res.status(500).json(
@@ -733,6 +807,11 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 		// FFMPEG
 		try {
 			aWav = await toWav16kMono(aPath);
+			console.log("[recordings/:id/transcribe] ffmpeg complete", {
+				id,
+				aWav,
+				hasPath: !!aWav,
+			});
 		} catch (err) {
 			console.error("ffmpeg error", err);
 			return res.status(500).json(
@@ -748,6 +827,20 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 
 		// PYTHON
 		const audioRes = await callPy(aWav);
+		console.log("[recordings/:id/transcribe] python complete", {
+			id,
+			ok: audioRes.ok,
+			code: audioRes.code,
+			signal: audioRes.signal,
+			oomLikely: audioRes.oomLikely,
+			hasText: !!audioRes.text,
+			hasIPA: !!audioRes.ipa,
+			textPreview: audioRes.text ? audioRes.text.slice(0, 120) : "",
+			ipaPreview: audioRes.ipa ? audioRes.ipa.slice(0, 120) : "",
+			stderrTail: audioRes.stderrTail,
+			stdoutTail: audioRes.stdoutTail,
+			spawnError: audioRes.spawnError,
+		});
 
 		if (!audioRes.ok) {
 			return res.status(500).json(
@@ -762,6 +855,13 @@ router.post("/:id/transcribe", auth, async (req, res) => {
 		rec.audioText = audioRes.text || "";
 		rec.audioIPA = audioRes.ipa || "";
 		await rec.save();
+		console.log("[recordings/:id/transcribe] saved", {
+			id,
+			hasText: !!rec.audioText,
+			hasIPA: !!rec.audioIPA,
+			textLength: rec.audioText ? rec.audioText.length : 0,
+			ipaLength: rec.audioIPA ? rec.audioIPA.length : 0,
+		});
 
 		return res.json(rec);
 	} catch (e) {

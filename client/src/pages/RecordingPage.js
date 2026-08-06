@@ -459,7 +459,36 @@ function RecordingPage({
 				`${API}/api/recordings/by-day?day=${dayId}&user=${userId}`,
 				tokenHeader(),
 			);
+			console.log("[RecordingPage] Loaded recordings", {
+				dayId,
+				userId,
+				count: data?.length || 0,
+				recordings: (data || []).map((rec) => ({
+					id: rec._id,
+					field: rec.field,
+					hasAudio: !!rec.audioFileId,
+					hasText: !!rec.audioText,
+					hasIPA: !!rec.audioIPA,
+				})),
+			});
 			setItems(data || []);
+
+			try {
+				const dayRes = await axios.get(`${API}/api/days/${dayId}`, tokenHeader());
+				console.log("[RecordingPage] Day transcription status", {
+					dayId,
+					status: dayRes.data?.transcription?.status,
+					error: dayRes.data?.transcription?.error,
+					requestedAt: dayRes.data?.transcription?.requestedAt,
+					startedAt: dayRes.data?.transcription?.startedAt,
+					finishedAt: dayRes.data?.transcription?.finishedAt,
+				});
+			} catch (dayErr) {
+				console.warn(
+					"[RecordingPage] Could not load day transcription status",
+					dayErr?.response?.data || dayErr.message,
+				);
+			}
 		} catch (e) {
 			console.error("load recordings", e);
 		} finally {
@@ -490,21 +519,46 @@ function RecordingPage({
 	};
 
 	const transcribeAll = async () => {
+		console.group("[RecordingPage] Transcribe all");
+		console.log("Starting transcribe-all flow", {
+			dayId,
+			userId,
+			monthId,
+			itemCount: items.length,
+			savedRecordingCount,
+			hasUnsaved,
+			dayLockedForViewer,
+			recordings: items.map((rec) => ({
+				id: rec._id,
+				field: rec.field,
+				hasAudio: !!rec.audioFileId,
+				hasText: !!rec.audioText,
+				hasIPA: !!rec.audioIPA,
+			})),
+		});
 		if (dayLockedForViewer) {
+			console.warn("Blocked: day is locked for viewer");
+			console.groupEnd();
 			setMsg("This day is locked by the teacher.");
 			return;
 		}
 
 		if (hasUnsaved) {
+			console.warn("Blocked: unsaved local recording cards exist");
+			console.groupEnd();
 			setMsg(UNSAVED_WARNING);
 			return;
 		}
 		if (!items.length) {
+			console.warn("Blocked: no saved recording documents");
+			console.groupEnd();
 			alert("No saved recordings to transcribe.");
 			return;
 		}
 
 		if (!savedRecordingCount) {
+			console.warn("Blocked: saved recording documents have no audioFileId");
+			console.groupEnd();
 			alert("Please record and save audio before transcribing.");
 			return;
 		}
@@ -523,7 +577,11 @@ function RecordingPage({
 			].join("\n"),
 		);
 
-		if (!ok) return;
+		if (!ok) {
+			console.log("User cancelled transcribe-all confirmation");
+			console.groupEnd();
+			return;
+		}
 
 		setTranscribing(true);
 		onTranscribingChange?.(true);
@@ -532,20 +590,24 @@ function RecordingPage({
 		);
 
 		try {
-			await axios.post(
+			const { data } = await axios.post(
 				`${API}/api/recordings/transcribe-day`,
 				{ dayId, userId },
 				{ headers: { "x-auth-token": localStorage.getItem("token") } },
 			);
+			console.log("transcribe-day accepted", data);
 
 			sessionStorage.setItem(
 				"transcribeNotice",
 				"✅ Transcription started in the background. This day will be locked until it finishes.",
 			);
 
+			console.log("Navigating back to month", { monthId });
+			console.groupEnd();
 			navigate(`/months/${monthId}`);
 		} catch (err) {
 			console.error("[RecordingPage] transcribe-day error", err);
+			console.groupEnd();
 			setTranscribing(false);
 			onTranscribingChange?.(false);
 			setMsg(
