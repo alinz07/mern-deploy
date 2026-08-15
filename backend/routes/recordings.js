@@ -8,6 +8,9 @@ const auth = require("../middleware/auth");
 const Recording = require("../models/Recording");
 const Day = require("../models/Day");
 const Month = require("../models/Month");
+const User = require("../models/User");
+const AdminUser = require("../models/AdminUser");
+const EquipmentCheck = require("../models/EquipmentCheck");
 
 console.log("[recordings.js] routes module loaded");
 
@@ -195,6 +198,75 @@ function isValidField(field) {
 		"checkten",
 	]);
 	return VALID_FIELDS.has(field);
+}
+
+const FIELD_LABELS = {
+	checkone: "u (oo)",
+	checktwo: "a (ah)",
+	checkthree: "i (ee)",
+	checkfour: "s (s)",
+	checkfive: "sh",
+	checksix: "m (m)",
+	checkseven: "n (n)",
+	checkeight: "j",
+	checknine: "z (z)",
+	checkten: "h (h)",
+};
+
+const FIELD_ORDER = Object.keys(FIELD_LABELS);
+
+function csvCell(value) {
+	if (value == null) return '""';
+	return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+function csvRow(values) {
+	return values.map(csvCell).join(",");
+}
+
+function excelText(value) {
+	return `="${String(value || "").replace(/"/g, '""')}"`;
+}
+
+function formatExportDate(monthName, dayNumber) {
+	const match = String(monthName || "").match(/^([A-Za-z]+)\s+(\d{4})$/);
+	if (!match) return `${monthName || "Unknown month"} ${dayNumber}`;
+	return `${match[1]} ${dayNumber}, ${match[2]}`;
+}
+
+function formatExportMonth(monthName) {
+	const match = String(monthName || "").match(/^([A-Za-z]+)\s+(\d{4})$/);
+	if (!match) return monthName || "Unknown month";
+	const month =
+		match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+	return `${month} ${match[2]}`;
+}
+
+function filenameSafe(value) {
+	return String(value || "")
+		.trim()
+		.replace(/[^a-z0-9]+/gi, "-")
+		.replace(/^-+|-+$/g, "")
+		.toLowerCase();
+}
+
+function equipmentMissingText(eq) {
+	if (!eq) return "No equipment check";
+
+	const missing = [];
+	const leftMissing = eq.left === false;
+	const rightMissing = eq.right === false;
+
+	if (leftMissing && rightMissing) {
+		missing.push("Both");
+	} else {
+		if (leftMissing) missing.push("Left");
+		if (rightMissing) missing.push("Right");
+	}
+
+	if (eq.fmMic === false) missing.push("FM Mic");
+
+	return missing.length ? missing.join("; ") : "None";
 }
 
 async function assertTenantAndPermForDay({ req, dayId, userId }) {
@@ -447,6 +519,97 @@ router.get("/by-day", auth, async (req, res) => {
 		return res.json(list);
 	} catch (e) {
 		console.error("GET /api/recordings/by-day error", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
+
+// GET /api/recordings/export-day?day=...&user=...
+router.get("/export-day", auth, async (req, res) => {
+	try {
+		const { day, user } = req.query;
+		if (!mongoose.isValidObjectId(day) || !mongoose.isValidObjectId(user)) {
+			return res.status(400).json({ msg: "Invalid query params" });
+		}
+
+		const perm = await assertTenantAndPermForDay({
+			req,
+			dayId: day,
+			userId: user,
+		});
+		if (!perm.ok) return res.status(perm.status).json({ msg: perm.msg });
+
+		const dayDoc = perm.day;
+		const [month, student, adminOrg, equipmentCheck, recordings] =
+			await Promise.all([
+				Month.findById(dayDoc.month).lean(),
+				User.findById(user).select("username").lean(),
+				AdminUser.findById(dayDoc.adminUser || req.user.adminUser)
+					.select("name")
+					.lean(),
+				EquipmentCheck.findOne({
+					user,
+					month: dayDoc.month,
+					day,
+				}).lean(),
+				Recording.find({ day, user })
+					.select("field audioText audioIPA createdAt")
+					.lean(),
+			]);
+
+		if (!month) return res.status(404).json({ msg: "Month not found" });
+		if (!student) return res.status(404).json({ msg: "User not found" });
+
+		const monthLabel = formatExportMonth(month.name);
+		const dateLabel = formatExportDate(month.name, dayDoc.dayNumber);
+		const equipmentMissing = equipmentMissingText(equipmentCheck);
+		const sortedRecordings = [...recordings].sort((a, b) => {
+			const aIndex = FIELD_ORDER.indexOf(a.field);
+			const bIndex = FIELD_ORDER.indexOf(b.field);
+			return (
+				(aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex) -
+				(bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex)
+			);
+		});
+
+		const rows = [
+			csvRow(["Student", student.username || "Unknown student"]),
+			csvRow(["Teacher", adminOrg?.name || "Unknown teacher"]),
+			csvRow(["Month", excelText(monthLabel)]),
+			"",
+			csvRow([
+				"Date",
+				"Sound",
+				"Text",
+				"IPA Transcription",
+				"Equipment Missing",
+			]),
+			...sortedRecordings.map((rec) =>
+				csvRow([
+					dateLabel,
+					FIELD_LABELS[rec.field] || rec.field,
+					rec.audioText || "",
+					rec.audioIPA || "",
+					equipmentMissing,
+				]),
+			),
+		];
+
+		const filename = [
+			"transcriptions",
+			filenameSafe(student.username),
+			filenameSafe(dateLabel),
+		]
+			.filter(Boolean)
+			.join("-");
+
+		res.setHeader("Content-Type", "text/csv; charset=utf-8");
+		res.setHeader(
+			"Content-Disposition",
+			`attachment; filename="${filename || "transcriptions"}.csv"`,
+		);
+		return res.send(`\uFEFF${rows.join("\n")}`);
+	} catch (e) {
+		console.error("GET /api/recordings/export-day error", e);
 		return res.status(500).json({ msg: "Server error" });
 	}
 });

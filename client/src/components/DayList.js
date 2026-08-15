@@ -14,6 +14,7 @@ export default function DayList() {
 	const [loading, setLoading] = useState(true);
 	const [msg, setMsg] = useState("");
 	const [viewer, setViewer] = useState(null);
+	const [refreshing, setRefreshing] = useState(false);
 
 	// controls for adding a day
 	const [env, setEnv] = useState("online");
@@ -119,12 +120,25 @@ export default function DayList() {
 		return mName === currentMonthName && yStr === currentYear;
 	}, [monthName]);
 
-	const refreshDays = async () => {
-		const res = await axios.get(
-			`${API}/api/days?monthId=${monthId}`,
-			tokenHeader(),
-		);
-		setDays(res.data || []);
+	const refreshDays = async ({ showMessage = false } = {}) => {
+		if (!monthId) return;
+		setRefreshing(true);
+		try {
+			const res = await axios.get(
+				`${API}/api/days?monthId=${monthId}`,
+				tokenHeader(),
+			);
+			setDays(res.data || []);
+			if (showMessage) setMsg("Days refreshed.");
+		} catch (e) {
+			const m =
+				e?.response?.data?.msg ||
+				e?.response?.data?.error ||
+				"Failed to refresh days";
+			setMsg(m);
+		} finally {
+			setRefreshing(false);
+		}
 	};
 
 	const createDay = async (dayNumber) => {
@@ -283,6 +297,25 @@ export default function DayList() {
 
 	return (
 		<div className="day-list">
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					gap: 8,
+					marginTop: 12,
+					marginBottom: 12,
+				}}
+			>
+				<button
+					type="button"
+					onClick={() => refreshDays({ showMessage: true })}
+					disabled={refreshing}
+					title="Refresh days and transcription statuses"
+				>
+					{refreshing ? "Refreshing..." : "Refresh"}
+				</button>
+			</div>
+
 			<div
 				style={{
 					display: "flex",

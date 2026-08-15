@@ -40,13 +40,6 @@ function formatMs(ms) {
 	return `${m}:${ss}`;
 }
 
-// Helper for CSV values
-function escapeCsv(value) {
-	if (value == null) return '""';
-	const str = String(value).replace(/"/g, '""');
-	return `"${str}"`;
-}
-
 // A self-contained recorder for a single audio clip
 function useSideRecorder() {
 	const mediaRef = useRef(null);
@@ -617,7 +610,7 @@ function RecordingPage({
 		}
 	};
 
-	const exportAllTranscriptions = () => {
+	const exportAllTranscriptions = async () => {
 		if (!items.length) {
 			alert("No recordings to export.");
 			return;
@@ -626,42 +619,34 @@ function RecordingPage({
 		setExportingAll(true);
 
 		try {
-			const rows = [];
-			rows.push(["RecordingId", "Text", "IPA"].join(","));
+			const response = await axios.get(
+				`${API}/api/recordings/export-day?day=${dayId}&user=${userId}`,
+				{
+					...tokenHeader(),
+					responseType: "blob",
+				},
+			);
 
-			items.forEach((doc) => {
-				if (!doc) return;
-				const { _id, audioText, audioIPA } = doc;
-
-				if (audioText && audioIPA) {
-					rows.push(
-						[
-							escapeCsv(_id || ""),
-							escapeCsv(audioText),
-							escapeCsv(audioIPA),
-						].join(","),
-					);
-				}
-			});
-
-			if (rows.length === 1) {
-				alert("No transcriptions found to export.");
-				return;
-			}
-
-			const csvContent = rows.join("\n");
-			const blob = new Blob([csvContent], {
-				type: "text/csv;charset=utf-8;",
+			const blob = new Blob([response.data], {
+				type: response.headers["content-type"] || "text/csv;charset=utf-8;",
 			});
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement("a");
 			a.href = url;
 
+			const disposition = response.headers["content-disposition"] || "";
+			const match = disposition.match(/filename="?([^"]+)"?/i);
 			const datePart = new Date().toISOString().slice(0, 10);
-			a.download = `recordings-transcriptions-${datePart}.csv`;
+			a.download = match?.[1] || `recordings-transcriptions-${datePart}.csv`;
 
 			a.click();
 			URL.revokeObjectURL(url);
+		} catch (err) {
+			console.error("[RecordingPage] export-day error", err);
+			alert(
+				err?.response?.data?.msg ||
+					"Could not export transcriptions. Please try again.",
+			);
 		} finally {
 			setExportingAll(false);
 		}

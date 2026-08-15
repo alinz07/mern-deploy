@@ -75,19 +75,6 @@ function AdminDashboard() {
 		return [y - 2, y - 1, y, y + 1, y + 2];
 	}, []);
 
-	// ===== STATS =====
-	const [checksStats, setChecksStats] = useState({
-		rows: [],
-		currentMonthLabel: "",
-		previousMonthLabel: "",
-	});
-	const [equipStats, setEquipStats] = useState({
-		rows: [],
-		currentMonthLabel: "",
-		previousMonthLabel: "",
-	});
-	const [loadingStats, setLoadingStats] = useState(true);
-
 	// Join code
 	const [joinCode, setJoinCode] = useState("");
 	const [loadingJoin, setLoadingJoin] = useState(true);
@@ -163,27 +150,6 @@ function AdminDashboard() {
 			}
 		};
 
-		const fetchStats = async () => {
-			try {
-				const [checksRes, equipRes] = await Promise.all([
-					axios.get(
-						"https://mern-deploy-docker.onrender.com/api/stats/admin-checks",
-						tokenHeader(),
-					),
-					axios.get(
-						"https://mern-deploy-docker.onrender.com/api/stats/admin-equip",
-						tokenHeader(),
-					),
-				]);
-				setChecksStats(checksRes.data || { rows: [] });
-				setEquipStats(equipRes.data || { rows: [] });
-			} catch (e) {
-				console.error(e);
-			} finally {
-				setLoadingStats(false);
-			}
-		};
-
 		const fetchJoinCode = async () => {
 			try {
 				const r = await axios.get(
@@ -200,7 +166,6 @@ function AdminDashboard() {
 
 		fetchUsers();
 		fetchMonths();
-		fetchStats();
 		fetchJoinCode();
 	}, []);
 
@@ -290,27 +255,6 @@ function AdminDashboard() {
 		return list;
 	}, [users, usersSearch, usersSortDir]);
 
-	// Merge equipment stats into checks rows by userId
-	const mergedRows = useMemo(() => {
-		const byId = new Map(
-			(checksStats.rows || []).map((r) => [r.userId, { ...r }]),
-		);
-		for (const er of equipStats.rows || []) {
-			const base = byId.get(er.userId) || {
-				userId: er.userId,
-				username: er.username,
-			};
-			byId.set(er.userId, {
-				...base,
-				currEquipMissed: er.currEquipMissed ?? 0,
-				prevEquipMissed: er.prevEquipMissed ?? 0,
-			});
-		}
-		return Array.from(byId.values()).sort((a, b) =>
-			(a.username || "").localeCompare(b.username || ""),
-		);
-	}, [checksStats.rows, equipStats.rows]);
-
 	const monthsTableRows = useMemo(() => {
 		const list = filteredSortedMonths;
 		if (list.length === 0) {
@@ -342,11 +286,10 @@ function AdminDashboard() {
 		});
 	}, [filteredSortedMonths]);
 
-	if (loadingUsers || loadingMonths || loadingStats)
+	if (loadingUsers || loadingMonths)
 		return <p>Loading admin data…</p>;
 	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
 
-	const StatCell = ({ count }) => <td>{count} checks that needed love</td>;
 	const copy = async () => {
 		if (!joinCode) return;
 		try {
@@ -726,68 +669,6 @@ function AdminDashboard() {
 					</tr>
 				</thead>
 				<tbody>{monthsTableRows}</tbody>
-			</table>
-
-			<h3>Completion Stats</h3>
-			<p style={{ marginTop: -8, opacity: 0.8 }}>
-				Current month: {checksStats.currentMonthLabel || "—"} (to date)
-				· Previous month: {checksStats.previousMonthLabel || "—"}
-			</p>
-
-			<table>
-				<thead>
-					<tr>
-						<th>User</th>
-						<th>
-							{checksStats.currentMonthLabel || "Current"} —
-							Online
-						</th>
-						<th>
-							{checksStats.currentMonthLabel || "Current"} —
-							In-Person
-						</th>
-						<th>
-							{checksStats.previousMonthLabel || "Previous"} —
-							Online
-						</th>
-						<th>
-							{checksStats.previousMonthLabel || "Previous"} —
-							In-Person
-						</th>
-						<th>
-							{checksStats.currentMonthLabel || "Current"} —
-							Equipment
-						</th>
-						<th>
-							{checksStats.previousMonthLabel || "Previous"} —
-							Equipment
-						</th>
-					</tr>
-				</thead>
-				<tbody>
-					{mergedRows.length === 0 ? (
-						<tr>
-							<td
-								colSpan={7}
-								style={{ opacity: 0.7, fontStyle: "italic" }}
-							>
-								No users to show.
-							</td>
-						</tr>
-					) : (
-						mergedRows.map((r) => (
-							<tr key={r.userId}>
-								<td>{r.username}</td>
-								<StatCell count={r.currOnlineMissed ?? 0} />
-								<StatCell count={r.currInpersonMissed ?? 0} />
-								<StatCell count={r.prevOnlineMissed ?? 0} />
-								<StatCell count={r.prevInpersonMissed ?? 0} />
-								<StatCell count={r.currEquipMissed ?? 0} />
-								<StatCell count={r.prevEquipMissed ?? 0} />
-							</tr>
-						))
-					)}
-				</tbody>
 			</table>
 		</div>
 	);
