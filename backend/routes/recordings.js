@@ -11,6 +11,8 @@ const Month = require("../models/Month");
 const User = require("../models/User");
 const AdminUser = require("../models/AdminUser");
 const EquipmentCheck = require("../models/EquipmentCheck");
+const Check = require("../models/Check");
+const Comment = require("../models/Comment");
 
 console.log("[recordings.js] routes module loaded");
 
@@ -215,17 +217,219 @@ const FIELD_LABELS = {
 
 const FIELD_ORDER = Object.keys(FIELD_LABELS);
 
-function csvCell(value) {
-	if (value == null) return '""';
-	return `"${String(value).replace(/"/g, '""')}"`;
+const CRC_TABLE = (() => {
+	const table = new Uint32Array(256);
+	for (let n = 0; n < 256; n += 1) {
+		let c = n;
+		for (let k = 0; k < 8; k += 1) {
+			c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+		}
+		table[n] = c >>> 0;
+	}
+	return table;
+})();
+
+function crc32(buf) {
+	let crc = 0xffffffff;
+	for (const byte of buf) {
+		crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+	}
+	return (crc ^ 0xffffffff) >>> 0;
 }
 
-function csvRow(values) {
-	return values.map(csvCell).join(",");
+function zipDateParts(date = new Date()) {
+	const time =
+		(date.getHours() << 11) |
+		(date.getMinutes() << 5) |
+		Math.floor(date.getSeconds() / 2);
+	const dosDate =
+		((date.getFullYear() - 1980) << 9) |
+		((date.getMonth() + 1) << 5) |
+		date.getDate();
+	return { time, dosDate };
 }
 
-function excelText(value) {
-	return `="${String(value || "").replace(/"/g, '""')}"`;
+function buildZip(files) {
+	const localParts = [];
+	const centralParts = [];
+	let offset = 0;
+	const { time, dosDate } = zipDateParts();
+
+	for (const file of files) {
+		const nameBuf = Buffer.from(file.name, "utf8");
+		const dataBuf = Buffer.isBuffer(file.data)
+			? file.data
+			: Buffer.from(String(file.data), "utf8");
+		const crc = crc32(dataBuf);
+
+		const localHeader = Buffer.alloc(30);
+		localHeader.writeUInt32LE(0x04034b50, 0);
+		localHeader.writeUInt16LE(20, 4);
+		localHeader.writeUInt16LE(0x0800, 6);
+		localHeader.writeUInt16LE(0, 8);
+		localHeader.writeUInt16LE(time, 10);
+		localHeader.writeUInt16LE(dosDate, 12);
+		localHeader.writeUInt32LE(crc, 14);
+		localHeader.writeUInt32LE(dataBuf.length, 18);
+		localHeader.writeUInt32LE(dataBuf.length, 22);
+		localHeader.writeUInt16LE(nameBuf.length, 26);
+		localHeader.writeUInt16LE(0, 28);
+
+		localParts.push(localHeader, nameBuf, dataBuf);
+
+		const centralHeader = Buffer.alloc(46);
+		centralHeader.writeUInt32LE(0x02014b50, 0);
+		centralHeader.writeUInt16LE(20, 4);
+		centralHeader.writeUInt16LE(20, 6);
+		centralHeader.writeUInt16LE(0x0800, 8);
+		centralHeader.writeUInt16LE(0, 10);
+		centralHeader.writeUInt16LE(time, 12);
+		centralHeader.writeUInt16LE(dosDate, 14);
+		centralHeader.writeUInt32LE(crc, 16);
+		centralHeader.writeUInt32LE(dataBuf.length, 20);
+		centralHeader.writeUInt32LE(dataBuf.length, 24);
+		centralHeader.writeUInt16LE(nameBuf.length, 28);
+		centralHeader.writeUInt16LE(0, 30);
+		centralHeader.writeUInt16LE(0, 32);
+		centralHeader.writeUInt16LE(0, 34);
+		centralHeader.writeUInt16LE(0, 36);
+		centralHeader.writeUInt32LE(0, 38);
+		centralHeader.writeUInt32LE(offset, 42);
+
+		centralParts.push(centralHeader, nameBuf);
+		offset += localHeader.length + nameBuf.length + dataBuf.length;
+	}
+
+	const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+	const end = Buffer.alloc(22);
+	end.writeUInt32LE(0x06054b50, 0);
+	end.writeUInt16LE(0, 4);
+	end.writeUInt16LE(0, 6);
+	end.writeUInt16LE(files.length, 8);
+	end.writeUInt16LE(files.length, 10);
+	end.writeUInt32LE(centralSize, 12);
+	end.writeUInt32LE(offset, 16);
+	end.writeUInt16LE(0, 20);
+
+	return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+function xmlEscape(value) {
+	return String(value ?? "")
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+}
+
+function columnName(index) {
+	let n = index + 1;
+	let name = "";
+	while (n > 0) {
+		const rem = (n - 1) % 26;
+		name = String.fromCharCode(65 + rem) + name;
+		n = Math.floor((n - 1) / 26);
+	}
+	return name;
+}
+
+function cellXml(value, rowIndex, colIndex, style = 0) {
+	const ref = `${columnName(colIndex)}${rowIndex + 1}`;
+	return `<c r="${ref}" t="inlineStr" s="${style}"><is><t xml:space="preserve">${xmlEscape(
+		value,
+	)}</t></is></c>`;
+}
+
+function worksheetXml(rows, widths = []) {
+	const cols = widths.length
+		? `<cols>${widths
+				.map(
+					(width, idx) =>
+						`<col min="${idx + 1}" max="${idx + 1}" width="${width}" customWidth="1"/>`,
+				)
+				.join("")}</cols>`
+		: "";
+
+	const body = rows
+		.map((row, rowIndex) => {
+			const cells = row.cells || [];
+			const height = row.height
+				? ` ht="${row.height}" customHeight="1"`
+				: "";
+			return `<row r="${rowIndex + 1}"${height}>${cells
+				.map((cell, colIndex) =>
+					cellXml(cell?.value ?? "", rowIndex, colIndex, cell?.style || 0),
+				)
+				.join("")}</row>`;
+		})
+		.join("");
+
+	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${cols}<sheetData>${body}</sheetData></worksheet>`;
+}
+
+function row(values, style = 0, height = null) {
+	return {
+		height,
+		cells: values.map((value) => ({ value, style })),
+	};
+}
+
+function buildXlsxWorkbook(sheets) {
+	const workbookSheets = sheets
+		.map(
+			(sheet, idx) =>
+				`<sheet name="${xmlEscape(sheet.name)}" sheetId="${idx + 1}" r:id="rId${
+					idx + 1
+				}"/>`,
+		)
+		.join("");
+
+	const workbookRels = sheets
+		.map(
+			(_sheet, idx) =>
+				`<Relationship Id="rId${idx + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${
+					idx + 1
+				}.xml"/>`,
+		)
+		.join("");
+
+	const sheetContentTypes = sheets
+		.map(
+			(_sheet, idx) =>
+				`<Override PartName="/xl/worksheets/sheet${
+					idx + 1
+				}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+		)
+		.join("");
+
+	const files = [
+		{
+			name: "[Content_Types].xml",
+			data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheetContentTypes}</Types>`,
+		},
+		{
+			name: "_rels/.rels",
+			data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+		},
+		{
+			name: "xl/workbook.xml",
+			data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${workbookSheets}</sheets></workbook>`,
+		},
+		{
+			name: "xl/_rels/workbook.xml.rels",
+			data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${workbookRels}<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+		},
+		{
+			name: "xl/styles.xml",
+			data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`,
+		},
+		...sheets.map((sheet, idx) => ({
+			name: `xl/worksheets/sheet${idx + 1}.xml`,
+			data: worksheetXml(sheet.rows, sheet.widths),
+		})),
+	];
+
+	return buildZip(files);
 }
 
 function formatExportDate(monthName, dayNumber) {
@@ -269,6 +473,240 @@ function equipmentMissingText(eq) {
 	return missing.length ? missing.join("; ") : "None";
 }
 
+function newEquipmentMissingCounts() {
+	return {
+		left: 0,
+		right: 0,
+		both: 0,
+		fmMic: 0,
+	};
+}
+
+function addEquipmentMissingCounts(target, eq) {
+	if (!eq) return;
+
+	const leftMissing = eq.left === false;
+	const rightMissing = eq.right === false;
+
+	if (leftMissing && rightMissing) {
+		target.both += 1;
+	} else {
+		if (leftMissing) target.left += 1;
+		if (rightMissing) target.right += 1;
+	}
+
+	if (eq.fmMic === false) target.fmMic += 1;
+}
+
+function dayWord(n) {
+	return n === 1 ? "day" : "days";
+}
+
+function equipmentMissingFromCounts(counts = {}) {
+	return [
+		counts.left ? "Left" : null,
+		counts.right ? "Right" : null,
+		counts.both ? "Both" : null,
+		counts.fmMic ? "FM Mic" : null,
+	]
+		.filter(Boolean)
+		.join(", ");
+}
+
+function equipmentLine(label, count, missedDays) {
+	if (!count) return null;
+	if (missedDays > 0 && count === missedDays) {
+		return `${label} missing on all ${count} ${dayWord(count)}`;
+	}
+	return `${label} missing on ${count} ${dayWord(count)}`;
+}
+
+function hasEquipmentMissingCounts(counts = {}) {
+	return Object.values(counts).some((count) => count > 0);
+}
+
+function formatMissingDaysList(days = []) {
+	if (!days.length) return "No equipment missing on missed-check days";
+	return days
+		.slice()
+		.sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
+		.map(
+			(d) =>
+				`${formatExportDate(d.monthName, d.dayNumber)}: ${
+					equipmentMissingFromCounts(d.equipmentMissing) ||
+					"Equipment missing"
+				}`,
+		)
+		.join("\n");
+}
+
+function formatCommentsList(comments = [], field) {
+	if (!comments.length) return `no comments for ${FIELD_LABELS[field] || field}`;
+	return comments
+		.slice()
+		.sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))
+		.map(
+			(c) =>
+				`${formatExportDate(c.monthName, c.dayNumber)}: ${
+					c.commentText || ""
+				}`,
+		)
+		.join("\n");
+}
+
+async function buildMonthlySoundCheckRows({ userId, monthDoc }) {
+	const dayDocs = await Day.find({
+		userId: new mongoose.Types.ObjectId(userId),
+		month: monthDoc._id,
+	})
+		.select({ _id: 1, dayNumber: 1 })
+		.lean();
+
+	const current = new Date();
+	const currentMonthName = `${current.toLocaleString("en-US", {
+		month: "long",
+	})} ${current.getFullYear()}`;
+	const scopedDays =
+		monthDoc.name === currentMonthName
+			? dayDocs.filter(
+					(d) =>
+						typeof d.dayNumber === "number" &&
+						d.dayNumber <= current.getDate(),
+				)
+			: dayDocs;
+
+	const scopedDayIds = scopedDays.map((d) => d._id);
+	const [checkDocs, equipDocs, commentDocs] = scopedDayIds.length
+		? await Promise.all([
+				Check.find({ user: userId, day: { $in: scopedDayIds } })
+					.select({
+						day: 1,
+						checkone: 1,
+						checktwo: 1,
+						checkthree: 1,
+						checkfour: 1,
+						checkfive: 1,
+						checksix: 1,
+						checkseven: 1,
+						checkeight: 1,
+						checknine: 1,
+						checkten: 1,
+					})
+					.lean(),
+				EquipmentCheck.find({
+					user: userId,
+					day: { $in: scopedDayIds },
+				})
+					.select({ day: 1, left: 1, right: 1, fmMic: 1 })
+					.lean(),
+				Comment.find({
+					user: userId,
+					month: monthDoc._id,
+					day: { $in: scopedDayIds },
+				})
+					.select({ field: 1, day: 1, commentText: 1 })
+					.lean(),
+			])
+		: [[], [], []];
+
+	const dayById = new Map(scopedDays.map((d) => [String(d._id), d]));
+	const checkByDayId = new Map(checkDocs.map((c) => [String(c.day), c]));
+	const equipByDayId = new Map(equipDocs.map((e) => [String(e.day), e]));
+	const commentsByField = new Map(FIELD_ORDER.map((field) => [field, []]));
+
+	for (const c of commentDocs) {
+		const d = dayById.get(String(c.day));
+		if (!d) continue;
+		if (!commentsByField.has(c.field)) commentsByField.set(c.field, []);
+		commentsByField.get(c.field).push({
+			monthName: monthDoc.name,
+			dayNumber: d.dayNumber,
+			commentText: c.commentText,
+		});
+	}
+
+	const totalDays = scopedDays.length;
+	let equipmentAllPresentDays = 0;
+	const equipmentMissingDays = [];
+
+	for (const d of scopedDays) {
+		const eq = equipByDayId.get(String(d._id));
+		if (eq && eq.left === true && eq.right === true && eq.fmMic === true) {
+			equipmentAllPresentDays += 1;
+		}
+
+		const dayEquipmentMissing = newEquipmentMissingCounts();
+		addEquipmentMissingCounts(dayEquipmentMissing, eq);
+		if (hasEquipmentMissingCounts(dayEquipmentMissing)) {
+			equipmentMissingDays.push({
+				monthName: monthDoc.name,
+				dayNumber: d.dayNumber,
+				equipmentMissing: dayEquipmentMissing,
+			});
+		}
+	}
+
+	const equipmentAllPresentPct = totalDays
+		? Math.round((equipmentAllPresentDays / totalDays) * 100)
+		: 0;
+
+	const rows = [
+		[
+			"Hearing Assistive Technology",
+			`${equipmentAllPresentDays}/${totalDays} ${dayWord(
+				totalDays,
+			)} had all equipment. ${equipmentAllPresentPct}%`,
+			formatMissingDaysList(equipmentMissingDays).replace(
+				"No equipment missing on missed-check days",
+				"No equipment missing this month",
+			),
+			"",
+		],
+	];
+
+	for (const field of FIELD_ORDER) {
+		let missed = 0;
+		const equipmentMissing = newEquipmentMissingCounts();
+		const fieldEquipmentMissingDays = [];
+
+		for (const d of scopedDays) {
+			const check = checkByDayId.get(String(d._id));
+			if (!check || check[field] !== false) continue;
+
+			missed += 1;
+			const eq = equipByDayId.get(String(d._id));
+			addEquipmentMissingCounts(equipmentMissing, eq);
+
+			const dayEquipmentMissing = newEquipmentMissingCounts();
+			addEquipmentMissingCounts(dayEquipmentMissing, eq);
+			if (hasEquipmentMissingCounts(dayEquipmentMissing)) {
+				fieldEquipmentMissingDays.push({
+					monthName: monthDoc.name,
+					dayNumber: d.dayNumber,
+					equipmentMissing: dayEquipmentMissing,
+				});
+			}
+		}
+
+		const statsLines = [
+			`${missed} ${dayWord(missed)} with a missed check`,
+			equipmentLine("Left", equipmentMissing.left, missed),
+			equipmentLine("Right", equipmentMissing.right, missed),
+			equipmentLine("Both", equipmentMissing.both, missed),
+			equipmentLine("FM Mic", equipmentMissing.fmMic, missed),
+		].filter(Boolean);
+
+		rows.push([
+			FIELD_LABELS[field] || field,
+			statsLines.join("\n"),
+			formatMissingDaysList(fieldEquipmentMissingDays),
+			formatCommentsList(commentsByField.get(field) || [], field),
+		]);
+	}
+
+	return rows;
+}
+
 async function assertTenantAndPermForDay({ req, dayId, userId }) {
 	const day = await Day.findById(dayId).lean();
 	if (!day) return { ok: false, status: 404, msg: "Day not found" };
@@ -301,6 +739,45 @@ async function assertTenantAndPermForDay({ req, dayId, userId }) {
 	return { ok: true, day };
 }
 
+async function queueDayIfAvailable({ dayId, userId, token, staleCutoff }) {
+	const updated = await Day.findOneAndUpdate(
+		{
+			_id: dayId,
+			$or: [
+				{
+					"transcription.status": {
+						$nin: ["queued", "processing"],
+					},
+				},
+				{
+					"transcription.status": "queued",
+					"transcription.requestedAt": { $lt: staleCutoff },
+				},
+				{
+					"transcription.status": "processing",
+					"transcription.startedAt": { $lt: staleCutoff },
+				},
+				{ transcription: { $exists: false } },
+			],
+		},
+		{
+			$set: {
+				"transcription.status": "queued",
+				"transcription.requestedAt": new Date(),
+				"transcription.startedAt": null,
+				"transcription.finishedAt": null,
+				"transcription.error": null,
+			},
+		},
+		{ new: true },
+	).lean();
+
+	if (!updated) return null;
+
+	await enqueueDayTranscription({ dayId, userId, token });
+	return updated;
+}
+
 function assertDayEditAllowed({ req, day }) {
 	const dayLocked = !!day?.editingLock?.dayLocked;
 	if (dayLocked && req.user.role !== "admin") {
@@ -312,6 +789,109 @@ function assertDayEditAllowed({ req, day }) {
 	}
 	return { ok: true };
 }
+
+// POST /api/recordings/transcribe-month  (queue all month recordings in background)
+router.post("/transcribe-month", auth, async (req, res) => {
+	try {
+		const { monthId, userId } = req.body;
+		console.log("[recordings/transcribe-month] request", {
+			monthId,
+			userId,
+			requesterId: req.user?.id,
+			requesterRole: req.user?.role,
+		});
+
+		if (
+			!mongoose.isValidObjectId(monthId) ||
+			!mongoose.isValidObjectId(userId)
+		) {
+			return res.status(400).json({ msg: "Invalid ids" });
+		}
+
+		if (req.user.role !== "admin" && req.user.id !== userId) {
+			return res.status(403).json({ msg: "Forbidden" });
+		}
+
+		const month = await Month.findById(monthId).lean();
+		if (!month) return res.status(404).json({ msg: "Month not found" });
+		if (String(month.userId) !== String(userId)) {
+			return res.status(400).json({ msg: "Month/user mismatch" });
+		}
+		if (String(month.adminUser) !== String(req.user.adminUser)) {
+			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
+		}
+
+		const dayDocs = await Day.find({ month: monthId, userId })
+			.select("_id dayNumber editingLock transcription")
+			.lean();
+		const dayIds = dayDocs.map((day) => day._id);
+		const recordings = dayIds.length
+			? await Recording.find({
+					user: userId,
+					day: { $in: dayIds },
+					audioFileId: { $exists: true, $ne: null },
+				})
+					.select("day")
+					.lean()
+			: [];
+
+		const daysWithAudio = new Set(recordings.map((rec) => String(rec.day)));
+		const token = req.header("x-auth-token");
+		const staleCutoff = new Date(Date.now() - TRANSCRIBE_STALE_MS);
+		const queuedDays = [];
+		const skippedLockedDays = [];
+		let skippedAlreadyTranscribing = 0;
+
+		for (const day of dayDocs) {
+			if (!daysWithAudio.has(String(day._id))) continue;
+			if (day?.editingLock?.dayLocked && req.user.role !== "admin") {
+				skippedLockedDays.push(day.dayNumber);
+				continue;
+			}
+
+			const updated = await queueDayIfAvailable({
+				dayId: day._id,
+				userId,
+				token,
+				staleCutoff,
+			});
+
+			if (updated) queuedDays.push(day.dayNumber);
+			else skippedAlreadyTranscribing += 1;
+		}
+
+		const msg = queuedDays.length
+			? `Queued ${queuedDays.length} day${
+					queuedDays.length === 1 ? "" : "s"
+				} for transcription.`
+			: recordings.length
+				? "No new days were queued. They may already be transcribing or locked."
+				: "No saved recordings with audio were found for this month.";
+
+		console.log("[recordings/transcribe-month] queued", {
+			monthId,
+			userId,
+			recordingCount: recordings.length,
+			queuedDays,
+			skippedAlreadyTranscribing,
+			skippedLockedDays,
+		});
+
+		return res.status(202).json({
+			ok: true,
+			status: queuedDays.length ? "queued" : "idle",
+			msg,
+			recordingCount: recordings.length,
+			queuedDayCount: queuedDays.length,
+			queuedDays,
+			skippedAlreadyTranscribing,
+			skippedLockedDays,
+		});
+	} catch (e) {
+		console.error("POST /api/recordings/transcribe-month error", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
 
 // POST /api/recordings/transcribe-day  (queue transcription in background)
 router.post("/transcribe-day", auth, async (req, res) => {
@@ -362,37 +942,12 @@ router.post("/transcribe-day", auth, async (req, res) => {
 		const now = Date.now();
 		const staleCutoff = new Date(now - TRANSCRIBE_STALE_MS);
 
-		const updated = await Day.findOneAndUpdate(
-			{
-				_id: dayId,
-				$or: [
-					{
-						"transcription.status": {
-							$nin: ["queued", "processing"],
-						},
-					},
-					{
-						"transcription.status": "queued",
-						"transcription.requestedAt": { $lt: staleCutoff },
-					},
-					{
-						"transcription.status": "processing",
-						"transcription.startedAt": { $lt: staleCutoff },
-					},
-					{ transcription: { $exists: false } },
-				],
-			},
-			{
-				$set: {
-					"transcription.status": "queued",
-					"transcription.requestedAt": new Date(),
-					"transcription.startedAt": null,
-					"transcription.finishedAt": null,
-					"transcription.error": null,
-				},
-			},
-			{ new: true },
-		).lean();
+		const updated = await queueDayIfAvailable({
+			dayId,
+			userId,
+			token: req.header("x-auth-token"),
+			staleCutoff,
+		});
 
 		if (!updated) {
 			return res
@@ -400,8 +955,6 @@ router.post("/transcribe-day", auth, async (req, res) => {
 				.json({ msg: "This day is already transcribing." });
 		}
 
-		const token = req.header("x-auth-token");
-		await enqueueDayTranscription({ dayId, userId, token });
 		console.log("[recordings/transcribe-day] queued", {
 			dayId,
 			userId,
@@ -539,30 +1092,60 @@ router.get("/export-day", auth, async (req, res) => {
 		if (!perm.ok) return res.status(perm.status).json({ msg: perm.msg });
 
 		const dayDoc = perm.day;
-		const [month, student, adminOrg, equipmentCheck, recordings] =
-			await Promise.all([
-				Month.findById(dayDoc.month).lean(),
-				User.findById(user).select("username").lean(),
-				AdminUser.findById(dayDoc.adminUser || req.user.adminUser)
-					.select("name")
-					.lean(),
-				EquipmentCheck.findOne({
-					user,
-					month: dayDoc.month,
-					day,
-				}).lean(),
-				Recording.find({ day, user })
-					.select("field audioText audioIPA createdAt")
-					.lean(),
-			]);
+		const [month, student, adminOrg, monthDays] = await Promise.all([
+			Month.findById(dayDoc.month).lean(),
+			User.findById(user).select("username").lean(),
+			AdminUser.findById(dayDoc.adminUser || req.user.adminUser)
+				.select("name")
+				.lean(),
+			Day.find({
+				userId: user,
+				month: dayDoc.month,
+			})
+				.select("_id dayNumber")
+				.lean(),
+		]);
 
 		if (!month) return res.status(404).json({ msg: "Month not found" });
 		if (!student) return res.status(404).json({ msg: "User not found" });
 
 		const monthLabel = formatExportMonth(month.name);
-		const dateLabel = formatExportDate(month.name, dayDoc.dayNumber);
-		const equipmentMissing = equipmentMissingText(equipmentCheck);
+		const monthDayIds = monthDays.map((monthDay) => monthDay._id);
+		const [equipmentChecks, recordings] = monthDayIds.length
+			? await Promise.all([
+					EquipmentCheck.find({
+						user,
+						month: dayDoc.month,
+						day: { $in: monthDayIds },
+					}).lean(),
+					Recording.find({
+						user,
+						day: { $in: monthDayIds },
+					})
+						.select("day field audioText audioIPA createdAt")
+						.lean(),
+				])
+			: [[], []];
+		const monthlySoundCheckRows = await buildMonthlySoundCheckRows({
+			userId: user,
+			monthDoc: month,
+		});
+		const dayById = new Map(
+			monthDays.map((monthDay) => [String(monthDay._id), monthDay]),
+		);
+		const equipmentByDayId = new Map(
+			equipmentChecks.map((equipmentCheck) => [
+				String(equipmentCheck.day),
+				equipmentCheck,
+			]),
+		);
 		const sortedRecordings = [...recordings].sort((a, b) => {
+			const aDayNumber =
+				dayById.get(String(a.day))?.dayNumber ?? Number.MAX_SAFE_INTEGER;
+			const bDayNumber =
+				dayById.get(String(b.day))?.dayNumber ?? Number.MAX_SAFE_INTEGER;
+			if (aDayNumber !== bDayNumber) return aDayNumber - bDayNumber;
+
 			const aIndex = FIELD_ORDER.indexOf(a.field);
 			const bIndex = FIELD_ORDER.indexOf(b.field);
 			return (
@@ -571,43 +1154,92 @@ router.get("/export-day", auth, async (req, res) => {
 			);
 		});
 
-		const rows = [
-			csvRow(["Student", student.username || "Unknown student"]),
-			csvRow(["Teacher", adminOrg?.name || "Unknown teacher"]),
-			csvRow(["Month", excelText(monthLabel)]),
-			"",
-			csvRow([
-				"Date",
-				"Sound",
-				"Text",
-				"IPA Transcription",
-				"Equipment Missing",
-			]),
-			...sortedRecordings.map((rec) =>
-				csvRow([
-					dateLabel,
-					FIELD_LABELS[rec.field] || rec.field,
-					rec.audioText || "",
-					rec.audioIPA || "",
-					equipmentMissing,
-				]),
+		const recordingsSheet = [
+			row(["Student", student.username || "Unknown student"], 1),
+			row(["Teacher", adminOrg?.name || "Unknown teacher"], 1),
+			row(["Month", monthLabel], 1),
+			row([]),
+			row(
+				[
+					"Date",
+					"Sound",
+					"Text",
+					"IPA Transcription",
+					"Equipment Missing",
+				],
+				2,
+			),
+			...sortedRecordings.map((rec) => {
+				const recDay = dayById.get(String(rec.day));
+				const recDateLabel = recDay
+					? formatExportDate(month.name, recDay.dayNumber)
+					: monthLabel;
+				const recEquipmentMissing = equipmentMissingText(
+					equipmentByDayId.get(String(rec.day)),
+				);
+				return row(
+					[
+						recDateLabel,
+						FIELD_LABELS[rec.field] || rec.field,
+						rec.audioText || "",
+						rec.audioIPA || "",
+						recEquipmentMissing,
+					],
+					3,
+					48,
+				);
+			}),
+		];
+
+		const soundCheckSheet = [
+			row(["Student", student.username || "Unknown student"], 1),
+			row(["Teacher", adminOrg?.name || "Unknown teacher"], 1),
+			row(["Month", monthLabel], 1),
+			row([]),
+			row(
+				[
+					"Sound",
+					"Statistics",
+					"Days Equipment Was Missing",
+					`Comments (${monthLabel})`,
+				],
+				2,
+			),
+			...monthlySoundCheckRows.map((summaryRow) =>
+				row(summaryRow, 3, 72),
 			),
 		];
+
+		const workbook = buildXlsxWorkbook([
+			{
+				name: "Recordings",
+				widths: [22, 16, 34, 34, 24],
+				rows: recordingsSheet,
+			},
+			{
+				name: "Sound Check Success",
+				widths: [28, 34, 42, 52],
+				rows: soundCheckSheet,
+			},
+		]);
 
 		const filename = [
 			"transcriptions",
 			filenameSafe(student.username),
-			filenameSafe(dateLabel),
+			filenameSafe(monthLabel),
 		]
 			.filter(Boolean)
 			.join("-");
 
-		res.setHeader("Content-Type", "text/csv; charset=utf-8");
+		res.setHeader(
+			"Content-Type",
+			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		);
 		res.setHeader(
 			"Content-Disposition",
-			`attachment; filename="${filename || "transcriptions"}.csv"`,
+			`attachment; filename="${filename || "transcriptions"}.xlsx"`,
 		);
-		return res.send(`\uFEFF${rows.join("\n")}`);
+		return res.send(workbook);
 	} catch (e) {
 		console.error("GET /api/recordings/export-day error", e);
 		return res.status(500).json({ msg: "Server error" });

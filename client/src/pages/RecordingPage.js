@@ -441,7 +441,6 @@ function RecordingPage({
 		}
 	}, [hasUnsaved, transcribing]);
 
-	const hasAnyAudio = items.some((rec) => rec.audioFileId);
 	const savedRecordingCount = items.filter((rec) => rec.audioFileId).length;
 
 	const load = async () => {
@@ -542,31 +541,22 @@ function RecordingPage({
 			setMsg(UNSAVED_WARNING);
 			return;
 		}
-		if (!items.length) {
-			console.warn("Blocked: no saved recording documents");
+		if (!monthId) {
+			console.warn("Blocked: no month id");
 			console.groupEnd();
-			alert("No saved recordings to transcribe.");
-			return;
-		}
-
-		if (!savedRecordingCount) {
-			console.warn("Blocked: saved recording documents have no audioFileId");
-			console.groupEnd();
-			alert("Please record and save audio before transcribing.");
+			setMsg("Could not find the month for this day.");
 			return;
 		}
 
 		const ok = window.confirm(
 			[
-				`Transcribe ${savedRecordingCount} saved recording${
-					savedRecordingCount === 1 ? "" : "s"
-				} for this student on this day?`,
+				"Transcribe all saved recordings for this student in this month?",
 				"",
 				"Transcription will run in the background.",
 				"You will be redirected to the Day List immediately.",
 				"",
 				"Only do this if you are finished editing checks, comments, equipment,",
-				"and recordings for this day.",
+				"and recordings for the month.",
 			].join("\n"),
 		);
 
@@ -584,11 +574,20 @@ function RecordingPage({
 
 		try {
 			const { data } = await axios.post(
-				`${API}/api/recordings/transcribe-day`,
-				{ dayId, userId },
+				`${API}/api/recordings/transcribe-month`,
+				{ monthId, userId },
 				{ headers: { "x-auth-token": localStorage.getItem("token") } },
 			);
-			console.log("transcribe-day accepted", data);
+			console.log("transcribe-month accepted", data);
+
+			if (!data?.queuedDayCount && !data?.skippedAlreadyTranscribing) {
+				console.groupEnd();
+				setTranscribing(false);
+				onTranscribingChange?.(false);
+				setMsg(data?.msg || "No recordings were queued for transcription.");
+				alert(data?.msg || "No recordings were queued for transcription.");
+				return;
+			}
 
 			sessionStorage.setItem(
 				"transcribeNotice",
@@ -599,7 +598,7 @@ function RecordingPage({
 			console.groupEnd();
 			navigate(`/months/${monthId}`);
 		} catch (err) {
-			console.error("[RecordingPage] transcribe-day error", err);
+			console.error("[RecordingPage] transcribe-month error", err);
 			console.groupEnd();
 			setTranscribing(false);
 			onTranscribingChange?.(false);
@@ -611,8 +610,8 @@ function RecordingPage({
 	};
 
 	const exportAllTranscriptions = async () => {
-		if (!items.length) {
-			alert("No recordings to export.");
+		if (!dayId || !userId) {
+			alert("Could not find the day or user to export.");
 			return;
 		}
 
@@ -628,7 +627,9 @@ function RecordingPage({
 			);
 
 			const blob = new Blob([response.data], {
-				type: response.headers["content-type"] || "text/csv;charset=utf-8;",
+				type:
+					response.headers["content-type"] ||
+					"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 			});
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement("a");
@@ -637,7 +638,7 @@ function RecordingPage({
 			const disposition = response.headers["content-disposition"] || "";
 			const match = disposition.match(/filename="?([^"]+)"?/i);
 			const datePart = new Date().toISOString().slice(0, 10);
-			a.download = match?.[1] || `recordings-transcriptions-${datePart}.csv`;
+			a.download = match?.[1] || `recordings-transcriptions-${datePart}.xlsx`;
 
 			a.click();
 			URL.revokeObjectURL(url);
@@ -674,19 +675,19 @@ function RecordingPage({
 					type="button"
 					onClick={transcribeAll}
 					disabled={
-						!hasAnyAudio ||
+						!monthId ||
 						transcribing ||
 						hasUnsaved ||
 						dayLockedForViewer
 					}
 				>
-					{transcribing ? "Transcribing..." : "Transcribe all"}
+					{transcribing ? "Transcribing..." : "Transcribe month"}
 				</button>
 
 				<button
 					type="button"
 					onClick={exportAllTranscriptions}
-					disabled={!items.length || exportingAll || transcribing}
+					disabled={!dayId || !userId || exportingAll || transcribing}
 				>
 					{exportingAll
 						? "Exporting..."
