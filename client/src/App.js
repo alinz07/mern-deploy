@@ -107,11 +107,11 @@ const App = () => {
 				<div
 					id="public_page"
 					style={{
-						backgroundImage: `url(${process.env.PUBLIC_URL}/gifted.png)`,
+						backgroundImage: `url(${process.env.PUBLIC_URL}/classroom-gifted-youngsters.png)`,
 					}}
 				>
-					<Register />
 					<Login setUser={setUser} />
+					<Register />
 				</div>
 			)}
 		</div>

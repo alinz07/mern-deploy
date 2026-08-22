@@ -152,17 +152,37 @@ button {
 /* Public auth page layout */
 #public_page {
 	min-height: 100svh;
+	position: relative;
+	isolation: isolate;
 	display: flex;
 	align-items: center;
-	justify-content: center; /* default: centered */
-	flex-wrap: wrap;
-	padding: 2rem;
-	padding-inline: clamp(1rem, 4vw, 6rem);
+	justify-content: center;
+	flex-direction: column;
+	padding: clamp(1.5rem, 4vw, 4rem);
+	padding-inline: clamp(1rem, 5vw, 6rem);
 	gap: clamp(14rem, 24vw, 44rem); /* ↑ bigger default gap */
 	background-repeat: no-repeat;
-	background-position: bottom center;
-	background-size: contain;
-	background-color: #000;
+	background-position: center center;
+	background-size: cover;
+	background-color: #dfe9dc;
+	overflow: hidden;
+	gap: 1rem;
+}
+
+#public_page::before {
+	content: "";
+	position: absolute;
+	left: clamp(1rem, 5vw, 6rem);
+	top: 50%;
+	width: clamp(320px, 30vw, 430px);
+	height: min(82svh, 760px);
+	transform: translateY(-50%);
+	z-index: -1;
+	border-radius: 18px;
+	background: rgba(40, 48, 34, 0.14);
+	box-shadow:
+		0 28px 90px rgba(49, 36, 20, 0.28),
+		0 12px 28px rgba(49, 36, 20, 0.18);
 }
 
 /* On wide desktops, push the cards outward to clear the hero text */
@@ -173,39 +193,58 @@ button {
 	}
 }
 
+/* On desktops, keep the classroom visible and tuck forms into the calmer side. */
+@media (min-width: 900px) {
+	#public_page {
+		height: 100svh;
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		gap: 0.75rem;
+		padding-block: clamp(0.75rem, 2vh, 1.25rem);
+	}
+
+	#public_page::before {
+		width: clamp(320px, 30vw, 430px);
+		height: min(92svh, 720px);
+	}
+}
+
 /* Auth cards */
 #public_page .auth-form {
-	width: clamp(300px, 32vw, 420px);
+	width: clamp(300px, 27vw, 390px);
 	max-width: 100%;
-	padding: 24px 22px;
-	border-radius: 16px;
-	background: #fff;
-	color: #111;
+	max-height: calc(100svh - 2rem);
+	overflow-y: auto;
+	padding: 18px;
+	border-radius: 8px;
+	background: rgba(255, 252, 245, 0.94);
+	color: #111827;
 	box-shadow:
-		0 12px 28px rgba(0, 0, 0, 0.14),
-		0 8px 16px rgba(0, 0, 0, 0.12);
-	border: 1px solid rgba(0, 0, 0, 0.08);
+		0 18px 40px rgba(49, 36, 20, 0.2),
+		0 8px 16px rgba(49, 36, 20, 0.12);
+	border: 1px solid rgba(255, 255, 255, 0.76);
 }
 
 #public_page .auth-form h2 {
-	margin: 2px 0 12px;
+	margin: 2px 0 10px;
 	font-weight: 800;
 	font-size: 1.35rem;
 	letter-spacing: 0.2px;
 	color: #0f172a;
-	text-align: left;
+	text-align: center;
 }
 
 #public_page .auth-form form {
 	display: grid;
-	gap: 12px;
+	gap: 10px;
 }
 
 #public_page .auth-form input[type="text"],
 #public_page .auth-form input[type="password"],
 #public_page .auth-form input[type="email"] {
 	width: 100%;
-	padding: 12px 14px;
+	padding: 10px 12px;
 	border-radius: 10px;
 	border: 1px solid rgba(2, 6, 23, 0.15);
 	background: #fff;
@@ -222,7 +261,7 @@ button {
 
 #public_page .auth-form button[type="submit"] {
 	width: 100%;
-	padding: 12px 14px;
+	padding: 10px 12px;
 	border-radius: 10px;
 	background: #1d4ed8;
 	color: #fff;
@@ -241,8 +280,35 @@ button {
 	height: 16px;
 }
 
+@media (min-width: 900px) {
+	#public_page .auth-form {
+		padding: 14px 16px;
+	}
+
+	#public_page .auth-form h2 {
+		margin-bottom: 8px;
+		font-size: 1.2rem;
+	}
+
+	#public_page .auth-form form {
+		gap: 8px;
+	}
+
+	#public_page .auth-form input[type="text"],
+	#public_page .auth-form input[type="password"],
+	#public_page .auth-form input[type="email"],
+	#public_page .auth-form button[type="submit"] {
+		padding: 8px 10px;
+	}
+
+	#public_page .auth-form .message {
+		margin-block: 6px 0;
+		font-size: 0.9rem;
+	}
+}
+
 /* Responsive tuning */
-@media (max-width: 1024px) {
+@media (max-width: 899px) {
 	#public_page {
 		gap: 2rem;
 	}
@@ -251,7 +317,17 @@ button {
 	#public_page {
 		flex-direction: column;
 		gap: 1.25rem;
-		background-size: cover;
+		background-position: center top;
+		min-height: 100svh;
+		height: auto;
+		overflow-y: auto;
+	}
+	#public_page::before {
+		left: 50%;
+		width: min(560px, 96vw);
+		height: min(92svh, 860px);
+		transform: translate(-50%, -50%);
+		background: rgba(40, 48, 34, 0.12);
 	}
 	#public_page .auth-form {
 		width: min(520px, 92vw);
