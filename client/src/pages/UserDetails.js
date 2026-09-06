@@ -676,24 +676,27 @@ export default function UserDetails() {
 	}
 
 	return (
-		<div className="container">
-			<div style={{ marginBottom: 16 }}>
-				<Link to="/admin">← Back to Admin Dashboard</Link>
-			</div>
-
-			<h2>User Details</h2>
-			<p>
-				<strong>Username:</strong> {user.username}
-			</p>
-			{user.email && (
-				<p>
-					<strong>Email:</strong> {user.email}
-				</p>
-			)}
+		<div className="container user-details-page">
+			<section className="user-details-hero">
+				<h1>User Details</h1>
+				<div className="user-details-student-card">
+					<div className="user-details-student-name">
+						{user.username}
+					</div>
+					{user.email && (
+						<div className="user-details-student-email">
+							{user.email}
+						</div>
+					)}
+				</div>
+			</section>
 
 			{/* ===== Months table (with Add Month button) ===== */}
-			<div style={{ marginTop: 18, marginBottom: 18 }}>
+			<section className="user-details-section">
 				<div
+					className={`admin-section-toolbar ${
+						showMonthsTable ? "" : "admin-section-toolbar--solo"
+					}`}
 					style={{
 						display: "flex",
 						alignItems: "center",
@@ -807,36 +810,32 @@ export default function UserDetails() {
 				</div>
 
 				{showMonthsTable && (
-					<table className="table grid" style={{ marginTop: 10 }}>
-						<thead>
-							<tr>
-								<th>Month</th>
-								<th>Month Start</th>
-							</tr>
-						</thead>
-						<tbody>{monthsTableRows}</tbody>
-					</table>
+					<div className="admin-table-card">
+						<table className="table grid user-details-table">
+							<thead>
+								<tr>
+									<th>Month</th>
+									<th>Month Start</th>
+								</tr>
+							</thead>
+							<tbody>{monthsTableRows}</tbody>
+						</table>
+					</div>
 				)}
-			</div>
+			</section>
 
-			<h3
-				style={{
-					margin: "18px 0 10px",
-					textAlign: "center",
-					fontSize: "2rem",
-				}}
-			>
-				Sound Check Success
-			</h3>
+			<section className="user-details-section">
+				<h2 className="user-details-table-title">
+					Sound Check Success
+				</h2>
 
 			<div
+				className="admin-section-toolbar"
 				style={{
 					display: "flex",
 					alignItems: "center",
 					gap: 12,
 					flexWrap: "wrap",
-					marginTop: 8,
-					marginBottom: 8,
 				}}
 			>
 				<h3 style={{ margin: 0 }}>Month</h3>
@@ -858,8 +857,8 @@ export default function UserDetails() {
 				)}
 			</div>
 
-			<div>
-				<table className="table grid">
+			<div className="admin-table-card">
+				<table className="table grid user-details-table">
 					<thead>
 						<tr>
 							<th style={{ textAlign: "center" }}>Sound</th>
@@ -881,6 +880,7 @@ export default function UserDetails() {
 					</tbody>
 				</table>
 			</div>
+			</section>
 		</div>
 	);
 }

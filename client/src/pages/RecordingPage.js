@@ -271,14 +271,7 @@ function RecordingCard({
 			: "Stop";
 
 	return (
-		<div
-			style={{
-				border: "1px solid #444",
-				borderRadius: 10,
-				padding: 12,
-				marginBottom: 12,
-			}}
-		>
+		<div className="recording-card">
 			<div
 				style={{
 					display: "flex",
@@ -309,14 +302,7 @@ function RecordingCard({
 				</label>
 			</div>
 
-			<div
-				style={{
-					marginTop: 8,
-					padding: 8,
-					border: "1px dashed #666",
-					borderRadius: 8,
-				}}
-			>
+			<div className="recording-audio-box">
 				<div
 					style={{
 						display: "flex",
@@ -374,7 +360,7 @@ function RecordingCard({
 				<div>IPA: {doc?.audioIPA ?? "—"}</div>
 			</div>
 
-			<div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+			<div className="recording-card-actions">
 				<button
 					onClick={saveUpload}
 					disabled={!audio.blob || dayLockedForViewer}
@@ -389,7 +375,7 @@ function RecordingCard({
 
 				<button
 					onClick={deleteRecording}
-					style={{ marginLeft: "auto" }}
+					className="recording-delete-button"
 					disabled={dayLockedForViewer}
 				>
 					{hasIdNow ? "Delete Recording" : "Discard"}
@@ -654,16 +640,10 @@ function RecordingPage({
 	};
 
 	return (
-		<div style={{ padding: 16 }}>
-			<div
-				style={{
-					marginBottom: 12,
-					display: "flex",
-					gap: 8,
-					alignItems: "center",
-					flexWrap: "wrap",
-				}}
-			>
+		<div className="recording-page">
+			<h2 className="recording-section-title">Recordings</h2>
+
+			<div className="recording-action-stack">
 				<button
 					onClick={addNewCard}
 					disabled={transcribing || dayLockedForViewer}

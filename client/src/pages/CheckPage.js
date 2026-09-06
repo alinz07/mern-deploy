@@ -1,5 +1,5 @@
 // client/src/pages/CheckPage.js  (DROP-IN)
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
 	useParams,
 	useSearchParams,
@@ -44,6 +44,8 @@ const EQUIP_FIELDS = [
 	["fmMic", "FM Mic"],
 ];
 
+const CHECK_SAVE_DEBOUNCE_MS = 450;
+
 export default function CheckPage() {
 	const { dayId } = useParams();
 	const [searchParams] = useSearchParams();
@@ -55,7 +57,6 @@ export default function CheckPage() {
 	const [check, setCheck] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [msg, setMsg] = useState("");
-	const [saving, setSaving] = useState({});
 	const [bulkSaving, setBulkSaving] = useState(false);
 
 	// Daily comments
@@ -91,6 +92,41 @@ export default function CheckPage() {
 	});
 
 	const fieldKeys = useMemo(() => FIELD_MAP.map(([k]) => k), []);
+	const checkRef = useRef(null);
+	const checkIdRef = useRef(null);
+	const checkSaveTimerRef = useRef(null);
+	const checkSaveInFlightRef = useRef(false);
+	const checkSaveGenerationRef = useRef(0);
+	const pendingCheckPatchRef = useRef({});
+	const previousCheckValuesRef = useRef({});
+
+	useEffect(() => {
+		const nextCheckId = check?._id || null;
+		const previousCheckId = checkIdRef.current;
+		if (
+			previousCheckId &&
+			nextCheckId &&
+			String(previousCheckId) !== String(nextCheckId)
+		) {
+			if (checkSaveTimerRef.current) {
+				clearTimeout(checkSaveTimerRef.current);
+				checkSaveTimerRef.current = null;
+			}
+			checkSaveGenerationRef.current += 1;
+			pendingCheckPatchRef.current = {};
+			previousCheckValuesRef.current = {};
+		}
+		checkRef.current = check;
+		checkIdRef.current = nextCheckId;
+	}, [check]);
+
+	useEffect(() => {
+		return () => {
+			if (checkSaveTimerRef.current) {
+				clearTimeout(checkSaveTimerRef.current);
+			}
+		};
+	}, []);
 
 	// Load logged-in viewer for dashboard link label
 	useEffect(() => {
@@ -175,12 +211,6 @@ export default function CheckPage() {
 
 	const resolvedUserId = userIdFromQuery || check?.user || null;
 	const isAdmin = viewer?.role === "admin";
-	const dashboardLabel =
-		viewer == null
-			? "Dashboard"
-			: isAdmin
-				? "Admin Dashboard"
-				: "User Dashboard";
 
 	const dayLockedForViewer = dayLocked && !isAdmin;
 
@@ -331,46 +361,166 @@ export default function CheckPage() {
 	}, [dayId, monthId, navigate]);
 
 	// --------- Daily check handlers ----------
-	const toggleField = useCallback(
-		async (field) => {
-			if (!check || saving[field] || bulkSaving || dayLockedForViewer)
-				return;
-			setSaving((s) => ({ ...s, [field]: true }));
-			const prev = check[field];
-			const next = !prev;
-			setCheck((c) => ({ ...c, [field]: !prev }));
-			try {
-				const res = await axios.patch(
-					`${API}/api/checks/${check._id}`,
-					{ [field]: next },
-					tokenHeader(),
+	const flushCheckPatch = useCallback(async () => {
+		if (checkSaveTimerRef.current) {
+			clearTimeout(checkSaveTimerRef.current);
+			checkSaveTimerRef.current = null;
+		}
+
+		if (checkSaveInFlightRef.current) {
+			checkSaveTimerRef.current = setTimeout(() => {
+				checkSaveTimerRef.current = null;
+				flushCheckPatch();
+			}, CHECK_SAVE_DEBOUNCE_MS);
+			return;
+		}
+
+		const checkId = checkIdRef.current;
+		const payload = { ...pendingCheckPatchRef.current };
+		const fields = Object.keys(payload);
+		if (!checkId || fields.length === 0) return;
+
+		pendingCheckPatchRef.current = {};
+		checkSaveInFlightRef.current = true;
+		const saveGeneration = checkSaveGenerationRef.current;
+
+		try {
+			const res = await axios.patch(
+				`${API}/api/checks/${checkId}`,
+				payload,
+				{
+					headers: {
+						"x-auth-token": localStorage.getItem("token"),
+					},
+				},
+			);
+
+			if (saveGeneration === checkSaveGenerationRef.current) {
+				const nextCheck = { ...(checkRef.current || {}) };
+				fields.forEach((field) => {
+					if (
+						Object.prototype.hasOwnProperty.call(
+							pendingCheckPatchRef.current,
+							field,
+						)
+					) {
+						return;
+					}
+					nextCheck[field] = res.data?.[field] ?? payload[field];
+					delete previousCheckValuesRef.current[field];
+				});
+				checkRef.current = nextCheck;
+				setCheck((current) =>
+					current && String(current._id) === String(checkId)
+						? { ...current, ...nextCheck }
+						: current,
 				);
-				setCheck(res.data);
-				if (next === false) openCheckCommentDraft(field);
 				setMsg("");
-			} catch (err) {
-				const m =
-					err?.response?.data?.msg ||
-					err?.response?.data?.error ||
-					"Update failed";
-				setMsg(m);
-				setCheck((c) => ({ ...c, [field]: prev }));
-			} finally {
-				setSaving((s) => ({ ...s, [field]: false }));
 			}
+		} catch (err) {
+			const m =
+				err?.response?.data?.msg ||
+				err?.response?.data?.error ||
+				"Update failed";
+			setMsg(m);
+
+			if (saveGeneration === checkSaveGenerationRef.current) {
+				const rollback = {};
+				fields.forEach((field) => {
+					if (
+						Object.prototype.hasOwnProperty.call(
+							pendingCheckPatchRef.current,
+							field,
+						)
+					) {
+						return;
+					}
+					if (
+						Object.prototype.hasOwnProperty.call(
+							previousCheckValuesRef.current,
+							field,
+						)
+					) {
+						rollback[field] = previousCheckValuesRef.current[field];
+						delete previousCheckValuesRef.current[field];
+					}
+				});
+
+				if (Object.keys(rollback).length > 0) {
+					checkRef.current = {
+						...(checkRef.current || {}),
+						...rollback,
+					};
+					setCheck((current) =>
+						current && String(current._id) === String(checkId)
+							? { ...current, ...rollback }
+							: current,
+					);
+				}
+			}
+		} finally {
+			checkSaveInFlightRef.current = false;
+			if (Object.keys(pendingCheckPatchRef.current).length > 0) {
+				checkSaveTimerRef.current = setTimeout(() => {
+					checkSaveTimerRef.current = null;
+					flushCheckPatch();
+				}, CHECK_SAVE_DEBOUNCE_MS);
+			}
+		}
+	}, []);
+
+	const scheduleCheckPatch = useCallback(() => {
+		if (checkSaveTimerRef.current) {
+			clearTimeout(checkSaveTimerRef.current);
+		}
+		checkSaveTimerRef.current = setTimeout(() => {
+			checkSaveTimerRef.current = null;
+			flushCheckPatch();
+		}, CHECK_SAVE_DEBOUNCE_MS);
+	}, [flushCheckPatch]);
+
+	const toggleField = useCallback(
+		(field) => {
+			const currentCheck = checkRef.current;
+			if (!currentCheck || bulkSaving || dayLockedForViewer) return;
+
+			const prev = !!currentCheck[field];
+			const next = !prev;
+
+			if (
+				!Object.prototype.hasOwnProperty.call(
+					previousCheckValuesRef.current,
+					field,
+				)
+			) {
+				previousCheckValuesRef.current[field] = prev;
+			}
+
+			pendingCheckPatchRef.current[field] = next;
+			checkRef.current = { ...currentCheck, [field]: next };
+			setCheck((c) => (c ? { ...c, [field]: next } : c));
+			if (next === false) openCheckCommentDraft(field);
+			setMsg("");
+			scheduleCheckPatch();
 		},
 		[
-			check,
-			saving,
 			bulkSaving,
 			dayLockedForViewer,
 			openCheckCommentDraft,
+			scheduleCheckPatch,
 		],
 	);
 
 	const setAll = useCallback(
 		async (value) => {
 			if (!check || bulkSaving || dayLockedForViewer) return;
+			if (checkSaveTimerRef.current) {
+				clearTimeout(checkSaveTimerRef.current);
+				checkSaveTimerRef.current = null;
+			}
+			checkSaveGenerationRef.current += 1;
+			pendingCheckPatchRef.current = {};
+			previousCheckValuesRef.current = {};
 			setBulkSaving(true);
 			setMsg("");
 			const payload = fieldKeys.reduce((acc, k) => {
@@ -378,6 +528,7 @@ export default function CheckPage() {
 				return acc;
 			}, {});
 			const prevState = { ...check };
+			checkRef.current = { ...check, ...payload };
 			setCheck((c) => ({ ...c, ...payload }));
 			try {
 				const res = await axios.patch(
@@ -385,6 +536,7 @@ export default function CheckPage() {
 					payload,
 					tokenHeader(),
 				);
+				checkRef.current = res.data;
 				setCheck(res.data);
 				if (value === false) {
 					fieldKeys.forEach(openCheckCommentDraft);
@@ -395,6 +547,7 @@ export default function CheckPage() {
 					err?.response?.data?.error ||
 					"Bulk update failed";
 				setMsg(m);
+				checkRef.current = prevState;
 				setCheck(prevState);
 			} finally {
 				setBulkSaving(false);
@@ -545,7 +698,7 @@ export default function CheckPage() {
 	const checkedCount = fieldKeys.reduce((n, k) => n + (check[k] ? 1 : 0), 0);
 
 	return (
-		<div>
+		<div className="check-page">
 			{uiLocked && (
 				<div
 					style={{
@@ -578,41 +731,24 @@ export default function CheckPage() {
 				</div>
 			)}
 
+			<div className="check-return-row">
+				<Link
+					className="return-daylist-button"
+					to={monthId ? `/months/${monthId}` : `/`}
+				>
+					Return to DayList
+				</Link>
+			</div>
+
 			<div
-				style={{
-					display: "grid",
-					gridTemplateColumns: equipAllowed
-						? "minmax(0, 1.1fr) minmax(380px, 1fr) 340px"
-						: "minmax(0, 1.1fr) minmax(380px, 1fr)",
-					gap: 24,
-				}}
+				className={`check-page-grid ${
+					equipAllowed ? "has-equipment" : "no-equipment"
+				}`}
 			>
-				<div style={{ maxWidth: 760 }}>
-					<div
-						style={{
-							display: "flex",
-							gap: 16,
-							flexWrap: "wrap",
-							marginBottom: 12,
-						}}
-					>
-						<Link to={monthId ? `/months/${monthId}` : `/`}>
-							← Return to DayList
-						</Link>
-
-						<Link to={`/`}>← Return to {dashboardLabel}</Link>
-					</div>
-
-					<div
-						style={{
-							display: "flex",
-							alignItems: "baseline",
-							gap: 12,
-							flexWrap: "wrap",
-						}}
-					>
-						<h2 style={{ margin: 0 }}>Daily Check</h2>
-						<span style={{ opacity: 0.7 }}>
+				<div className="check-panel check-panel--sound">
+					<div className="check-section-heading check-section-heading--with-count">
+						<h2>Sound Checks</h2>
+						<span className="check-count">
 							({checkedCount} / 10 complete)
 						</span>
 					</div>
@@ -629,14 +765,7 @@ export default function CheckPage() {
 						</p>
 					)}
 
-					<div
-						style={{
-							display: "flex",
-							gap: 8,
-							marginTop: 8,
-							flexWrap: "wrap",
-						}}
-					>
+					<div className="check-action-row check-action-row--sound">
 						<button
 							onClick={() => setAll(true)}
 							disabled={bulkSaving || dayLockedForViewer}
@@ -663,7 +792,7 @@ export default function CheckPage() {
 						)}
 					</div>
 
-					<table className="table">
+					<table className="table check-table">
 						<thead>
 							<tr>
 								<th style={{ width: 110 }}>Image</th>
@@ -708,7 +837,6 @@ export default function CheckPage() {
 													toggleField(field)
 												}
 												disabled={
-													saving[field] ||
 													bulkSaving ||
 													dayLockedForViewer
 												}
@@ -828,16 +956,9 @@ export default function CheckPage() {
 					</table>
 				</div>
 
-				<div
-					style={{
-						maxWidth: 520,
-						margin: "0 auto",
-					}}
-				>
-					<h3 style={{ marginTop: 0 }}>Recordings</h3>
-
+				<div className="check-panel check-panel--recordings">
 					{!resolvedUserId && (
-						<p style={{ opacity: 0.7, fontSize: 14 }}>
+						<p className="check-loading-note">
 							Loading recordings…
 						</p>
 					)}
@@ -855,13 +976,8 @@ export default function CheckPage() {
 				</div>
 
 				{equipAllowed && (
-					<aside
-						style={{
-							borderLeft: "1px solid #ddd",
-							paddingLeft: 16,
-						}}
-					>
-						<h3 style={{ marginTop: 0 }}>Equipment Check</h3>
+					<aside className="check-panel check-panel--equipment">
+						<h3>Equipment Check</h3>
 						{equipMsg && (
 							<p style={{ color: "crimson" }}>{equipMsg}</p>
 						)}
@@ -871,7 +987,7 @@ export default function CheckPage() {
 							</p>
 						) : (
 							<>
-								<table className="table">
+								<table className="table check-table">
 									<thead>
 										<tr>
 											<th>Field</th>
