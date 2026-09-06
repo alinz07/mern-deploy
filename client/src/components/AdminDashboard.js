@@ -18,7 +18,7 @@ const monthRecencyTs = (m) => {
 	return (d ? d : new Date(0)).getTime();
 };
 
-function AdminDashboard() {
+function AdminDashboard({ user }) {
 	const [users, setUsers] = useState([]);
 	const [months, setMonths] = useState([]);
 	const [loadingUsers, setLoadingUsers] = useState(true);
@@ -74,10 +74,6 @@ function AdminDashboard() {
 		// currentYear-2 .. currentYear+2
 		return [y - 2, y - 1, y, y + 1, y + 2];
 	}, []);
-
-	// Join code
-	const [joinCode, setJoinCode] = useState("");
-	const [loadingJoin, setLoadingJoin] = useState(true);
 
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
@@ -150,23 +146,8 @@ function AdminDashboard() {
 			}
 		};
 
-		const fetchJoinCode = async () => {
-			try {
-				const r = await axios.get(
-					"https://mern-deploy-docker.onrender.com/api/admin/join-code",
-					tokenHeader(),
-				);
-				setJoinCode(r.data?.joinCode || "");
-			} catch {
-				setJoinCode("");
-			} finally {
-				setLoadingJoin(false);
-			}
-		};
-
 		fetchUsers();
 		fetchMonths();
-		fetchJoinCode();
 	}, []);
 
 	// month label to create
@@ -286,60 +267,21 @@ function AdminDashboard() {
 		});
 	}, [filteredSortedMonths]);
 
-	if (loadingUsers || loadingMonths)
-		return <p>Loading admin data…</p>;
+	if (loadingUsers || loadingMonths) return <p>Loading admin data…</p>;
 	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
-
-	const copy = async () => {
-		if (!joinCode) return;
-		try {
-			await navigator.clipboard.writeText(joinCode);
-			alert("Join code copied!");
-		} catch {
-			window.prompt("Copy this join code:", joinCode);
-		}
-	};
 
 	return (
 		<div className="admin-dashboard">
-			<div className="page-header">
-				<h2>Admin Dashboard</h2>
-
-				<div
-					style={{
-						flex: 1,
-						display: "flex",
-						justifyContent: "center",
-					}}
-				>
-					<div className="join-chip">
-						<span className="muted">Join code:</span>
-						<strong style={{ letterSpacing: 0.5 }}>
-							{loadingJoin ? "…" : joinCode || "—"}
-						</strong>
-						<button
-							type="button"
-							onClick={copy}
-							disabled={!joinCode}
-							title="Copy join code"
-						>
-							Copy
-						</button>
-					</div>
-				</div>
-
-				<a href="/equipment">
-					<button type="button" title="Manage Equipment Inventory">
-						Equipment
-					</button>
-				</a>
-			</div>
+			<section className="admin-welcome">
+				<h1>Welcome, {user?.username || "Admin"}</h1>
+			</section>
 
 			{/* ======= USERS ======= */}
 			<div
+				className="admin-section-toolbar"
 				style={{
 					marginTop: 24,
-					marginBottom: 12,
+					marginBottom: 0,
 					display: "flex",
 					gap: 12,
 					alignItems: "center",
@@ -373,154 +315,166 @@ function AdminDashboard() {
 				</div>
 			</div>
 
-			<table>
-				<thead>
-					<tr>
-						<th>Username</th>
-						<th>Email</th>
-						<th>Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{filteredSortedUsers.map((u) => {
-						const isEditing = editId === u._id;
-						return (
-							<tr key={u._id}>
-								<td>
-									{isEditing ? (
-										<input
-											type="text"
-											value={editForm.username}
-											onChange={(e) =>
-												setEditForm((f) => ({
-													...f,
-													username: e.target.value,
-												}))
-											}
-											placeholder="username"
-											style={{ padding: "4px 6px" }}
-										/>
-									) : u.role !== "admin" ? (
-										<Link
-											to={`/admin/users/${u._id}`}
-											state={{ user: u }}
-										>
-											{u.username}
-										</Link>
-									) : (
-										u.username
-									)}
-								</td>
-								<td>
-									{isEditing ? (
-										<input
-											type="email"
-											value={editForm.email}
-											onChange={(e) =>
-												setEditForm((f) => ({
-													...f,
-													email: e.target.value,
-												}))
-											}
-											placeholder="email"
-											style={{ padding: "4px 6px" }}
-										/>
-									) : (
-										u.email || "N/A"
-									)}
-								</td>
-								<td>
-									{isEditing ? (
-										<>
-											<button
-												type="button"
-												onClick={saveEdit}
-												title="Save changes"
+			<div className="admin-table-card">
+				<table>
+					<thead>
+						<tr>
+							<th>Username</th>
+							<th>Email</th>
+							<th>Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						{filteredSortedUsers.map((u) => {
+							const isEditing = editId === u._id;
+							return (
+								<tr key={u._id}>
+									<td>
+										{isEditing ? (
+											<input
+												type="text"
+												value={editForm.username}
+												onChange={(e) =>
+													setEditForm((f) => ({
+														...f,
+														username:
+															e.target.value,
+													}))
+												}
+												placeholder="username"
+												style={{ padding: "4px 6px" }}
+											/>
+										) : u.role !== "admin" ? (
+											<Link
+												to={`/admin/users/${u._id}`}
+												state={{ user: u }}
 											>
-												Save
-											</button>
-											<button
-												type="button"
-												onClick={cancelEdit}
-												title="Cancel edit"
-											>
-												Cancel
-											</button>
-										</>
-									) : (
-										<>
-											<button
-												type="button"
-												onClick={() => startEdit(u)}
-											>
-												Edit
-											</button>
-											<button
-												type="button"
-												onClick={() => {
-													if (
-														window.confirm(
-															`Delete user "${u.username}" and their data? This cannot be undone.`,
-														)
-													) {
-														setDeletingId(u._id);
-														axios
-															.delete(
-																`https://mern-deploy-docker.onrender.com/api/users/${u._id}`,
-																tokenHeader(),
+												{u.username}
+											</Link>
+										) : (
+											u.username
+										)}
+									</td>
+									<td>
+										{isEditing ? (
+											<input
+												type="email"
+												value={editForm.email}
+												onChange={(e) =>
+													setEditForm((f) => ({
+														...f,
+														email: e.target.value,
+													}))
+												}
+												placeholder="email"
+												style={{ padding: "4px 6px" }}
+											/>
+										) : (
+											u.email || "N/A"
+										)}
+									</td>
+									<td>
+										{isEditing ? (
+											<>
+												<button
+													type="button"
+													onClick={saveEdit}
+													title="Save changes"
+												>
+													Save
+												</button>
+												<button
+													type="button"
+													onClick={cancelEdit}
+													title="Cancel edit"
+												>
+													Cancel
+												</button>
+											</>
+										) : (
+											<>
+												<button
+													type="button"
+													onClick={() => startEdit(u)}
+												>
+													Edit
+												</button>
+												<button
+													type="button"
+													onClick={() => {
+														if (
+															window.confirm(
+																`Delete user "${u.username}" and their data? This cannot be undone.`,
 															)
-															.then(() => {
-																setUsers(
-																	(prev) =>
-																		prev.filter(
-																			(
-																				x,
-																			) =>
-																				x._id !==
-																				u._id,
-																		),
-																);
-																setMonths(
-																	(prev) =>
-																		prev.filter(
-																			(
-																				m,
-																			) =>
-																				m
-																					.userId
-																					?._id !==
-																				u._id,
-																		),
-																);
-															})
-															.finally(() =>
-																setDeletingId(
-																	null,
-																),
+														) {
+															setDeletingId(
+																u._id,
 															);
+															axios
+																.delete(
+																	`https://mern-deploy-docker.onrender.com/api/users/${u._id}`,
+																	tokenHeader(),
+																)
+																.then(() => {
+																	setUsers(
+																		(
+																			prev,
+																		) =>
+																			prev.filter(
+																				(
+																					x,
+																				) =>
+																					x._id !==
+																					u._id,
+																			),
+																	);
+																	setMonths(
+																		(
+																			prev,
+																		) =>
+																			prev.filter(
+																				(
+																					m,
+																				) =>
+																					m
+																						.userId
+																						?._id !==
+																					u._id,
+																			),
+																	);
+																})
+																.finally(() =>
+																	setDeletingId(
+																		null,
+																	),
+																);
+														}
+													}}
+													disabled={
+														deletingId === u._id
 													}
-												}}
-												disabled={deletingId === u._id}
-												title="Delete this user"
-											>
-												{deletingId === u._id
-													? "Deleting…"
-													: "Delete"}
-											</button>
-										</>
-									)}
-								</td>
-							</tr>
-						);
-					})}
-				</tbody>
-			</table>
+													title="Delete this user"
+												>
+													{deletingId === u._id
+														? "Deleting…"
+														: "Delete"}
+												</button>
+											</>
+										)}
+									</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
 
 			{/* ======= MONTHS ======= */}
 			<div
+				className="admin-section-toolbar"
 				style={{
 					marginTop: 24,
-					marginBottom: 12,
+					marginBottom: 0,
 					display: "flex",
 					gap: 12,
 					alignItems: "center",
@@ -660,16 +614,18 @@ function AdminDashboard() {
 				)}
 			</div>
 
-			<table>
-				<thead>
-					<tr>
-						<th>Month</th>
-						<th>Owner</th>
-						<th>Month Start</th>
-					</tr>
-				</thead>
-				<tbody>{monthsTableRows}</tbody>
-			</table>
+			<div className="admin-table-card">
+				<table>
+					<thead>
+						<tr>
+							<th>Month</th>
+							<th>Owner</th>
+							<th>Month Start</th>
+						</tr>
+					</thead>
+					<tbody>{monthsTableRows}</tbody>
+				</table>
+			</div>
 		</div>
 	);
 }

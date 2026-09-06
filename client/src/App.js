@@ -1,6 +1,6 @@
 // client/src/App.js
 import React, { useState, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Link, Routes, Route, Navigate } from "react-router-dom";
 import Register from "./components/Register";
 import Login from "./components/Login";
 import axios from "axios";
@@ -19,6 +19,8 @@ import "./utils/axiosConfig";
 const App = () => {
 	const [user, setUser] = useState(null);
 	const [loading, setLoading] = useState(true);
+	const [joinCode, setJoinCode] = useState("");
+	const [loadingJoin, setLoadingJoin] = useState(false);
 
 	// Rehydrate token & fetch current user on app start
 	useEffect(() => {
@@ -48,29 +50,103 @@ const App = () => {
 		localStorage.removeItem("token");
 		setAuthToken(null);
 		setUser(null);
+		setJoinCode("");
+	};
+
+	const isAdmin = user?.role === "admin";
+
+	useEffect(() => {
+		if (!isAdmin) {
+			setJoinCode("");
+			setLoadingJoin(false);
+			return;
+		}
+
+		let isMounted = true;
+		setLoadingJoin(true);
+
+		axios
+			.get("/api/admin/join-code")
+			.then((res) => {
+				if (isMounted) setJoinCode(res.data?.joinCode || "");
+			})
+			.catch(() => {
+				if (isMounted) setJoinCode("");
+			})
+			.finally(() => {
+				if (isMounted) setLoadingJoin(false);
+			});
+
+		return () => {
+			isMounted = false;
+		};
+	}, [isAdmin]);
+
+	const copyJoinCode = async () => {
+		if (!joinCode) return;
+		try {
+			await navigator.clipboard.writeText(joinCode);
+			alert("Join code copied!");
+		} catch {
+			window.prompt("Copy this join code:", joinCode);
+		}
 	};
 
 	if (loading) {
 		return <div className="loading-spinner">Loading...</div>;
 	}
 
-	const isAdmin = user?.role === "admin";
-
 	return (
 		<div className="App">
 			{user ? (
-				<div>
-					<button onClick={handleLogout}>Logout</button>
+				<div className={isAdmin ? "app-shell admin-shell" : "app-shell"}>
+					<nav className="app-nav" aria-label="Main navigation">
+						<div className="app-nav__brand">
+							<span>Gifted Youngsters</span>
+							<img
+								className="app-nav__logo"
+								src={`${process.env.PUBLIC_URL}/apple4.png`}
+								alt=""
+								aria-hidden="true"
+							/>
+						</div>
+						{isAdmin && (
+							<button
+								type="button"
+								className="app-nav__join-code"
+								onClick={copyJoinCode}
+								disabled={!joinCode}
+								title="Copy join code"
+							>
+								<span>Join code:</span>
+								<strong>{loadingJoin ? "..." : joinCode || "-"}</strong>
+							</button>
+						)}
+						<div className="app-nav__actions">
+							<Link className="app-nav__link" to="/">
+								Dash
+							</Link>
+							{isAdmin && (
+								<Link className="app-nav__link" to="/equipment">
+									Equipment
+								</Link>
+							)}
+							<button
+								type="button"
+								className="app-nav__logout"
+								onClick={handleLogout}
+							>
+								Logout
+							</button>
+						</div>
+					</nav>
 
 					<Routes>
 						<Route
 							path="/"
 							element={
 								isAdmin ? (
-									<div>
-										<h1>Welcome, Professor</h1>
-										<AdminDashboard user={user} />
-									</div>
+									<AdminDashboard user={user} />
 								) : (
 									<div>
 										<p>Welcome, {user.username}</p>
