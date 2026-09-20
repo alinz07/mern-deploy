@@ -73,8 +73,8 @@ function formatMs(ms) {
 	const totalMs = Math.trunc(ms);
 	const m = Math.trunc(totalMs / 60000);
 	const s = Math.trunc((totalMs % 60000) / 1000);
-	const milli = String(totalMs % 1000).padStart(3, "0");
-	return `${m}:${String(s).padStart(2, "0")}.${milli}`;
+	const hundredths = String(Math.trunc((totalMs % 1000) / 10)).padStart(2, "0");
+	return `${m}:${String(s).padStart(2, "0")}.${hundredths}`;
 }
 
 // A self-contained recorder for a single audio clip
