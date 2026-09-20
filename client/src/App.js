@@ -148,8 +148,7 @@ const App = () => {
 								isAdmin ? (
 									<AdminDashboard user={user} />
 								) : (
-									<div>
-										<p>Welcome, {user.username}</p>
+									<div className="user-dashboard-page">
 										<UserDashboard
 											userId={user._id}
 											user={user}

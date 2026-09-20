@@ -100,25 +100,27 @@ function MonthList({ user }) {
 		.sort((a, b) => parseMonthDate(b.name) - parseMonthDate(a.name));
 	return (
 		<div className="month-list">
-			<h3>Your Months</h3>
+			<h2>Your Months</h2>
 
-			{/* Year Filter */}
-			<label>Filter by Year: </label>
-			<select
-				value={selectedYear}
-				onChange={(e) => setSelectedYear(e.target.value)}
-			>
-				<option value="all">All</option>
-				{uniqueYears.map((year) => (
-					<option key={year} value={year}>
-						{year}
-					</option>
-				))}
-			</select>
+			<div className="month-list-toolbar">
+				<label htmlFor="month-year-filter">Filter by Year</label>
+				<select
+					id="month-year-filter"
+					value={selectedYear}
+					onChange={(e) => setSelectedYear(e.target.value)}
+				>
+					<option value="all">All</option>
+					{uniqueYears.map((year) => (
+						<option key={year} value={year}>
+							{year}
+						</option>
+					))}
+				</select>
+			</div>
 
 			{message && <p className="message">{message}</p>}
 
-			{/* Add Month (no day seeding now) */}
+			<div className="month-list-actions">
 			<button
 				onClick={() => handleAddMonth(0)}
 				disabled={currentExists || isCreating}
@@ -133,6 +135,7 @@ function MonthList({ user }) {
 			>
 				➕ Add Next Month
 			</button>
+			</div>
 
 			{/* List */}
 			{filtered.length === 0 ? (
@@ -141,7 +144,7 @@ function MonthList({ user }) {
 					{selectedYear !== "all" ? ` for ${selectedYear}` : ""}.
 				</p>
 			) : (
-				<ul>
+				<ul className="month-list-items">
 					{filtered.map((month) => (
 						<li key={month._id}>
 							<Link to={`/months/${month._id}`}>

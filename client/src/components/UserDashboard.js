@@ -1,5 +1,6 @@
 // client/src/components/UserDashboard.js  (DROP-IN)
 import React, { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import emailjs from "@emailjs/browser";
 import MonthList from "./MonthList";
@@ -90,32 +91,45 @@ function UserDashboard({ userId, user }) {
 		}
 	};
 
-	if (loading) return <p>Loading your data...</p>;
+	if (loading) return <p className="user-dashboard-loading">Loading your data...</p>;
 
 	return (
-		<div className="user-dashboard">
-			{/* LEFT: profile + months */}
+		<main className="user-dashboard">
+			<header className="user-dashboard-welcome">
+				<h1>Welcome, {user?.username || data.username}</h1>
+			</header>
+
+			<div className="user-dashboard-grid">
 			<div className="user-main">
-				<h3>Your Info</h3>
-				<ul>
-					<li>Email: {data.email}</li>
-					<li>Username: {data.username}</li>
-				</ul>
-				<p style={{ marginTop: 8 }}>
-					<a href="/my-equipment">
-						<button type="button" title="Manage your equipment">
-							My Equipment
-						</button>
-					</a>
-				</p>
-				<div className="sp-16" />
+				<section className="user-profile-panel">
+					<h2>Your Info</h2>
+					<dl className="user-profile-details">
+						<div>
+							<dt>Username</dt>
+							<dd>{data.username}</dd>
+						</div>
+						<div>
+							<dt>Email</dt>
+							<dd>{data.email}</dd>
+						</div>
+					</dl>
+					<Link
+						className="user-equipment-button"
+						to="/my-equipment"
+						title="Manage your equipment"
+					>
+						My Equipment
+					</Link>
+				</section>
+
+				<section className="user-months-panel">
 				<MonthList user={user} />
+				</section>
 			</div>
 
-			{/* RIGHT: email panel */}
 			<aside className="mail-card">
-				<h4>Send a message</h4>
-				<p className="muted" style={{ marginTop: -6 }}>
+				<h2>Send a Message</h2>
+				<p className="mail-card-intro">
 					This will email your admin.
 				</p>
 
@@ -124,30 +138,37 @@ function UserDashboard({ userId, user }) {
 					onSubmit={onSendEmail}
 					className="mail-form"
 				>
-					{/* These names should match your EmailJS template variables */}
 					<input type="hidden" name="to_email" value={adminEmail} />
 
+					<label htmlFor="message-from-name">Your name</label>
 					<input
+						id="message-from-name"
 						type="text"
 						name="from_name"
 						defaultValue={user?.username || ""}
 						placeholder="Your name"
 						required
 					/>
+					<label htmlFor="message-from-email">Your email</label>
 					<input
+						id="message-from-email"
 						type="email"
 						name="from_email"
 						defaultValue={data?.email || ""}
 						placeholder="Your email"
 						required
 					/>
+					<label htmlFor="message-subject">Subject</label>
 					<input
+						id="message-subject"
 						type="text"
 						name="subject"
 						placeholder="Subject"
 						required
 					/>
+					<label htmlFor="message-body">Message</label>
 					<textarea
+						id="message-body"
 						name="message"
 						placeholder="Write your message…"
 						rows={7}
@@ -169,7 +190,8 @@ function UserDashboard({ userId, user }) {
 					)}
 				</form>
 			</aside>
-		</div>
+			</div>
+		</main>
 	);
 }
 
