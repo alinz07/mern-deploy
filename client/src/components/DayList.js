@@ -293,92 +293,61 @@ export default function DayList() {
 		return days.filter((d) => (d.environment || "online") === filterEnv);
 	}, [days, filterEnv]);
 
-	if (loading) return <p>Loading days…</p>;
+	if (loading) return <p className="day-list-loading">Loading days…</p>;
 
 	return (
 		<div className="day-list">
-			<div
-				style={{
-					display: "flex",
-					alignItems: "center",
-					gap: 8,
-					marginTop: 12,
-					marginBottom: 12,
-				}}
-			>
-				<button
-					type="button"
-					onClick={() => refreshDays({ showMessage: true })}
-					disabled={refreshing}
-					title="Refresh days and transcription statuses"
-				>
-					{refreshing ? "Refreshing..." : "Refresh"}
-				</button>
-			</div>
+			<div className="day-list-panel">
+				<div className="day-list-actions">
+					{canSeeUserDetails && (
+						<Link
+							className="day-list-magenta-button"
+							to={`/admin/users/${monthOwnerId}`}
+						>
+							Back to User Details
+						</Link>
+					)}
+					<button
+						type="button"
+						className="day-list-magenta-button"
+						onClick={() => refreshDays({ showMessage: true })}
+						disabled={refreshing}
+						title="Refresh days and transcription statuses"
+					>
+						{refreshing ? "Refreshing..." : "Refresh"}
+					</button>
+				</div>
 
-			<div
-				style={{
-					display: "flex",
-					gap: 16,
-					flexWrap: "wrap",
-					marginBottom: 12,
-				}}
-			>
-				<Link to="/">
-					← Back to {isAdmin ? "Admin Dashboard" : "User Dashboard"}
-				</Link>
+				<header className="day-list-header">
+					<h1>{monthName || "Days"}</h1>
+					<div className="day-list-filter">
+						<label htmlFor="day-environment-filter">Filter</label>
+						<select
+							id="day-environment-filter"
+							value={filterEnv}
+							onChange={(e) => setFilterEnv(e.target.value)}
+						>
+							<option value="all">All</option>
+							<option value="online">Online</option>
+							<option value="inperson">In-person</option>
+						</select>
+						<span>
+							{filteredDays.length} of {days.length} days
+						</span>
+					</div>
+				</header>
 
-				{canSeeUserDetails && (
-					<Link to={`/admin/users/${monthOwnerId}`}>
-						← Back to User Details
-					</Link>
-				)}
-			</div>
+				{msg && <p className="message day-list-message">{msg}</p>}
 
-			<div
-				style={{
-					display: "flex",
-					alignItems: "center",
-					gap: 12,
-					flexWrap: "wrap",
-				}}
-			>
-				<h3 style={{ margin: 0 }}>{monthName || "Days"}</h3>
-
-				<label style={{ marginLeft: 8, fontSize: 14 }}>Filter:</label>
-				<select
-					value={filterEnv}
-					onChange={(e) => setFilterEnv(e.target.value)}
-					style={{ padding: "2px 6px" }}
-					aria-label="Filter days by environment"
-				>
-					<option value="all">All</option>
-					<option value="online">online</option>
-					<option value="inperson">inperson</option>
-				</select>
-
-				<span style={{ fontSize: 12, opacity: 0.7 }}>
-					showing {filteredDays.length}/{days.length}
-				</span>
-			</div>
-
-			{msg && <p className="message">{msg}</p>}
-
-			<div
-				style={{
-					display: "flex",
-					flexWrap: "wrap",
-					gap: 12,
-					alignItems: "center",
-					margin: "12px 0 16px",
-				}}
-			>
+				<section className="day-list-editor" aria-labelledby="day-editor-title">
+					<h2 id="day-editor-title">Add or Update a Day</h2>
 				<form
 					onSubmit={onSubmitAddDay}
-					style={{ display: "flex", gap: 8, alignItems: "center" }}
+					className="day-list-form"
 				>
-					<label style={{ fontWeight: 600 }}>Add/Update a day:</label>
+					<label htmlFor="day-date">Date</label>
 					<input
+						id="day-date"
 						type="date"
 						value={dateStr}
 						onChange={(e) => setDateStr(e.target.value)}
@@ -388,6 +357,7 @@ export default function DayList() {
 						disabled={submitting || !monthName}
 					/>
 					<select
+						aria-label="Day environment"
 						value={env}
 						onChange={(e) => setEnv(e.target.value)}
 						disabled={submitting}
@@ -401,16 +371,9 @@ export default function DayList() {
 				</form>
 
 				{isCurrentMonth && (
-					<>
-						<span style={{ opacity: 0.6 }}>or</span>
-
-						<div
-							style={{
-								display: "flex",
-								gap: 8,
-								alignItems: "center",
-							}}
-						>
+					<div className="day-list-today-actions">
+						<span>or add today</span>
+						<div>
 							<button
 								type="button"
 								onClick={handleAddToday}
@@ -428,27 +391,22 @@ export default function DayList() {
 								Add Today (in-person)
 							</button>
 						</div>
-					</>
+					</div>
 				)}
-			</div>
+				</section>
 
-			{filteredDays.length === 0 ? (
-				<p>
-					No days{filterEnv !== "all" ? ` for '${filterEnv}'` : ""}.
-				</p>
-			) : (
-				<ul>
+				<section className="day-list-days" aria-labelledby="days-heading">
+					<h2 id="days-heading">Days</h2>
+					{filteredDays.length === 0 ? (
+						<p className="day-list-empty">
+							No days{filterEnv !== "all" ? ` for '${filterEnv}'` : ""}.
+						</p>
+					) : (
+					<ul className="day-list-items">
 					{[...filteredDays]
 						.sort((a, b) => a.dayNumber - b.dayNumber)
 						.map((d) => (
-							<li
-								key={d._id}
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: 10,
-								}}
-							>
+							<li key={d._id} className="day-list-item">
 								{(() => {
 									const label = formatDayLabel(
 										monthName,
@@ -460,11 +418,12 @@ export default function DayList() {
 										status === "processing";
 
 									return locked ? (
-										<span style={{ opacity: 0.7 }}>
+										<span className="day-list-link day-list-link--locked">
 											{label} <em>(Transcribing...)</em>
 										</span>
 									) : (
 										<Link
+											className="day-list-link"
 											to={`/days/${
 												d._id
 											}/check?monthId=${monthId}${
@@ -478,29 +437,25 @@ export default function DayList() {
 									);
 								})()}
 
-								<span
-									style={{
-										marginLeft: 8,
-										opacity: 0.75,
-										fontSize: 12,
-									}}
-								>
-									[{d.environment || "online"}]
+								<span className="day-list-environment">
+									{d.environment === "inperson" ? "In-person" : "Online"}
 								</span>
 
 								<button
+									className="day-list-delete"
 									type="button"
 									onClick={() => handleDeleteDay(d)}
 									disabled={!!deleting[d._id]}
 									title="Delete this day"
-									style={{ marginLeft: 8 }}
 								>
-									{deleting[d._id] ? "Deleting…" : "Delete"}
+									{deleting[d._id] ? "Deleting..." : "Delete"}
 								</button>
 							</li>
 						))}
-				</ul>
-			)}
+					</ul>
+					)}
+				</section>
+			</div>
 		</div>
 	);
 }

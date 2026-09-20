@@ -1,6 +1,6 @@
 // client/src/pages/EquipmentPage.js  (NEW)
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
 const API = "https://mern-deploy-docker.onrender.com";
@@ -124,247 +124,231 @@ export default function EquipmentPage() {
 		}
 	};
 
-	if (loading) return <p>Loading equipment…</p>;
+	if (loading) {
+		return <p className="equipment-page-loading">Loading equipment…</p>;
+	}
 
 	return (
-		<div>
-			<p style={{ marginBottom: 12 }}>
-				<Link to="/admin">← Back to Admin Dashboard</Link>
-			</p>
-
-			<div
-				style={{
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "space-between",
-					gap: 12,
-				}}
-			>
-				<h2 style={{ margin: 0 }}>Equipment</h2>
-				{!creating ? (
-					<button type="button" onClick={startCreate}>
-						Add item
-					</button>
-				) : (
-					<div
-						style={{
-							display: "flex",
-							gap: 8,
-							alignItems: "center",
-							flexWrap: "wrap",
-						}}
-					>
-						<input
-							type="text"
-							placeholder="Part"
-							value={newForm.part}
-							onChange={(e) =>
-								setNewForm((f) => ({
-									...f,
-									part: e.target.value,
-								}))
-							}
-						/>
-						<input
-							type="number"
-							min={0}
-							value={newForm.quantity}
-							onChange={(e) =>
-								setNewForm((f) => ({
-									...f,
-									quantity: Number(e.target.value),
-								}))
-							}
-							style={{ width: 90 }}
-						/>
-						<label
-							style={{
-								display: "inline-flex",
-								alignItems: "center",
-								gap: 6,
-							}}
+		<div className="equipment-page">
+			<div className="equipment-page-panel">
+				<header className="equipment-page-header">
+					<h1>Equipment</h1>
+					{!creating && (
+						<button
+							type="button"
+							className="equipment-add-button"
+							onClick={startCreate}
 						>
-							<input
-								type="checkbox"
-								checked={!!newForm.checkbox}
-								onChange={(e) =>
-									setNewForm((f) => ({
-										...f,
-										checkbox: e.target.checked,
-									}))
-								}
-							/>
-							checkbox
-						</label>
-						<input
-							type="text"
-							placeholder="Notes"
-							value={newForm.notes}
-							onChange={(e) =>
-								setNewForm((f) => ({
-									...f,
-									notes: e.target.value,
-								}))
-							}
-							style={{ width: 280 }}
-						/>
-						<button type="button" onClick={createItem}>
-							Save
+							Add item
 						</button>
-						<button type="button" onClick={cancelCreate}>
-							Cancel
-						</button>
-					</div>
-				)}
-			</div>
+					)}
+				</header>
 
-			{msg && <p style={{ color: "crimson" }}>{msg}</p>}
-
-			<table style={{ marginTop: 12, width: "100%", maxWidth: 900 }}>
-				<thead>
-					<tr>
-						<th style={{ textAlign: "left" }}>Part</th>
-						<th>Qty</th>
-						<th>Checkbox</th>
-						<th style={{ textAlign: "left" }}>Notes</th>
-						<th>Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{sorted.length === 0 ? (
-						<tr>
-							<td
-								colSpan={5}
-								style={{ opacity: 0.7, fontStyle: "italic" }}
+				{creating && (
+					<section
+						className="equipment-create-form"
+						aria-labelledby="add-equipment-title"
+					>
+						<h2 id="add-equipment-title">Add Equipment Item</h2>
+						<div className="equipment-form-grid">
+							<label>
+								<span>Part</span>
+								<input
+									type="text"
+									value={newForm.part}
+									onChange={(e) =>
+										setNewForm((f) => ({
+											...f,
+											part: e.target.value,
+										}))
+									}
+								/>
+							</label>
+							<label>
+								<span>Quantity</span>
+								<input
+									type="number"
+									min={0}
+									value={newForm.quantity}
+									onChange={(e) =>
+										setNewForm((f) => ({
+											...f,
+											quantity: Number(e.target.value),
+										}))
+									}
+								/>
+							</label>
+							<label className="equipment-checkbox-field">
+								<input
+									type="checkbox"
+									checked={!!newForm.checkbox}
+									onChange={(e) =>
+										setNewForm((f) => ({
+											...f,
+											checkbox: e.target.checked,
+										}))
+									}
+								/>
+								<span>Checkbox</span>
+							</label>
+							<label className="equipment-notes-field">
+								<span>Notes</span>
+								<input
+									type="text"
+									value={newForm.notes}
+									onChange={(e) =>
+										setNewForm((f) => ({
+											...f,
+											notes: e.target.value,
+										}))
+									}
+								/>
+							</label>
+						</div>
+						<div className="equipment-form-actions">
+							<button type="button" onClick={createItem}>
+								Save Item
+							</button>
+							<button
+								type="button"
+								className="equipment-cancel-button"
+								onClick={cancelCreate}
 							>
-								No equipment yet.
-							</td>
-						</tr>
-					) : (
-						sorted.map((row) => {
-							const editing = editId === row._id;
-							return (
-								<tr key={row._id}>
-									<td>
-										{editing ? (
-											<input
-												type="text"
-												value={editForm.part}
-												onChange={(e) =>
-													setEditForm((f) => ({
-														...f,
-														part: e.target.value,
-													}))
-												}
-											/>
-										) : (
-											row.part
-										)}
-									</td>
-									<td style={{ textAlign: "center" }}>
-										{editing ? (
-											<input
-												type="number"
-												min={0}
-												value={editForm.quantity}
-												onChange={(e) =>
-													setEditForm((f) => ({
-														...f,
-														quantity: Number(
-															e.target.value
-														),
-													}))
-												}
-												style={{ width: 80 }}
-											/>
-										) : (
-											row.quantity ?? 0
-										)}
-									</td>
-									<td style={{ textAlign: "center" }}>
-										{editing ? (
-											<input
-												type="checkbox"
-												checked={!!editForm.checkbox}
-												onChange={(e) =>
-													setEditForm((f) => ({
-														...f,
-														checkbox:
-															e.target.checked,
-													}))
-												}
-											/>
-										) : (
-											<input
-												type="checkbox"
-												checked={!!row.checkbox}
-												readOnly
-											/>
-										)}
-									</td>
-									<td>
-										{editing ? (
-											<input
-												type="text"
-												value={editForm.notes}
-												onChange={(e) =>
-													setEditForm((f) => ({
-														...f,
-														notes: e.target.value,
-													}))
-												}
-												style={{ width: "100%" }}
-											/>
-										) : (
-											row.notes || ""
-										)}
-									</td>
-									<td style={{ whiteSpace: "nowrap" }}>
-										{editing ? (
-											<>
-												<button
-													type="button"
-													onClick={saveEdit}
-												>
-													Save
-												</button>
-												<button
-													type="button"
-													onClick={cancelEdit}
-												>
-													Cancel
-												</button>
-											</>
-										) : (
-											<>
-												<button
-													type="button"
-													onClick={() =>
-														startEdit(row)
-													}
-												>
-													Edit
-												</button>
-												<button
-													type="button"
-													onClick={() => del(row._id)}
-													disabled={
-														deletingId === row._id
-													}
-												>
-													{deletingId === row._id
-														? "Deleting…"
-														: "Delete"}
-												</button>
-											</>
-										)}
+								Cancel
+							</button>
+						</div>
+					</section>
+				)}
+
+				{msg && <p className="equipment-page-message">{msg}</p>}
+
+				<div className="equipment-table-wrap">
+					<table className="equipment-table">
+						<thead>
+							<tr>
+								<th>Part</th>
+								<th>Qty</th>
+								<th>Checkbox</th>
+								<th>Notes</th>
+								<th>Actions</th>
+							</tr>
+						</thead>
+						<tbody>
+							{sorted.length === 0 ? (
+								<tr>
+									<td colSpan={5} className="equipment-table-empty">
+										No equipment yet.
 									</td>
 								</tr>
-							);
-						})
-					)}
-				</tbody>
-			</table>
+							) : (
+								sorted.map((row) => {
+									const editing = editId === row._id;
+									return (
+										<tr key={row._id}>
+											<td>
+												{editing ? (
+													<input
+														type="text"
+														value={editForm.part}
+														onChange={(e) =>
+															setEditForm((f) => ({
+																...f,
+																part: e.target.value,
+															}))
+														}
+													/>
+												) : (
+													row.part
+												)}
+											</td>
+											<td className="equipment-table-center">
+												{editing ? (
+													<input
+														type="number"
+														min={0}
+														value={editForm.quantity}
+														onChange={(e) =>
+															setEditForm((f) => ({
+																...f,
+																quantity: Number(e.target.value),
+															}))
+														}
+													/>
+												) : (
+													row.quantity ?? 0
+												)}
+											</td>
+											<td className="equipment-table-center">
+												<input
+													type="checkbox"
+													checked={
+														editing
+															? !!editForm.checkbox
+															: !!row.checkbox
+													}
+													readOnly={!editing}
+													onChange={(e) =>
+														setEditForm((f) => ({
+															...f,
+															checkbox: e.target.checked,
+														}))
+													}
+												/>
+											</td>
+											<td>
+												{editing ? (
+													<input
+														type="text"
+														value={editForm.notes}
+														onChange={(e) =>
+															setEditForm((f) => ({
+																...f,
+																notes: e.target.value,
+															}))
+														}
+													/>
+												) : (
+													row.notes || ""
+												)}
+											</td>
+											<td className="equipment-row-actions">
+												{editing ? (
+													<>
+														<button type="button" onClick={saveEdit}>
+															Save
+														</button>
+														<button
+															type="button"
+															className="equipment-cancel-button"
+															onClick={cancelEdit}
+														>
+															Cancel
+														</button>
+													</>
+												) : (
+													<>
+														<button type="button" onClick={() => startEdit(row)}>
+															Edit
+														</button>
+														<button
+															type="button"
+															className="equipment-delete-button"
+															onClick={() => del(row._id)}
+															disabled={deletingId === row._id}
+														>
+															{deletingId === row._id ? "Deleting…" : "Delete"}
+														</button>
+													</>
+												)}
+											</td>
+										</tr>
+									);
+								})
+							)}
+						</tbody>
+					</table>
+				</div>
+			</div>
 		</div>
 	);
 }
