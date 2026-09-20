@@ -32,12 +32,49 @@ function tokenHeader() {
 	const t = localStorage.getItem("token");
 	return { headers: { "x-auth-token": t } };
 }
+
+function readBlobDurationMs(blob) {
+	return new Promise((resolve) => {
+		if (!blob?.size) {
+			resolve(0);
+			return;
+		}
+
+		const url = URL.createObjectURL(blob);
+		const audio = new Audio();
+		let settled = false;
+
+		const finish = (value) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timeout);
+			audio.removeAttribute("src");
+			URL.revokeObjectURL(url);
+			resolve(value);
+		};
+
+		const timeout = setTimeout(() => finish(null), 3000);
+
+		audio.preload = "metadata";
+		audio.onloadedmetadata = () => {
+			finish(
+				Number.isFinite(audio.duration)
+					? audio.duration * 1000
+					: null,
+			);
+		};
+		audio.onerror = () => finish(null);
+		audio.src = url;
+	});
+}
+
 function formatMs(ms) {
 	if (!ms) return "—";
-	const s = Math.floor(ms / 1000);
-	const m = Math.floor(s / 60);
-	const ss = String(s % 60).padStart(2, "0");
-	return `${m}:${ss}`;
+	const totalMs = Math.trunc(ms);
+	const m = Math.trunc(totalMs / 60000);
+	const s = Math.trunc((totalMs % 60000) / 1000);
+	const milli = String(totalMs % 1000).padStart(3, "0");
+	return `${m}:${String(s).padStart(2, "0")}.${milli}`;
 }
 
 // A self-contained recorder for a single audio clip
@@ -63,13 +100,15 @@ function useSideRecorder() {
 
 		rec.ondataavailable = (e) =>
 			e.data.size && chunksRef.current.push(e.data);
-		rec.onstop = () => {
+		rec.onstop = async () => {
 			const b = new Blob(chunksRef.current, { type: "audio/webm" });
-			setBlob(b);
-			setDurationMs(Date.now() - started);
+			const fallbackDurationMs = Date.now() - started;
 			setStatus("idle");
 			mediaRef.current?.getTracks()?.forEach((t) => t.stop());
 			mediaRef.current = null;
+			const mediaDurationMs = await readBlobDurationMs(b);
+			setDurationMs(mediaDurationMs ?? fallbackDurationMs);
+			setBlob(b);
 		};
 		rec.start();
 	};
