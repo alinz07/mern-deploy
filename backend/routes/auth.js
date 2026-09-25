@@ -38,6 +38,7 @@ router.post("/register", async (req, res) => {
 		adminCode, // <— expect this from the client when creating an admin
 	} = req.body;
 
+	let reservedAdminUserId = null;
 	try {
 		// basic presence checks
 		if (!username || !password || !email) {
@@ -82,6 +83,9 @@ router.post("/register", async (req, res) => {
 				name: adminName,
 				joinCode,
 				ownerUser: user._id,
+				accountType: "standard",
+				studentLimit: 30,
+				studentCount: 0,
 			});
 
 			// Link admin to the org
@@ -125,6 +129,28 @@ router.post("/register", async (req, res) => {
 		if (!adminUserDoc)
 			return res.status(400).json({ msg: "Invalid admin join code" });
 
+		const reservedOrg = await AdminUser.findOneAndUpdate(
+			{
+				_id: adminUserDoc._id,
+				$expr: {
+					$lt: [
+						{ $ifNull: ["$studentCount", 0] },
+						{ $ifNull: ["$studentLimit", 30] },
+					],
+				},
+			},
+			{ $inc: { studentCount: 1 } },
+			{ new: true },
+		);
+		if (!reservedOrg) {
+			return res.status(409).json({
+				msg: "This administrator has reached the student account limit.",
+				code: "STUDENT_LIMIT_REACHED",
+				studentLimit: adminUserDoc.studentLimit ?? 30,
+			});
+		}
+		reservedAdminUserId = adminUserDoc._id;
+
 		let user = new User({
 			username,
 			password,
@@ -135,6 +161,7 @@ router.post("/register", async (req, res) => {
 		const salt = await bcrypt.genSalt(10);
 		user.password = await bcrypt.hash(password, salt);
 		user = await user.save();
+		reservedAdminUserId = null;
 
 		const payload = {
 			user: {
@@ -154,6 +181,14 @@ router.post("/register", async (req, res) => {
 			}
 		);
 	} catch (err) {
+		if (reservedAdminUserId) {
+			await AdminUser.updateOne(
+				{ _id: reservedAdminUserId, studentCount: { $gt: 0 } },
+				{ $inc: { studentCount: -1 } },
+			).catch((rollbackErr) =>
+				console.error("Student slot rollback failed:", rollbackErr),
+			);
+		}
 		console.error("Register error:", err);
 		if (err?.code === 11000) {
 			const field = Object.keys(err.keyPattern || {})[0] || "field";

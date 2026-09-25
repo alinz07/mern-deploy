@@ -10,7 +10,10 @@
 		"build-client": "cd client && npm run build",
 		"start-client": "cd client && npm run start",
 		"dev": "concurrently \"npm run dev --prefix backend\" \"npm start --prefix client\"",
-		"dev:install": "npm run install-server && npm run install-client"
+		"dev:install": "npm run install-server && npm run install-client",
+		"backfill:admin-capacity": "node backend/scripts/backfill-admin-capacity.js --write",
+		"guest:create": "node backend/scripts/create-guest-admin.js",
+		"guest:reset": "node backend/scripts/reset-guest-admin.js --write"
 	},
 	"keywords": [],
 	"author": "",

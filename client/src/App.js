@@ -1,6 +1,6 @@
 // client/src/App.js
-import React, { useState, useEffect } from "react";
-import { Link, Routes, Route, Navigate } from "react-router-dom";
+import React, { useCallback, useEffect, useState } from "react";
+import { Link, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import Register from "./components/Register";
 import Login from "./components/Login";
 import axios from "axios";
@@ -17,10 +17,20 @@ import RecordingPage from "./pages/RecordingPage";
 import "./utils/axiosConfig";
 
 const App = () => {
+	const navigate = useNavigate();
 	const [user, setUser] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [joinCode, setJoinCode] = useState("");
 	const [loadingJoin, setLoadingJoin] = useState(false);
+
+	const clearSession = useCallback(() => {
+		localStorage.removeItem("token");
+		setAuthToken(null);
+		setUser(null);
+		setJoinCode("");
+		setLoadingJoin(false);
+		navigate("/", { replace: true });
+	}, [navigate]);
 
 	// Rehydrate token & fetch current user on app start
 	useEffect(() => {
@@ -39,19 +49,57 @@ const App = () => {
 					"Auth failed:",
 					err.response?.data || err.message,
 				);
-				localStorage.removeItem("token");
-				setAuthToken(null);
-				setUser(null);
+				clearSession();
 			})
 			.finally(() => setLoading(false));
-	}, []);
+	}, [clearSession]);
 
-	const handleLogout = () => {
-		localStorage.removeItem("token");
-		setAuthToken(null);
-		setUser(null);
-		setJoinCode("");
-	};
+	useEffect(() => {
+		const syncSessionAcrossTabs = async (event) => {
+			if (event.key !== "token") return;
+
+			if (!event.newValue) {
+				clearSession();
+				return;
+			}
+
+			setAuthToken(event.newValue);
+			try {
+				const res = await axios.get("/api/auth/me");
+				setUser(res.data);
+			} catch (err) {
+				console.error(
+					"Cross-tab authentication failed:",
+					err.response?.data || err.message,
+				);
+				clearSession();
+			}
+		};
+
+		window.addEventListener("storage", syncSessionAcrossTabs);
+		return () => window.removeEventListener("storage", syncSessionAcrossTabs);
+	}, [clearSession]);
+
+	useEffect(() => {
+		const interceptorId = axios.interceptors.response.use(
+			(response) => response,
+			(error) => {
+				const isLoginRequest = String(error.config?.url || "").includes(
+					"/api/auth/login",
+				);
+
+				if (error.response?.status === 401 && !isLoginRequest) {
+					clearSession();
+				}
+
+				return Promise.reject(error);
+			},
+		);
+
+		return () => axios.interceptors.response.eject(interceptorId);
+	}, [clearSession]);
+
+	const handleLogout = clearSession;
 
 	const isAdmin = user?.role === "admin";
 
@@ -176,6 +224,7 @@ const App = () => {
 							element={<UserEquipmentPage />}
 						/>
 						<Route path="/record" element={<RecordingPage />} />
+						<Route path="*" element={<Navigate to="/" replace />} />
 					</Routes>
 				</div>
 			) : (

@@ -13,6 +13,14 @@ const AdminUserSchema = new mongoose.Schema(
 			required: true,
 			index: true,
 		},
+		accountType: {
+			type: String,
+			enum: ["standard", "guest"],
+			default: "standard",
+			index: true,
+		},
+		studentLimit: { type: Number, default: 30, min: 0 },
+		studentCount: { type: Number, default: 0, min: 0 },
 	},
 	{ timestamps: true }
 );

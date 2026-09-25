@@ -23,6 +23,12 @@ function AdminDashboard({ user }) {
 	const [months, setMonths] = useState([]);
 	const [loadingUsers, setLoadingUsers] = useState(true);
 	const [loadingMonths, setLoadingMonths] = useState(true);
+	const [loadingCapacity, setLoadingCapacity] = useState(true);
+	const [capacity, setCapacity] = useState({
+		accountType: "standard",
+		studentCount: 0,
+		studentLimit: 30,
+	});
 	const [error, setError] = useState("");
 
 	// ===== UI controls (months) =====
@@ -146,8 +152,23 @@ function AdminDashboard({ user }) {
 			}
 		};
 
+		const fetchCapacity = async () => {
+			try {
+				const res = await axios.get(
+					"https://mern-deploy-docker.onrender.com/api/admin/capacity",
+					tokenHeader(),
+				);
+				setCapacity(res.data);
+			} catch {
+				setError("Failed to load student capacity");
+			} finally {
+				setLoadingCapacity(false);
+			}
+		};
+
 		fetchUsers();
 		fetchMonths();
+		fetchCapacity();
 	}, []);
 
 	// month label to create
@@ -267,7 +288,8 @@ function AdminDashboard({ user }) {
 		});
 	}, [filteredSortedMonths]);
 
-	if (loadingUsers || loadingMonths) return <p>Loading admin data…</p>;
+	if (loadingUsers || loadingMonths || loadingCapacity)
+		return <p>Loading admin data…</p>;
 	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
 
 	return (
@@ -289,6 +311,9 @@ function AdminDashboard({ user }) {
 				}}
 			>
 				<h3 style={{ margin: 0 }}>Users</h3>
+				<span className="student-capacity" title="Student account capacity">
+					{capacity.studentCount}/{capacity.studentLimit} students
+				</span>
 				<div>
 					<button
 						type="button"
@@ -391,6 +416,19 @@ function AdminDashboard({ user }) {
 													Cancel
 												</button>
 											</>
+										) : u.role === "admin" ? (
+											capacity.accountType === "guest" ? (
+												<span className="protected-account-label">
+													Protected guest account
+												</span>
+											) : (
+												<button
+													type="button"
+													onClick={() => startEdit(u)}
+												>
+													Edit
+												</button>
+											)
 										) : (
 											<>
 												<button
@@ -439,10 +477,17 @@ function AdminDashboard({ user }) {
 																					m
 																						.userId
 																						?._id !==
-																					u._id,
+																								u._id,
+																					),
+																			);
+																		setCapacity((prev) => ({
+																			...prev,
+																			studentCount: Math.max(
+																				0,
+																				prev.studentCount - 1,
 																			),
-																	);
-																})
+																		}));
+																	})
 																.finally(() =>
 																	setDeletingId(
 																		null,

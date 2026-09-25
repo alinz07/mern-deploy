@@ -32,6 +32,29 @@ router.get("/join-code", auth, async (req, res) => {
 	}
 });
 
+// GET /api/admin/capacity (admin only)
+router.get("/capacity", auth, async (req, res) => {
+	try {
+		if (req.user.role !== "admin") {
+			return res.status(403).json({ msg: "Admin only" });
+		}
+
+		const org = await AdminUser.findById(req.user.adminUser)
+			.select("accountType studentCount studentLimit")
+			.lean();
+		if (!org) return res.status(404).json({ msg: "Admin org not found" });
+
+		return res.json({
+			accountType: org.accountType || "standard",
+			studentCount: org.studentCount ?? 0,
+			studentLimit: org.studentLimit ?? 30,
+		});
+	} catch (e) {
+		console.error("GET /api/admin/capacity", e);
+		return res.status(500).json({ msg: "Server error" });
+	}
+});
+
 // GET /api/admin/contact-email  → returns the admin email for the logged-in user
 router.get("/contact-email", auth, async (req, res) => {
 	try {

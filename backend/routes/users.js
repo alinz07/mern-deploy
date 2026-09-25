@@ -7,6 +7,7 @@ const mongoose = require("mongoose");
 const Month = require("../models/Month");
 const Day = require("../models/Day");
 const Check = require("../models/Check");
+const AdminUser = require("../models/AdminUser");
 
 // GET /api/users  (admin: only within same tenant)
 router.get("/", auth, async (req, res) => {
@@ -63,6 +64,11 @@ router.delete("/:id", auth, async (req, res) => {
 		if (String(victim.adminUser) !== String(req.user.adminUser)) {
 			return res.status(403).json({ msg: "Access denied (tenant)" });
 		}
+		if (victim.role === "admin") {
+			return res.status(400).json({
+				msg: "Admin accounts and organizations cannot be deleted in the app.",
+			});
+		}
 
 		// Remove this user's months -> days -> checks
 		const months = await Month.find({ userId: id }).select("_id").lean();
@@ -73,6 +79,10 @@ router.delete("/:id", auth, async (req, res) => {
 			Check.deleteMany({ user: id }),
 			User.findByIdAndDelete(id),
 		]);
+		await AdminUser.updateOne(
+			{ _id: req.user.adminUser, studentCount: { $gt: 0 } },
+			{ $inc: { studentCount: -1 } },
+		);
 
 		return res.json({
 			ok: true,
@@ -100,6 +110,16 @@ router.put("/:id", auth, async (req, res) => {
 		if (!victim) return res.status(404).json({ msg: "User not found" });
 		if (String(victim.adminUser) !== String(req.user.adminUser)) {
 			return res.status(403).json({ msg: "Access denied (tenant)" });
+		}
+		if (victim.role === "admin") {
+			const org = await AdminUser.findById(req.user.adminUser)
+				.select("accountType")
+				.lean();
+			if (org?.accountType === "guest") {
+				return res.status(403).json({
+					msg: "Guest administrator credentials cannot be changed.",
+				});
+			}
 		}
 
 		if (typeof username === "string") username = username.trim();
