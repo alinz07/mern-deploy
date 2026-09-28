@@ -438,6 +438,32 @@ button {
 	color: var(--muted);
 }
 
+.page-loading-wrap {
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	width: 100%;
+	min-height: calc(100svh - 88px);
+	padding: clamp(38px, 9vh, 90px) 16px 40px;
+}
+
+.page-loading-status {
+	width: min(440px, 100%);
+	padding: 22px 26px;
+	border: 1px solid var(--admin-border, rgba(111, 86, 52, 0.24));
+	border-top: 5px solid var(--admin-primary, #2f6f5e);
+	border-radius: 10px;
+	background: var(--admin-panel-strong, rgba(255, 250, 238, 0.97));
+	color: var(--admin-primary-dark, #275a4d);
+	font-size: 1.15rem;
+	font-weight: 850;
+	text-align: center;
+	box-shadow:
+		0 22px 52px rgba(53, 38, 20, 0.14),
+		0 8px 18px rgba(53, 38, 20, 0.08);
+	backdrop-filter: blur(8px);
+}
+
 /* ---------------------------
    Public auth page (Login/Register)
    — keep the hero background styling here
@@ -1071,6 +1097,13 @@ button {
 	background: rgba(255, 243, 207, 0.42);
 }
 
+.user-details-empty-stats {
+	padding: 28px !important;
+	color: #6b5b42;
+	font-style: italic;
+	text-align: center !important;
+}
+
 /* ===== EquipmentPage ===== */
 .user-equipment-page-shell {
 	min-height: calc(100svh - 88px);
@@ -1357,16 +1390,6 @@ button {
 	padding: 30px clamp(14px, 4vw, 42px) 54px;
 }
 
-.day-list-loading {
-	width: min(920px, calc(100% - 28px));
-	margin: 30px auto;
-	padding: 18px;
-	border: 1px solid var(--admin-border, rgba(111, 86, 52, 0.2));
-	border-radius: 10px;
-	background: var(--admin-panel-strong, rgba(255, 250, 238, 0.96));
-	text-align: center;
-}
-
 .day-list-panel {
 	padding: clamp(18px, 3vw, 32px);
 	border: 1px solid var(--admin-border, rgba(111, 86, 52, 0.2));
@@ -1475,6 +1498,17 @@ button {
 	background: rgba(255, 243, 207, 0.72);
 	color: #4b3c29;
 	font-weight: 700;
+}
+
+.async-action-status {
+	margin: 12px 0 0;
+	padding: 9px 12px;
+	border: 1px solid rgba(190, 145, 42, 0.36);
+	border-radius: 8px;
+	background: rgba(255, 243, 207, 0.82);
+	color: #4b3c29;
+	font-weight: 800;
+	text-align: center;
 }
 
 .day-list-editor,

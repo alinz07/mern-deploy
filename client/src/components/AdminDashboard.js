@@ -289,7 +289,17 @@ function AdminDashboard({ user }) {
 	}, [filteredSortedMonths]);
 
 	if (loadingUsers || loadingMonths || loadingCapacity)
-		return <p>Loading admin data…</p>;
+		return (
+			<div className="page-loading-wrap">
+				<div
+					className="page-loading-status"
+					role="status"
+					aria-live="polite"
+				>
+					Loading admin data...
+				</div>
+			</div>
+		);
 	if (error) return <p style={{ color: "crimson" }}>{error}</p>;
 
 	return (
@@ -310,8 +320,11 @@ function AdminDashboard({ user }) {
 					flexWrap: "wrap",
 				}}
 			>
-				<h3 style={{ margin: 0 }}>Users</h3>
-				<span className="student-capacity" title="Student account capacity">
+				<h3 style={{ margin: 0 }}>Students</h3>
+				<span
+					className="student-capacity"
+					title="Student account capacity"
+				>
 					{capacity.studentCount}/{capacity.studentLimit} students
 				</span>
 				<div>
@@ -477,17 +490,23 @@ function AdminDashboard({ user }) {
 																					m
 																						.userId
 																						?._id !==
-																								u._id,
-																					),
-																			);
-																		setCapacity((prev) => ({
-																			...prev,
-																			studentCount: Math.max(
-																				0,
-																				prev.studentCount - 1,
+																					u._id,
 																			),
-																		}));
-																	})
+																	);
+																	setCapacity(
+																		(
+																			prev,
+																		) => ({
+																			...prev,
+																			studentCount:
+																				Math.max(
+																					0,
+																					prev.studentCount -
+																						1,
+																				),
+																		}),
+																	);
+																})
 																.finally(() =>
 																	setDeletingId(
 																		null,
@@ -664,7 +683,7 @@ function AdminDashboard({ user }) {
 					<thead>
 						<tr>
 							<th>Month</th>
-							<th>Owner</th>
+							<th>Student</th>
 							<th>Month Start</th>
 						</tr>
 					</thead>

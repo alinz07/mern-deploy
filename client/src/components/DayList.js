@@ -293,7 +293,14 @@ export default function DayList() {
 		return days.filter((d) => (d.environment || "online") === filterEnv);
 	}, [days, filterEnv]);
 
-	if (loading) return <p className="day-list-loading">Loading days…</p>;
+	if (loading)
+		return (
+			<div className="page-loading-wrap">
+				<div className="page-loading-status" role="status" aria-live="polite">
+					Loading days...
+				</div>
+			</div>
+		);
 
 	return (
 		<div className="day-list">
@@ -366,9 +373,14 @@ export default function DayList() {
 						<option value="inperson">inperson</option>
 					</select>
 					<button type="submit" disabled={submitting}>
-						Add/Update Day
+						{submitting ? "Creating Day..." : "Add/Update Day"}
 					</button>
 				</form>
+				{submitting && (
+					<p className="async-action-status" role="status" aria-live="polite">
+						Creating Day...
+					</p>
+				)}
 
 				{isCurrentMonth && (
 					<div className="day-list-today-actions">

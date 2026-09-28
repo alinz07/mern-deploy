@@ -140,6 +140,7 @@ function RecordingCard({
 	const [doc, setDoc] = useState(initialDoc);
 	const [msg, setMsg] = useState("");
 	const [removed, setRemoved] = useState(false);
+	const [saving, setSaving] = useState(false);
 
 	const [field, setField] = useState(initialDoc?.field || DEFAULT_FIELD);
 
@@ -230,6 +231,8 @@ function RecordingCard({
 				);
 				return;
 			}
+			setSaving(true);
+			setMsg("");
 
 			const fd = new FormData();
 			if (!hasId) {
@@ -266,6 +269,8 @@ function RecordingCard({
 		} catch (e) {
 			console.error("[RecordingCard] saveUpload error", e);
 			setMsg(e?.response?.data?.msg || "Save failed");
+		} finally {
+			setSaving(false);
 		}
 	};
 
@@ -330,7 +335,7 @@ function RecordingCard({
 						value={field}
 						onChange={(e) => setField(e.target.value)}
 						style={{ padding: 2 }}
-						disabled={hasIdNow || dayLockedForViewer}
+						disabled={hasIdNow || dayLockedForViewer || saving}
 					>
 						{FIELD_OPTIONS.map(([value, label]) => (
 							<option key={value} value={value}>
@@ -353,14 +358,14 @@ function RecordingCard({
 					{audio.status !== "recording" ? (
 						<button
 							onClick={audio.start}
-							disabled={dayLockedForViewer}
+							disabled={dayLockedForViewer || saving}
 						>
 							{recordLabel}
 						</button>
 					) : (
 						<button
 							onClick={audio.stop}
-							disabled={dayLockedForViewer}
+							disabled={dayLockedForViewer || saving}
 						>
 							{recordLabel}
 						</button>
@@ -368,7 +373,7 @@ function RecordingCard({
 
 					<button
 						onClick={audio.clear}
-						disabled={!audio.blob || dayLockedForViewer}
+						disabled={!audio.blob || dayLockedForViewer || saving}
 					>
 						Clear
 					</button>
@@ -402,24 +407,34 @@ function RecordingCard({
 			<div className="recording-card-actions">
 				<button
 					onClick={saveUpload}
-					disabled={!audio.blob || dayLockedForViewer}
+					disabled={!audio.blob || dayLockedForViewer || saving}
 					title={
 						hasIdNow
 							? "Replace audio on this record"
 							: "Create a new recording"
 					}
 				>
-					{hasIdNow ? "Save Replacement" : "Save Upload"}
+					{saving
+						? "Saving Recording..."
+						: hasIdNow
+							? "Save Replacement"
+							: "Save Upload"}
 				</button>
 
 				<button
 					onClick={deleteRecording}
 					className="recording-delete-button"
-					disabled={dayLockedForViewer}
+					disabled={dayLockedForViewer || saving}
 				>
 					{hasIdNow ? "Delete Recording" : "Discard"}
 				</button>
 			</div>
+
+			{saving && (
+				<div className="async-action-status" role="status" aria-live="polite">
+					Saving Recording...
+				</div>
+			)}
 
 			{!!msg && <div style={{ marginTop: 8, opacity: 0.8 }}>{msg}</div>}
 		</div>

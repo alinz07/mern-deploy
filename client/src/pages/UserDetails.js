@@ -318,6 +318,13 @@ export default function UserDetails() {
 	}, [userId, userFromState, fetchMonthsForUser]);
 
 	useEffect(() => {
+		if (!loadingMonths && months.length === 0 && !monthsError) {
+			setShowMonthsTable(true);
+			setShowAddMonth(true);
+		}
+	}, [loadingMonths, months.length, monthsError]);
+
+	useEffect(() => {
 		let alive = true;
 
 		const fetchSelectedMonthData = async () => {
@@ -671,8 +678,14 @@ export default function UserDetails() {
 			</div>
 		);
 
-	if (!user || loadingMonths || (!stats && !selectedMonthId)) {
-		return <div className="container">Loading...</div>;
+	if (!user || loadingMonths) {
+		return (
+			<div className="page-loading-wrap">
+				<div className="page-loading-status" role="status" aria-live="polite">
+					Loading user details...
+				</div>
+			</div>
+		);
 	}
 
 	return (
@@ -874,7 +887,11 @@ export default function UserDetails() {
 					<tbody>
 						{statRows || (
 							<tr>
-								<td colSpan={4}>Loading stats...</td>
+								<td colSpan={4} className="user-details-empty-stats">
+									{selectedMonthId
+										? "Loading stats..."
+										: "No months yet. Add a month to begin."}
+								</td>
 							</tr>
 						)}
 					</tbody>

@@ -692,7 +692,14 @@ export default function CheckPage() {
 		}
 	};
 
-	if (loading) return <p>Loading check…</p>;
+	if (loading)
+		return (
+			<div className="page-loading-wrap">
+				<div className="page-loading-status" role="status" aria-live="polite">
+					Loading sound checks...
+				</div>
+			</div>
+		);
 	if (!check) return <p>{msg || "Check not found"}</p>;
 
 	const checkedCount = fieldKeys.reduce((n, k) => n + (check[k] ? 1 : 0), 0);
