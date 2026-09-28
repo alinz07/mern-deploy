@@ -122,7 +122,13 @@ export default function UserEquipmentPage() {
 	};
 
 	if (loading) {
-		return <p className="equipment-page-loading">Loading your equipment…</p>;
+		return (
+			<div className="page-loading-wrap">
+				<div className="page-loading-status" role="status" aria-live="polite">
+					Loading your equipment...
+				</div>
+			</div>
+		);
 	}
 
 	return (

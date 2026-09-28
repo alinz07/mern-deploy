@@ -1122,16 +1122,6 @@ button {
 	padding: 30px clamp(14px, 4vw, 42px) 54px;
 }
 
-.equipment-page-loading {
-	width: min(1020px, calc(100% - 28px));
-	margin: 30px auto;
-	padding: 18px;
-	border: 1px solid var(--admin-border, rgba(111, 86, 52, 0.2));
-	border-radius: 10px;
-	background: var(--admin-panel-strong, rgba(255, 250, 238, 0.96));
-	text-align: center;
-}
-
 .equipment-page-panel {
 	padding: clamp(18px, 3vw, 32px);
 	border: 1px solid var(--admin-border, rgba(111, 86, 52, 0.2));

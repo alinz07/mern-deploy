@@ -125,7 +125,13 @@ export default function EquipmentPage() {
 	};
 
 	if (loading) {
-		return <p className="equipment-page-loading">Loading equipment…</p>;
+		return (
+			<div className="page-loading-wrap">
+				<div className="page-loading-status" role="status" aria-live="polite">
+					Loading equipment...
+				</div>
+			</div>
+		);
 	}
 
 	return (
