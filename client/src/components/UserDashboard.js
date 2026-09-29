@@ -91,7 +91,14 @@ function UserDashboard({ userId, user }) {
 		}
 	};
 
-	if (loading) return <p className="user-dashboard-loading">Loading your data...</p>;
+	if (loading)
+		return (
+			<div className="page-loading-wrap">
+				<div className="page-loading-status" role="status" aria-live="polite">
+					Loading your dashboard...
+				</div>
+			</div>
+		);
 
 	return (
 		<main className="user-dashboard">

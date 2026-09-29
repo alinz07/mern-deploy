@@ -669,16 +669,6 @@ button {
 	padding: 28px clamp(14px, 4vw, 42px) 52px;
 }
 
-.user-dashboard-loading {
-	width: min(1120px, calc(100% - 28px));
-	margin: 30px auto;
-	padding: 18px;
-	border: 1px solid var(--admin-border, rgba(111, 86, 52, 0.2));
-	border-radius: 10px;
-	background: var(--admin-panel-strong, rgba(255, 250, 238, 0.96));
-	text-align: center;
-}
-
 .user-dashboard-welcome {
 	margin-bottom: 24px;
 	text-align: center;
