@@ -101,6 +101,24 @@ export default function CheckPage() {
 	const previousCheckValuesRef = useRef({});
 
 	useEffect(() => {
+		if (msg !== "Comment saved") return undefined;
+		const timer = window.setTimeout(() => {
+			setMsg((current) => (current === "Comment saved" ? "" : current));
+		}, 5000);
+		return () => window.clearTimeout(timer);
+	}, [msg]);
+
+	useEffect(() => {
+		if (equipMsg !== "Comment saved") return undefined;
+		const timer = window.setTimeout(() => {
+			setEquipMsg((current) =>
+				current === "Comment saved" ? "" : current,
+			);
+		}, 5000);
+		return () => window.clearTimeout(timer);
+	}, [equipMsg]);
+
+	useEffect(() => {
 		const nextCheckId = check?._id || null;
 		const previousCheckId = checkIdRef.current;
 		if (
@@ -592,7 +610,7 @@ export default function CheckPage() {
 				tokenHeader(),
 			);
 			setCommentDoc((d) => ({ ...d, [field]: res.data }));
-			setMsg("Comment saved.");
+			setMsg("Comment saved");
 		} catch (e) {
 			const m =
 				e?.response?.data?.msg ||
@@ -662,7 +680,7 @@ export default function CheckPage() {
 				tokenHeader(),
 			);
 			setECmtDoc((d) => ({ ...d, [field]: res.data }));
-			setEquipMsg("Comment saved.");
+			setEquipMsg("Comment saved");
 		} catch (e) {
 			setEquipMsg(e?.response?.data?.msg || "Failed to save comment");
 		} finally {
