@@ -793,6 +793,10 @@ function assertDayEditAllowed({ req, day }) {
 // POST /api/recordings/transcribe-month  (queue all month recordings in background)
 router.post("/transcribe-month", auth, async (req, res) => {
 	try {
+		if (req.user.role !== "admin") {
+			return res.status(403).json({ msg: "Admin only" });
+		}
+
 		const { monthId, userId } = req.body;
 		console.log("[recordings/transcribe-month] request", {
 			monthId,
@@ -806,10 +810,6 @@ router.post("/transcribe-month", auth, async (req, res) => {
 			!mongoose.isValidObjectId(userId)
 		) {
 			return res.status(400).json({ msg: "Invalid ids" });
-		}
-
-		if (req.user.role !== "admin" && req.user.id !== userId) {
-			return res.status(403).json({ msg: "Forbidden" });
 		}
 
 		const month = await Month.findById(monthId).lean();
@@ -1079,6 +1079,10 @@ router.get("/by-day", auth, async (req, res) => {
 // GET /api/recordings/export-day?day=...&user=...
 router.get("/export-day", auth, async (req, res) => {
 	try {
+		if (req.user.role !== "admin") {
+			return res.status(403).json({ msg: "Admin only" });
+		}
+
 		const { day, user } = req.query;
 		if (!mongoose.isValidObjectId(day) || !mongoose.isValidObjectId(user)) {
 			return res.status(400).json({ msg: "Invalid query params" });

@@ -33,7 +33,7 @@ router.post("/", auth, async (req, res) => {
 
 		// allow if admin OR the logged-in user is the owner
 		const isAdmin = req.user.role === "admin";
-		const isSelf = String(req.user._id) === String(user);
+		const isSelf = String(req.user.id) === String(user);
 		if (!isAdmin && !isSelf)
 			return res.status(403).json({ msg: "Forbidden" });
 
@@ -47,7 +47,9 @@ router.post("/", auth, async (req, res) => {
 			return res.status(404).json({ msg: "Related doc not found" });
 		if (
 			String(u.adminUser) !== String(req.user.adminUser) ||
-			String(m.adminUser) !== String(req.user.adminUser)
+			String(m.adminUser) !== String(req.user.adminUser) ||
+			String(d.userId) !== String(user) ||
+			String(d.month) !== String(month)
 		)
 			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
 
@@ -85,10 +87,9 @@ router.post("/", auth, async (req, res) => {
 	}
 });
 
-// GET /for-day (admin-only)
+// GET /for-day (the student who owns the day or their admin)
 router.get("/for-day", auth, async (req, res) => {
 	try {
-		if (!requireAdmin(req, res)) return;
 		const { user, month, day } = req.query;
 		if (![user, month, day].every(mongoose.isValidObjectId))
 			return res.status(400).json({ msg: "user, month, day required" });
@@ -100,9 +101,15 @@ router.get("/for-day", auth, async (req, res) => {
 		]);
 		if (!u || !m || !d)
 			return res.status(404).json({ msg: "Related doc not found" });
+		const isAdmin = req.user.role === "admin";
+		const isSelf = String(req.user.id) === String(user);
+		if (!isAdmin && !isSelf)
+			return res.status(403).json({ msg: "Forbidden" });
 		if (
 			String(u.adminUser) !== String(req.user.adminUser) ||
-			String(m.adminUser) !== String(req.user.adminUser)
+			String(m.adminUser) !== String(req.user.adminUser) ||
+			String(d.userId) !== String(user) ||
+			String(d.month) !== String(month)
 		)
 			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
 
@@ -113,10 +120,9 @@ router.get("/for-day", auth, async (req, res) => {
 	}
 });
 
-// PATCH /:id (admin-only)
+// PATCH /:id (the student who owns the day or their admin)
 router.patch("/:id", auth, async (req, res) => {
 	try {
-		if (!requireAdmin(req, res)) return;
 		const { id } = req.params;
 		if (!mongoose.isValidObjectId(id))
 			return res.status(400).json({ msg: "Invalid id" });
@@ -124,17 +130,31 @@ router.patch("/:id", auth, async (req, res) => {
 		const doc = await EquipmentCheck.findById(id);
 		if (!doc) return res.status(404).json({ msg: "Not found" });
 
-		const [u, m] = await Promise.all([
+		const [u, m, d] = await Promise.all([
 			User.findById(doc.user).select("adminUser").lean(),
 			Month.findById(doc.month).select("adminUser").lean(),
+			Day.findById(doc.day).select("userId month editingLock").lean(),
 		]);
 		if (
 			!u ||
 			!m ||
+			!d ||
 			String(u.adminUser) !== String(req.user.adminUser) ||
-			String(m.adminUser) !== String(req.user.adminUser)
+			String(m.adminUser) !== String(req.user.adminUser) ||
+			String(d.userId) !== String(doc.user) ||
+			String(d.month) !== String(doc.month)
 		)
 			return res.status(403).json({ msg: "Forbidden (tenant mismatch)" });
+
+		const isAdmin = req.user.role === "admin";
+		const isSelf = String(req.user.id) === String(doc.user);
+		if (!isAdmin && !isSelf)
+			return res.status(403).json({ msg: "Forbidden" });
+		if (d.editingLock?.dayLocked && !isAdmin) {
+			return res
+				.status(403)
+				.json({ msg: "This day is locked by the teacher." });
+		}
 
 		["left", "right", "fmMic"].forEach((f) => {
 			if (typeof req.body[f] === "boolean") doc[f] = req.body[f];

@@ -7,7 +7,7 @@ function MonthList({ user }) {
 	const [months, setMonths] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [message, setMessage] = useState("");
-	const [selectedYear, setSelectedYear] = useState("all");
+	const [selectedYear, setSelectedYear] = useState("recent");
 	const [isCreating, setIsCreating] = useState(false);
 
 	const tokenHeader = () => ({
@@ -58,6 +58,24 @@ function MonthList({ user }) {
 		return date;
 	};
 
+	const isWithinLastTwelveMonths = (month) => {
+		const date = parseMonthDate(month?.name);
+		if (Number.isNaN(date.getTime())) return false;
+
+		const now = new Date();
+		const firstIncludedMonth = new Date(
+			now.getFullYear(),
+			now.getMonth() - 11,
+			1,
+		);
+		const firstFutureMonth = new Date(
+			now.getFullYear(),
+			now.getMonth() + 1,
+			1,
+		);
+		return date >= firstIncludedMonth && date < firstFutureMonth;
+	};
+
 	const uniqueYears = useMemo(
 		() =>
 			Array.from(
@@ -93,8 +111,8 @@ function MonthList({ user }) {
 
 	const filtered = months
 		.filter((m) =>
-			selectedYear === "all"
-				? true
+			selectedYear === "recent"
+				? isWithinLastTwelveMonths(m)
 				: (m.name || "").endsWith(selectedYear),
 		)
 		.sort((a, b) => parseMonthDate(b.name) - parseMonthDate(a.name));
@@ -109,7 +127,7 @@ function MonthList({ user }) {
 					value={selectedYear}
 					onChange={(e) => setSelectedYear(e.target.value)}
 				>
-					<option value="all">All</option>
+					<option value="recent">Last 12 Months</option>
 					{uniqueYears.map((year) => (
 						<option key={year} value={year}>
 							{year}
@@ -141,7 +159,9 @@ function MonthList({ user }) {
 			{filtered.length === 0 ? (
 				<p>
 					No months found
-					{selectedYear !== "all" ? ` for ${selectedYear}` : ""}.
+					{selectedYear !== "recent"
+						? ` for ${selectedYear}`
+						: " in the last 12 months"}.
 				</p>
 			) : (
 				<ul className="month-list-items">

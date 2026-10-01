@@ -24,12 +24,19 @@ async function loadContext(echeckId) {
 }
 
 function canAccess(reqUser, ctx) {
-	// equipment checks are admin-only by design
+	const isAdmin = reqUser.role === "admin";
+	const isSelf = String(reqUser.id) === String(ctx.user._id);
 	return (
-		reqUser.role === "admin" &&
+		(isAdmin || isSelf) &&
 		String(ctx.month.adminUser) === String(reqUser.adminUser) &&
-		String(ctx.user.adminUser) === String(reqUser.adminUser)
+		String(ctx.user.adminUser) === String(reqUser.adminUser) &&
+		String(ctx.day.userId) === String(ctx.user._id) &&
+		String(ctx.day.month) === String(ctx.month._id)
 	);
+}
+
+function isLockedForStudent(reqUser, ctx) {
+	return reqUser.role !== "admin" && ctx.day.editingLock?.dayLocked;
 }
 
 // GET all fields' equipComments for an equipmentCheck
@@ -71,6 +78,10 @@ router.put("/by-echeck/:id", auth, async (req, res) => {
 			return res.status(ctx.error.status).json({ msg: ctx.error.msg });
 		if (!canAccess(req.user, ctx))
 			return res.status(403).json({ msg: "Forbidden" });
+		if (isLockedForStudent(req.user, ctx))
+			return res
+				.status(403)
+				.json({ msg: "This day is locked by the teacher." });
 
 		const { echeck, day, month, user } = ctx;
 		const doc = await EquipComment.findOneAndUpdate(
@@ -118,6 +129,10 @@ router.delete("/by-echeck/:id", auth, async (req, res) => {
 			return res.status(ctx.error.status).json({ msg: ctx.error.msg });
 		if (!canAccess(req.user, ctx))
 			return res.status(403).json({ msg: "Forbidden" });
+		if (isLockedForStudent(req.user, ctx))
+			return res
+				.status(403)
+				.json({ msg: "This day is locked by the teacher." });
 
 		const out = await EquipComment.deleteOne({ equipmentCheck: id, field });
 		return res.json({ deleted: out.deletedCount > 0 });

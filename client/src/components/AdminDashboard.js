@@ -34,6 +34,7 @@ function AdminDashboard({ user }) {
 	// ===== UI controls (months) =====
 	const [searchTerm, setSearchTerm] = useState("");
 	const [sortDir, setSortDir] = useState("desc");
+	const [monthsYearFilter, setMonthsYearFilter] = useState("recent");
 
 	// ===== UI controls (users) =====
 	const [usersSearch, setUsersSearch] = useState("");
@@ -229,14 +230,59 @@ function AdminDashboard({ user }) {
 		const term = searchTerm.trim().toLowerCase();
 		const byUser = (m) =>
 			(m?.userId?.username || "").toLowerCase().includes(term);
-		const list = term ? months.filter(byUser) : months.slice();
+		const studentIds = new Set(studentUsers.map((student) => student._id));
+		const studentMonths = months.filter((month) =>
+			studentIds.has(month?.userId?._id || month?.userId),
+		);
+		const recentMonthTimestamps = new Set(
+			Array.from(
+				new Set(
+					studentMonths
+						.map((month) => nameToDate(month?.name))
+						.filter(Boolean)
+						.map((date) => date.getTime()),
+				),
+			)
+				.sort((a, b) => b - a)
+				.slice(0, 2),
+		);
+		const matchesDateFilter = (month) => {
+			const date = nameToDate(month?.name);
+			if (!date) return false;
+			if (monthsYearFilter === "recent") {
+				return recentMonthTimestamps.has(date.getTime());
+			}
+			return String(date.getFullYear()) === monthsYearFilter;
+		};
+		const list = studentMonths.filter(
+			(month) => matchesDateFilter(month) && (!term || byUser(month)),
+		);
 		list.sort((x, y) => {
 			const dx = monthRecencyTs(x);
 			const dy = monthRecencyTs(y);
 			return sortDir === "desc" ? dy - dx : dx - dy;
 		});
 		return list;
-	}, [months, searchTerm, sortDir]);
+	}, [months, studentUsers, searchTerm, sortDir, monthsYearFilter]);
+
+	const monthsFilterYears = useMemo(
+		() =>
+			Array.from(
+				new Set(
+					months.filter((month) =>
+						studentUsers.some(
+							(student) =>
+								student._id ===
+								(month?.userId?._id || month?.userId),
+						),
+					)
+						.map((month) => nameToDate(month?.name))
+						.filter(Boolean)
+						.map((date) => String(date.getFullYear())),
+				),
+			).sort((a, b) => Number(b) - Number(a)),
+		[months, studentUsers],
+	);
 
 	// ===== Users search + sort =====
 	const filteredSortedUsers = useMemo(() => {
@@ -351,6 +397,7 @@ function AdminDashboard({ user }) {
 						aria-label="search users by username"
 					/>
 				</div>
+
 			</div>
 
 			<div className="admin-table-card">
@@ -573,6 +620,23 @@ function AdminDashboard({ user }) {
 						style={{ padding: "6px 8px" }}
 						aria-label="search by username"
 					/>
+				</div>
+
+				<div>
+					<label htmlFor="admin-month-year-filter">Filter by Year </label>
+					<select
+						id="admin-month-year-filter"
+						value={monthsYearFilter}
+						onChange={(e) => setMonthsYearFilter(e.target.value)}
+						aria-label="filter months by year"
+					>
+						<option value="recent">Last 2 Months</option>
+						{monthsFilterYears.map((year) => (
+							<option key={year} value={year}>
+								{year}
+							</option>
+						))}
+					</select>
 				</div>
 
 				{/* Add Month UI */}

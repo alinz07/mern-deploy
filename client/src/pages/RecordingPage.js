@@ -705,28 +705,39 @@ function RecordingPage({
 					+ Add new recording
 				</button>
 
-				<button
-					type="button"
-					onClick={transcribeAll}
-					disabled={
-						!monthId ||
-						transcribing ||
-						hasUnsaved ||
-						dayLockedForViewer
-					}
-				>
-					{transcribing ? "Transcribing..." : "Transcribe month"}
-				</button>
+				{isAdmin && (
+					<>
+						<button
+							type="button"
+							onClick={transcribeAll}
+							disabled={
+								!monthId ||
+								transcribing ||
+								hasUnsaved ||
+								dayLockedForViewer
+							}
+						>
+							{transcribing
+								? "Transcribing..."
+								: "Transcribe month"}
+						</button>
 
-				<button
-					type="button"
-					onClick={exportAllTranscriptions}
-					disabled={!dayId || !userId || exportingAll || transcribing}
-				>
-					{exportingAll
-						? "Exporting..."
-						: "Export all transcriptions"}
-				</button>
+						<button
+							type="button"
+							onClick={exportAllTranscriptions}
+							disabled={
+								!dayId ||
+								!userId ||
+								exportingAll ||
+								transcribing
+							}
+						>
+							{exportingAll
+								? "Exporting..."
+								: "Export all transcriptions"}
+						</button>
+					</>
+				)}
 			</div>
 
 			{loading && <div style={{ marginTop: 12 }}>Loading…</div>}
