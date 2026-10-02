@@ -268,6 +268,13 @@ const App = () => {
 				>
 					<Login setUser={setUser} />
 					<Register />
+					<footer className="public-mission">
+						Gifted Youngsters&apos; mission is to help ensure audio
+						equipment for deaf and hard of hearing students is working
+						to the best of its ability and to further connect students,
+						teachers, parents, and audiologists to enrich our kids&apos;
+						lives.
+					</footer>
 				</div>
 			)}
 		</div>
