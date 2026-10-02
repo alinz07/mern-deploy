@@ -136,6 +136,7 @@ function RecordingCard({
 	onSavedLocal,
 	existingRecordings = [],
 	dayLockedForViewer = false,
+	onDayLocked,
 }) {
 	const [doc, setDoc] = useState(initialDoc);
 	const [msg, setMsg] = useState("");
@@ -269,6 +270,7 @@ function RecordingCard({
 		} catch (e) {
 			console.error("[RecordingCard] saveUpload error", e);
 			setMsg(e?.response?.data?.msg || "Save failed");
+			if (e?.response?.status === 423) onDayLocked?.();
 		} finally {
 			setSaving(false);
 		}
@@ -301,6 +303,7 @@ function RecordingCard({
 		} catch (e) {
 			console.error("[RecordingCard] delete error", e);
 			setMsg(e?.response?.data?.msg || "Delete failed");
+			if (e?.response?.status === 423) onDayLocked?.();
 		}
 	};
 
@@ -449,6 +452,7 @@ function RecordingPage({
 	onTranscribingChange,
 	dayLockedForViewer = false,
 	isAdmin = false,
+	onDayLocked,
 }) {
 	const [params] = useSearchParams();
 	const navigate = useNavigate();
@@ -761,6 +765,7 @@ function RecordingPage({
 					initialDoc={null}
 					existingRecordings={items}
 					dayLockedForViewer={dayLockedForViewer}
+					onDayLocked={onDayLocked}
 					onChanged={(savedDoc) => {
 						if (savedDoc && savedDoc._id) {
 							setItems((xs) => [
@@ -784,6 +789,7 @@ function RecordingPage({
 					initialDoc={doc}
 					existingRecordings={items}
 					dayLockedForViewer={dayLockedForViewer}
+					onDayLocked={onDayLocked}
 					onChanged={(maybeDeletedId) => {
 						if (maybeDeletedId) removeById(maybeDeletedId);
 						else load();

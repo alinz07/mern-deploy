@@ -267,4 +267,23 @@ router.post("/login", async (req, res) => {
 	}
 });
 
+// POST /api/auth/presence (student heartbeat while the app is active)
+router.post("/presence", auth, async (req, res) => {
+	try {
+		if (req.user.role !== "user") {
+			return res.status(204).end();
+		}
+
+		const lastSeenAt = new Date();
+		await User.updateOne(
+			{ _id: req.user.id, adminUser: req.user.adminUser, role: "user" },
+			{ $set: { lastSeenAt } },
+		);
+		return res.json({ lastSeenAt });
+	} catch (err) {
+		console.error("Presence heartbeat failed:", err?.message || err);
+		return res.status(500).json({ msg: "Unable to update presence" });
+	}
+});
+
 module.exports = router;

@@ -104,6 +104,38 @@ const App = () => {
 	const isAdmin = user?.role === "admin";
 
 	useEffect(() => {
+		if (!user || isAdmin) return undefined;
+
+		const sendPresence = () => {
+			if (document.visibilityState !== "visible") return;
+			axios.post("/api/auth/presence").catch((err) => {
+				console.warn(
+					"Presence update failed:",
+					err?.response?.data || err.message,
+				);
+			});
+		};
+
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === "visible") sendPresence();
+		};
+
+		sendPresence();
+		const intervalId = window.setInterval(sendPresence, 60 * 1000);
+		window.addEventListener("focus", sendPresence);
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+
+		return () => {
+			window.clearInterval(intervalId);
+			window.removeEventListener("focus", sendPresence);
+			document.removeEventListener(
+				"visibilitychange",
+				handleVisibilityChange,
+			);
+		};
+	}, [user, isAdmin]);
+
+	useEffect(() => {
 		if (!isAdmin) {
 			setJoinCode("");
 			setLoadingJoin(false);

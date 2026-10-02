@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
+import { fetchStudentPresence } from "./StudentPresence";
 
 const API = "https://mern-deploy-docker.onrender.com";
 
@@ -15,6 +16,7 @@ export default function DayList() {
 	const [msg, setMsg] = useState("");
 	const [viewer, setViewer] = useState(null);
 	const [refreshing, setRefreshing] = useState(false);
+	const [studentPresence, setStudentPresence] = useState(null);
 
 	// controls for adding a day
 	const [env, setEnv] = useState("online");
@@ -86,6 +88,26 @@ export default function DayList() {
 
 	const isAdmin = viewer?.role === "admin";
 	const canSeeUserDetails = Boolean(monthOwnerId && isAdmin);
+
+	useEffect(() => {
+		let active = true;
+		if (!isAdmin || !monthOwnerId) {
+			setStudentPresence(null);
+			return undefined;
+		}
+
+		fetchStudentPresence(monthOwnerId)
+			.then((data) => {
+				if (active) setStudentPresence(data);
+			})
+			.catch(() => {
+				if (active) setStudentPresence(null);
+			});
+
+		return () => {
+			active = false;
+		};
+	}, [isAdmin, monthOwnerId]);
 
 	// compute min/max strings for the date input (no UTC conversion)
 	const dateBounds = useMemo(() => {
@@ -305,6 +327,37 @@ export default function DayList() {
 	return (
 		<div className="day-list">
 			<div className="day-list-panel">
+				{isAdmin && studentPresence && (
+					<div className="day-list-student-card-wrap">
+						<div className="user-details-student-card">
+							<div className="user-details-student-name">
+								{studentPresence.username}
+								<span
+									className="student-presence"
+									title={
+										studentPresence.isOnline
+											? "Currently active"
+											: "Not currently active"
+									}
+								>
+									<span
+										className={`student-presence__dot ${
+											studentPresence.isOnline
+												? "student-presence__dot--online"
+												: "student-presence__dot--away"
+										}`}
+										aria-hidden="true"
+									/>
+									<span className="student-presence__label">
+										{studentPresence.isOnline
+											? "Currently active"
+											: "Not currently active"}
+									</span>
+								</span>
+							</div>
+						</div>
+					</div>
+				)}
 				<div className="day-list-actions">
 					{canSeeUserDetails && (
 						<Link

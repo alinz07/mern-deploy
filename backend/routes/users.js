@@ -9,6 +9,8 @@ const Day = require("../models/Day");
 const Check = require("../models/Check");
 const AdminUser = require("../models/AdminUser");
 
+const PRESENCE_ACTIVE_MS = 90 * 1000;
+
 // GET /api/users  (admin: only within same tenant)
 router.get("/", auth, async (req, res) => {
 	try {
@@ -42,6 +44,41 @@ router.get("/:id/data", auth, async (req, res) => {
 	} catch (err) {
 		console.error("Route error:", err.message);
 		res.status(500).send("Server Error");
+	}
+});
+
+// GET /api/users/:id/presence (admin-only, same organization)
+router.get("/:id/presence", auth, async (req, res) => {
+	try {
+		if (req.user.role !== "admin") {
+			return res.status(403).json({ msg: "Admin only" });
+		}
+		if (!mongoose.isValidObjectId(req.params.id)) {
+			return res.status(400).json({ msg: "Invalid user id" });
+		}
+
+		const student = await User.findOne({
+			_id: req.params.id,
+			adminUser: req.user.adminUser,
+			role: "user",
+		})
+			.select("username lastSeenAt")
+			.lean();
+		if (!student) return res.status(404).json({ msg: "Student not found" });
+
+		const lastSeenAt = student.lastSeenAt || null;
+		const isOnline = Boolean(
+			lastSeenAt && Date.now() - new Date(lastSeenAt).getTime() <= PRESENCE_ACTIVE_MS,
+		);
+		return res.json({
+			userId: student._id,
+			username: student.username,
+			lastSeenAt,
+			isOnline,
+		});
+	} catch (err) {
+		console.error("Presence lookup failed:", err?.message || err);
+		return res.status(500).json({ msg: "Unable to load presence" });
 	}
 });
 

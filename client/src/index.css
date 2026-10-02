@@ -2065,3 +2065,45 @@ button {
 	align-items: center;
 	justify-content: center;
 }
+.student-presence {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.82rem;
+	font-weight: 700;
+	color: #40524a;
+}
+
+.student-presence__dot {
+	display: inline-block;
+	width: 11px;
+	height: 11px;
+	flex: 0 0 11px;
+	border: 2px solid rgba(255, 255, 255, 0.9);
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px rgba(41, 62, 53, 0.28);
+}
+
+.student-presence__dot--online {
+	background: #2f9e58;
+}
+
+.student-presence__dot--away {
+	background: #e1b83f;
+}
+
+.user-details-student-name .student-presence {
+	margin-left: 12px;
+	vertical-align: middle;
+}
+
+.day-list-student-card-wrap {
+	display: flex;
+	justify-content: center;
+	margin-bottom: 14px;
+}
+
+.day-list-student-card-wrap .user-details-student-card {
+	margin-top: 0;
+	border: 5px solid #e2bd59;
+}

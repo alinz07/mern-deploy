@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import axios from "axios";
+import StudentPresence from "../components/StudentPresence";
 
 const API = "https://mern-deploy-docker.onrender.com"; // matches your pattern
 const tokenHeader = () => ({
@@ -695,6 +696,7 @@ export default function UserDetails() {
 				<div className="user-details-student-card">
 					<div className="user-details-student-name">
 						{user.username}
+						<StudentPresence userId={userId} />
 					</div>
 					{user.email && (
 						<div className="user-details-student-email">

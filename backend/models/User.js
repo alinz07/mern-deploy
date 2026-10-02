@@ -40,6 +40,11 @@ const UserSchema = new mongoose.Schema(
 			ref: "AdminUser",
 			index: true,
 		},
+		lastSeenAt: {
+			type: Date,
+			default: null,
+			index: true,
+		},
 	},
 	{ timestamps: true }
 );

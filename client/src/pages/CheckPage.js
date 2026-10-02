@@ -378,6 +378,20 @@ export default function CheckPage() {
 		};
 	}, [dayId, monthId, navigate]);
 
+	const handleLockedResponse = useCallback((error, setMessage = setMsg) => {
+		const status = error?.response?.status;
+		const message =
+			error?.response?.data?.msg || error?.response?.data?.error || "";
+		const isTeacherLock =
+			(status === 403 || status === 423) &&
+			message.toLowerCase().includes("locked by the teacher");
+
+		if (!isTeacherLock) return false;
+		setDayLocked(true);
+		setMessage(message);
+		return true;
+	}, []);
+
 	// --------- Daily check handlers ----------
 	const flushCheckPatch = useCallback(async () => {
 		if (checkSaveTimerRef.current) {
@@ -441,6 +455,7 @@ export default function CheckPage() {
 				err?.response?.data?.error ||
 				"Update failed";
 			setMsg(m);
+			handleLockedResponse(err);
 
 			if (saveGeneration === checkSaveGenerationRef.current) {
 				const rollback = {};
@@ -485,7 +500,7 @@ export default function CheckPage() {
 				}, CHECK_SAVE_DEBOUNCE_MS);
 			}
 		}
-	}, []);
+	}, [handleLockedResponse]);
 
 	const scheduleCheckPatch = useCallback(() => {
 		if (checkSaveTimerRef.current) {
@@ -565,13 +580,21 @@ export default function CheckPage() {
 					err?.response?.data?.error ||
 					"Bulk update failed";
 				setMsg(m);
+				handleLockedResponse(err);
 				checkRef.current = prevState;
 				setCheck(prevState);
 			} finally {
 				setBulkSaving(false);
 			}
 		},
-		[check, fieldKeys, bulkSaving, dayLockedForViewer, openCheckCommentDraft],
+		[
+			check,
+			fieldKeys,
+			bulkSaving,
+			dayLockedForViewer,
+			openCheckCommentDraft,
+			handleLockedResponse,
+		],
 	);
 
 	const toggleDayLock = async (nextLocked) => {
@@ -617,6 +640,7 @@ export default function CheckPage() {
 				e?.response?.data?.error ||
 				"Failed to save comment";
 			setMsg(m);
+			handleLockedResponse(e);
 		} finally {
 			setCommentSaving((s) => ({ ...s, [field]: false }));
 		}
@@ -640,6 +664,7 @@ export default function CheckPage() {
 				e?.response?.data?.error ||
 				"Failed to delete comment";
 			setMsg(m);
+			handleLockedResponse(e);
 		} finally {
 			setCommentSaving((s) => ({ ...s, [field]: false }));
 		}
@@ -664,6 +689,7 @@ export default function CheckPage() {
 		} catch (e) {
 			setEcheck((c) => ({ ...c, [field]: prev }));
 			setEquipMsg(e?.response?.data?.msg || "Update failed");
+			handleLockedResponse(e, setEquipMsg);
 		} finally {
 			setEquipSaving((s) => ({ ...s, [field]: false }));
 		}
@@ -683,6 +709,7 @@ export default function CheckPage() {
 			setEquipMsg("Comment saved");
 		} catch (e) {
 			setEquipMsg(e?.response?.data?.msg || "Failed to save comment");
+			handleLockedResponse(e, setEquipMsg);
 		} finally {
 			setECmtSaving((s) => ({ ...s, [field]: false }));
 		}
@@ -705,6 +732,7 @@ export default function CheckPage() {
 			setEquipMsg("Comment deleted.");
 		} catch (e) {
 			setEquipMsg(e?.response?.data?.msg || "Failed to delete comment");
+			handleLockedResponse(e, setEquipMsg);
 		} finally {
 			setECmtSaving((s) => ({ ...s, [field]: false }));
 		}
@@ -996,6 +1024,7 @@ export default function CheckPage() {
 							onTranscribingChange={setUiLocked}
 							dayLockedForViewer={dayLockedForViewer}
 							isAdmin={isAdmin}
+							onDayLocked={() => setDayLocked(true)}
 						/>
 					)}
 				</div>
