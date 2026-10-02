@@ -195,6 +195,12 @@ export default function UserDetails() {
 	const [createMonthError, setCreateMonthError] = useState("");
 	const [createMonthNotice, setCreateMonthNotice] = useState("");
 
+	useEffect(() => {
+		if (createMonthNotice !== "Month already exists") return undefined;
+		const timer = window.setTimeout(() => setCreateMonthNotice(""), 5000);
+		return () => window.clearTimeout(timer);
+	}, [createMonthNotice]);
+
 	const toggleCur = useCallback((field) => {
 		setOpenCur((p) => ({ ...p, [field]: !p[field] }));
 	}, []);
@@ -759,7 +765,15 @@ export default function UserDetails() {
 							</button>
 
 							{createMonthNotice && (
-								<span className="message">{createMonthNotice}</span>
+								<span
+									className={`message ${
+										createMonthNotice === "Month already exists"
+											? "duplicate-month-message"
+											: ""
+									}`}
+								>
+									{createMonthNotice}
+								</span>
 							)}
 
 							{showAddMonth && (

@@ -10,6 +10,12 @@ function MonthList({ user }) {
 	const [selectedYear, setSelectedYear] = useState("recent");
 	const [isCreating, setIsCreating] = useState(false);
 
+	useEffect(() => {
+		if (message !== "Month already exists") return undefined;
+		const timer = window.setTimeout(() => setMessage(""), 5000);
+		return () => window.clearTimeout(timer);
+	}, [message]);
+
 	const tokenHeader = () => ({
 		headers: { "x-auth-token": localStorage.getItem("token") },
 	});
@@ -140,7 +146,17 @@ function MonthList({ user }) {
 				</select>
 			</div>
 
-			{message && <p className="message">{message}</p>}
+			{message && (
+				<p
+					className={`message ${
+						message === "Month already exists"
+							? "duplicate-month-message"
+							: ""
+					}`}
+				>
+					{message}
+				</p>
+			)}
 
 			<div className="month-list-actions">
 			<button

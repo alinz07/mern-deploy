@@ -2107,3 +2107,7 @@ button {
 	margin-top: 0;
 	border: 5px solid #e2bd59;
 }
+.duplicate-month-message {
+	color: #b4233f !important;
+	font-weight: 800;
+}

@@ -51,6 +51,12 @@ function AdminDashboard({ user }) {
 	const [creatingMonth, setCreatingMonth] = useState(false);
 	const [monthCreateMsg, setMonthCreateMsg] = useState("");
 
+	useEffect(() => {
+		if (monthCreateMsg !== "Month already exists") return undefined;
+		const timer = window.setTimeout(() => setMonthCreateMsg(""), 5000);
+		return () => window.clearTimeout(timer);
+	}, [monthCreateMsg]);
+
 	// NEW: month selection
 	const monthNames = useMemo(
 		() => [
@@ -738,7 +744,14 @@ function AdminDashboard({ user }) {
 				</div>
 
 				{monthCreateMsg && (
-					<div style={{ width: "100%", opacity: 0.9 }}>
+					<div
+						className={
+							monthCreateMsg === "Month already exists"
+								? "duplicate-month-message"
+								: ""
+						}
+						style={{ width: "100%", opacity: 0.9 }}
+					>
 						{monthCreateMsg}
 					</div>
 				)}
