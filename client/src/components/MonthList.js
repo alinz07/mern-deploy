@@ -94,6 +94,10 @@ function MonthList({ user }) {
 				{ name: monthToAdd },
 				tokenHeader(),
 			);
+			if (res.status === 200) {
+				setMessage("Month already exists");
+				return;
+			}
 			setMonths((prev) => [...prev, res.data]);
 			setMessage(`✅ Added: ${monthToAdd}`);
 		} catch (err) {

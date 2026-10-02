@@ -197,7 +197,7 @@ function AdminDashboard({ user }) {
 		setMonthCreateMsg("");
 
 		try {
-			await axios.post(
+			const createResponse = await axios.post(
 				"https://mern-deploy-docker.onrender.com/api/months/new",
 				{ name: monthRecordName, userId: selectedStudentId },
 				tokenHeader(),
@@ -211,7 +211,9 @@ function AdminDashboard({ user }) {
 			setMonths(refreshed.data || []);
 
 			setMonthCreateMsg(
-				`✅ "${monthRecordName}" added for ${studentName}`,
+				createResponse.status === 200
+					? "Month already exists"
+					: `✅ "${monthRecordName}" added for ${studentName}`,
 			);
 			setShowAddMonth(false);
 			setSelectedStudentId("");

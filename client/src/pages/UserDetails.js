@@ -193,6 +193,7 @@ export default function UserDetails() {
 	);
 	const [creatingMonth, setCreatingMonth] = useState(false);
 	const [createMonthError, setCreateMonthError] = useState("");
+	const [createMonthNotice, setCreateMonthNotice] = useState("");
 
 	const toggleCur = useCallback((field) => {
 		setOpenCur((p) => ({ ...p, [field]: !p[field] }));
@@ -251,15 +252,21 @@ export default function UserDetails() {
 
 		setCreatingMonth(true);
 		setCreateMonthError("");
+		setCreateMonthNotice("");
 
 		try {
-			await axios.post(
+			const createResponse = await axios.post(
 				`${API}/api/months/new`,
 				{ name, userId },
 				tokenHeader(),
 			);
 
 			await fetchMonthsForUser(); // refresh table
+			setCreateMonthNotice(
+				createResponse.status === 200
+					? "Month already exists"
+					: `Month created: ${name}`,
+			);
 			setShowAddMonth(false);
 		} catch (e) {
 			setCreateMonthError(
@@ -442,8 +449,6 @@ export default function UserDetails() {
 												: ""
 										}`}
 										title="Open this day's check"
-										target="_blank"
-										rel="noopener noreferrer"
 									>
 										<strong>{niceDate}:</strong> {detail}
 									</Link>
@@ -479,8 +484,6 @@ export default function UserDetails() {
 												: ""
 										}`}
 										title="Open this day's check"
-										target="_blank"
-										rel="noopener noreferrer"
 									>
 										<strong>{niceDate}:</strong>{" "}
 										{c.commentText}
@@ -748,11 +751,16 @@ export default function UserDetails() {
 							<button
 								onClick={() => {
 									setCreateMonthError("");
+									setCreateMonthNotice("");
 									setShowAddMonth((p) => !p);
 								}}
 							>
 								{showAddMonth ? "Cancel" : "Add Month"}
 							</button>
+
+							{createMonthNotice && (
+								<span className="message">{createMonthNotice}</span>
+							)}
 
 							{showAddMonth && (
 								<div
