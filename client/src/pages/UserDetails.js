@@ -164,6 +164,11 @@ export default function UserDetails() {
 
 	const [user, setUser] = useState(userFromState);
 	const [stats, setStats] = useState(null);
+	const [studentNotesDraft, setStudentNotesDraft] = useState(
+		userFromState?.studentNotes || "",
+	);
+	const [savingStudentNotes, setSavingStudentNotes] = useState(false);
+	const [studentNotesMessage, setStudentNotesMessage] = useState("");
 
 	const [commentsSelected, setCommentsSelected] = useState(null);
 	const [monthDataLoading, setMonthDataLoading] = useState(false);
@@ -208,6 +213,37 @@ export default function UserDetails() {
 	const onStatsMonthChange = useCallback((e) => {
 		setSelectedMonthId(e.target.value);
 	}, []);
+
+	useEffect(() => {
+		setStudentNotesDraft(user?.studentNotes || "");
+	}, [user?._id, user?.studentNotes]);
+
+	useEffect(() => {
+		if (studentNotesMessage !== "Student notes saved") return undefined;
+		const timer = window.setTimeout(() => setStudentNotesMessage(""), 5000);
+		return () => window.clearTimeout(timer);
+	}, [studentNotesMessage]);
+
+	const saveStudentNotes = async () => {
+		if (!userId || savingStudentNotes) return;
+		setSavingStudentNotes(true);
+		setStudentNotesMessage("");
+		try {
+			const response = await axios.put(
+				`${API}/api/users/${userId}`,
+				{ studentNotes: studentNotesDraft },
+				tokenHeader(),
+			);
+			setUser(response.data);
+			setStudentNotesMessage("Student notes saved");
+		} catch (err) {
+			setStudentNotesMessage(
+				err?.response?.data?.msg || "Failed to save student notes",
+			);
+		} finally {
+			setSavingStudentNotes(false);
+		}
+	};
 
 	// ✅ Single source of truth for months fetching (used by useEffect + after create)
 	const fetchMonthsForUser = useCallback(async () => {
@@ -702,16 +738,63 @@ export default function UserDetails() {
 		<div className="container user-details-page">
 			<section className="user-details-hero">
 				<h1>User Details</h1>
-				<div className="user-details-student-card">
-					<div className="user-details-student-name">
-						{user.username}
-						<StudentPresence userId={userId} />
-					</div>
-					{user.email && (
-						<div className="user-details-student-email">
-							{user.email}
+				<div className="user-details-summary">
+					<div className="user-details-student-card">
+						<div className="user-details-student-label">
+							Student Profile
 						</div>
-					)}
+						<div className="user-details-student-name">
+							{user.username}
+							<StudentPresence userId={userId} />
+						</div>
+						{user.email && (
+							<div className="user-details-student-email">
+								<span
+									className="user-details-email-icon"
+									aria-hidden="true"
+								>
+									{"\u2709"}
+								</span>
+								<span>{user.email}</span>
+							</div>
+						)}
+					</div>
+
+					<div className="user-details-notes-card">
+						<label htmlFor="student-notes">Student Notes</label>
+						<textarea
+							id="student-notes"
+							value={studentNotesDraft}
+							onChange={(event) =>
+								setStudentNotesDraft(event.target.value)
+							}
+							maxLength={2000}
+							rows={4}
+							placeholder="Add notes about this student"
+						/>
+						<div className="user-details-notes-actions">
+							<span>{studentNotesDraft.length}/2000</span>
+							<button
+								type="button"
+								onClick={saveStudentNotes}
+								disabled={savingStudentNotes}
+							>
+								{savingStudentNotes ? "Saving..." : "Save Notes"}
+							</button>
+						</div>
+						{studentNotesMessage && (
+							<div
+								className={`user-details-notes-message ${
+									studentNotesMessage === "Student notes saved"
+										? "is-success"
+										: "is-error"
+								}`}
+								role="status"
+							>
+								{studentNotesMessage}
+							</div>
+						)}
+					</div>
 				</div>
 			</section>
 

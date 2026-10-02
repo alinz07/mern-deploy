@@ -139,7 +139,7 @@ router.put("/:id", auth, async (req, res) => {
 			return res.status(403).json({ msg: "Access denied" });
 
 		const { id } = req.params;
-		let { username, email } = req.body || {};
+		let { username, email, studentNotes } = req.body || {};
 		if (!mongoose.isValidObjectId(id))
 			return res.status(400).json({ msg: "Invalid user id" });
 
@@ -161,6 +161,7 @@ router.put("/:id", auth, async (req, res) => {
 
 		if (typeof username === "string") username = username.trim();
 		if (typeof email === "string") email = email.trim().toLowerCase();
+		if (typeof studentNotes === "string") studentNotes = studentNotes.trim();
 
 		const update = {};
 		if (typeof username === "string") {
@@ -181,6 +182,19 @@ router.put("/:id", auth, async (req, res) => {
 			update.email = email;
 		} else if (email === "") {
 			update.email = undefined;
+		}
+		if (typeof studentNotes === "string") {
+			if (victim.role !== "user") {
+				return res
+					.status(400)
+					.json({ msg: "Student notes can only be added to students" });
+			}
+			if (studentNotes.length > 2000) {
+				return res
+					.status(400)
+					.json({ msg: "Student notes must be at most 2000 characters" });
+			}
+			update.studentNotes = studentNotes;
 		}
 
 		if (!Object.keys(update).length)

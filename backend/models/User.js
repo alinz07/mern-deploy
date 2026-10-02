@@ -45,6 +45,12 @@ const UserSchema = new mongoose.Schema(
 			default: null,
 			index: true,
 		},
+		studentNotes: {
+			type: String,
+			trim: true,
+			maxlength: 2000,
+			default: "",
+		},
 	},
 	{ timestamps: true }
 );

@@ -327,11 +327,16 @@ export default function DayList() {
 	return (
 		<div className="day-list">
 			<div className="day-list-panel">
-				{isAdmin && studentPresence && (
-					<div className="day-list-student-card-wrap">
-						<div className="user-details-student-card">
-							<div className="user-details-student-name">
-								{studentPresence.username}
+				<div className="day-list-title-row">
+					<div className="day-list-title-actions">
+						<h1>{monthName || "Days"}</h1>
+						{isAdmin && studentPresence && (
+							<div className="day-list-student-line">
+								<strong>{studentPresence.username}</strong>
+								<span
+									className="day-list-student-divider"
+									aria-hidden="true"
+								/>
 								<span
 									className="student-presence"
 									title={
@@ -355,31 +360,21 @@ export default function DayList() {
 									</span>
 								</span>
 							</div>
-						</div>
+						)}
 					</div>
-				)}
-				<div className="day-list-actions">
-					{canSeeUserDetails && (
+				</div>
+				{canSeeUserDetails && (
+					<div className="day-list-actions">
 						<Link
 							className="day-list-magenta-button"
 							to={`/admin/users/${monthOwnerId}`}
 						>
 							Back to User Details
 						</Link>
-					)}
-					<button
-						type="button"
-						className="day-list-magenta-button"
-						onClick={() => refreshDays({ showMessage: true })}
-						disabled={refreshing}
-						title="Refresh days and transcription statuses"
-					>
-						{refreshing ? "Refreshing..." : "Refresh"}
-					</button>
-				</div>
+					</div>
+				)}
 
 				<header className="day-list-header">
-					<h1>{monthName || "Days"}</h1>
 					<div className="day-list-filter">
 						<label htmlFor="day-environment-filter">Filter</label>
 						<select
@@ -461,7 +456,18 @@ export default function DayList() {
 				</section>
 
 				<section className="day-list-days" aria-labelledby="days-heading">
-					<h2 id="days-heading">Days</h2>
+					<div className="day-list-days-heading">
+						<h2 id="days-heading">Days</h2>
+						<button
+							type="button"
+							className="day-list-refresh-button"
+							onClick={() => refreshDays({ showMessage: true })}
+							disabled={refreshing}
+							title="Refresh days and transcription statuses"
+						>
+							{refreshing ? "Refreshing..." : "Refresh"}
+						</button>
+					</div>
 					{filteredDays.length === 0 ? (
 						<p className="day-list-empty">
 							No days{filterEnv !== "all" ? ` for '${filterEnv}'` : ""}.
