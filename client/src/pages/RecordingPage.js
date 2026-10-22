@@ -471,6 +471,7 @@ function RecordingPage({
 	const [msg, setMsg] = useState("");
 
 	const [transcribing, setTranscribing] = useState(false);
+	const [retranscribing, setRetranscribing] = useState(false);
 	const [exportingAll, setExportingAll] = useState(false);
 
 	const hasUnsaved = locals.length > 0;
@@ -554,12 +555,13 @@ function RecordingPage({
 		setItems((xs) => xs.filter((x) => x._id !== id));
 	};
 
-	const transcribeAll = async () => {
+	const transcribeAll = async (forceRetranscribe = false) => {
 		console.group("[RecordingPage] Transcribe all");
 		console.log("Starting transcribe-all flow", {
 			dayId,
 			userId,
 			monthId,
+			forceRetranscribe,
 			itemCount: items.length,
 			savedRecordingCount,
 			hasUnsaved,
@@ -593,16 +595,24 @@ function RecordingPage({
 		}
 
 		const ok = window.confirm(
-			[
-				"Transcribe all saved recordings for this student in this month?",
-				"",
-				"Transcription will run in the background.",
+			(forceRetranscribe
+				? [
+						"Retranscribe every saved recording for this student in this month?",
+						"",
+						"Existing Text and IPA results will be replaced after each new transcription succeeds.",
+					]
+				: [
+						"Transcribe saved recordings that are missing Text or IPA?",
+						"",
+						"Recordings that already have both values will be skipped.",
+					]
+			).concat([
 				"All days in this month will be locked until it finishes.",
 				"You will be redirected to the Day List immediately.",
 				"",
 				"Only do this if you are finished editing checks, comments, equipment,",
 				"and recordings for the month.",
-			].join("\n"),
+			]).join("\n"),
 		);
 
 		if (!ok) {
@@ -612,6 +622,7 @@ function RecordingPage({
 		}
 
 		setTranscribing(true);
+		setRetranscribing(forceRetranscribe);
 		onTranscribingChange?.(true);
 		setMsg(
 			"✅ Transcription will run in the background. Redirecting to Day List now...",
@@ -620,7 +631,7 @@ function RecordingPage({
 		try {
 			const { data } = await axios.post(
 				`${API}/api/recordings/transcribe-month`,
-				{ monthId, userId },
+				{ monthId, userId, forceRetranscribe },
 				{ headers: { "x-auth-token": localStorage.getItem("token") } },
 			);
 			console.log("transcribe-month accepted", data);
@@ -628,6 +639,7 @@ function RecordingPage({
 			if (!data?.queuedDayCount && !data?.skippedAlreadyTranscribing) {
 				console.groupEnd();
 				setTranscribing(false);
+				setRetranscribing(false);
 				onTranscribingChange?.(false);
 				setMsg(data?.msg || "No recordings were queued for transcription.");
 				alert(data?.msg || "No recordings were queued for transcription.");
@@ -646,6 +658,7 @@ function RecordingPage({
 			console.error("[RecordingPage] transcribe-month error", err);
 			console.groupEnd();
 			setTranscribing(false);
+			setRetranscribing(false);
 			onTranscribingChange?.(false);
 			setMsg(
 				err?.response?.data?.msg ||
@@ -714,7 +727,7 @@ function RecordingPage({
 					<>
 						<button
 							type="button"
-							onClick={transcribeAll}
+							onClick={() => transcribeAll(false)}
 							disabled={
 								!monthId ||
 								transcribing ||
@@ -722,9 +735,24 @@ function RecordingPage({
 								dayLockedForViewer
 							}
 						>
-							{transcribing
+							{transcribing && !retranscribing
 								? "Transcribing..."
 								: "Transcribe Month"}
+						</button>
+
+						<button
+							type="button"
+							onClick={() => transcribeAll(true)}
+							disabled={
+								!monthId ||
+								transcribing ||
+								hasUnsaved ||
+								dayLockedForViewer
+							}
+						>
+							{transcribing && retranscribing
+								? "Retranscribing..."
+								: "Retranscribe Month"}
 						</button>
 
 						<button

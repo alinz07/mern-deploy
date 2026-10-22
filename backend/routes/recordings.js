@@ -37,7 +37,12 @@ async function enqueueDayTranscription({ dayId, userId, token }) {
 	);
 }
 
-async function enqueueMonthTranscription({ days, userId, token }) {
+async function enqueueMonthTranscription({
+	days,
+	userId,
+	token,
+	forceRetranscribe = false,
+}) {
 	const batchId = new mongoose.Types.ObjectId().toString();
 	const dayIds = days.map((day) => String(day._id));
 
@@ -51,11 +56,18 @@ async function enqueueMonthTranscription({ days, userId, token }) {
 		batchId,
 		userId: String(userId),
 		dayCount: dayIds.length,
+		forceRetranscribe,
 		queueLengthBefore: transcribeQueue.length,
 	});
 
 	for (const dayId of dayIds) {
-		transcribeQueue.push({ dayId, userId, token, batchId });
+		transcribeQueue.push({
+			dayId,
+			userId,
+			token,
+			batchId,
+			forceRetranscribe,
+		});
 	}
 
 	runTranscribeWorker().catch((e) =>
@@ -126,12 +138,19 @@ async function runTranscribeWorker() {
 	}
 }
 
-async function processDayTranscriptionJob({ dayId, userId, token, batchId }) {
+async function processDayTranscriptionJob({
+	dayId,
+	userId,
+	token,
+	batchId,
+	forceRetranscribe = false,
+}) {
 	console.log("[transcribeWorker] start job", {
 		dayId: String(dayId),
 		userId: String(userId),
 		hasToken: !!token,
 		batchId: batchId || null,
+		forceRetranscribe,
 	});
 
 	// mark processing
@@ -152,12 +171,19 @@ async function processDayTranscriptionJob({ dayId, userId, token, batchId }) {
 			.select("_id field audioFileId audioText audioIPA")
 			.lean();
 
-		const ids = recs.filter((r) => r.audioFileId).map((r) => String(r._id));
+		const recordingsWithAudio = recs.filter((r) => r.audioFileId);
+		const ids = recordingsWithAudio
+			.filter(
+				(r) => forceRetranscribe || !r.audioText || !r.audioIPA,
+			)
+			.map((r) => String(r._id));
 		console.log("[transcribeWorker] recordings found", {
 			dayId: String(dayId),
 			userId: String(userId),
 			recordingCount: recs.length,
-			withAudioCount: ids.length,
+			withAudioCount: recordingsWithAudio.length,
+			eligibleCount: ids.length,
+			forceRetranscribe,
 			recordings: recs.map((r) => ({
 				id: String(r._id),
 				field: r.field,
@@ -883,9 +909,11 @@ router.post("/transcribe-month", auth, async (req, res) => {
 		}
 
 		const { monthId, userId } = req.body;
+		const forceRetranscribe = req.body?.forceRetranscribe === true;
 		console.log("[recordings/transcribe-month] request", {
 			monthId,
 			userId,
+			forceRetranscribe,
 			requesterId: req.user?.id,
 			requesterRole: req.user?.role,
 		});
@@ -916,16 +944,27 @@ router.post("/transcribe-month", auth, async (req, res) => {
 					day: { $in: dayIds },
 					audioFileId: { $exists: true, $ne: null },
 				})
-					.select("day")
+					.select("day audioText audioIPA")
 					.lean()
 			: [];
 
-		if (!recordings.length) {
+		const eligibleRecordings = recordings.filter(
+			(recording) =>
+				forceRetranscribe ||
+				!recording.audioText ||
+				!recording.audioIPA,
+		);
+
+		if (!eligibleRecordings.length) {
+			const msg = recordings.length
+				? "All recordings in this month already have Text and IPA. Use Retranscribe Month to regenerate them."
+				: "No saved recordings with audio were found for this month.";
 			return res.status(202).json({
 				ok: true,
 				status: "idle",
-				msg: "No saved recordings with audio were found for this month.",
-				recordingCount: 0,
+				msg,
+				recordingCount: recordings.length,
+				eligibleRecordingCount: 0,
 				queuedDayCount: 0,
 				queuedDays: [],
 			});
@@ -969,6 +1008,7 @@ router.post("/transcribe-month", auth, async (req, res) => {
 			days: dayDocs,
 			userId,
 			token: req.header("x-auth-token"),
+			forceRetranscribe,
 		});
 		const msg = `Queued all ${queuedDays.length} day${
 			queuedDays.length === 1 ? "" : "s"
@@ -979,6 +1019,8 @@ router.post("/transcribe-month", auth, async (req, res) => {
 			userId,
 			batchId,
 			recordingCount: recordings.length,
+			eligibleRecordingCount: eligibleRecordings.length,
+			forceRetranscribe,
 			queuedDays,
 		});
 
@@ -987,6 +1029,7 @@ router.post("/transcribe-month", auth, async (req, res) => {
 			status: "queued",
 			msg,
 			recordingCount: recordings.length,
+			eligibleRecordingCount: eligibleRecordings.length,
 			queuedDayCount: queuedDays.length,
 			queuedDays,
 			batchId,

@@ -18,6 +18,7 @@ export default function DayList() {
 	const [refreshing, setRefreshing] = useState(false);
 	const [studentPresence, setStudentPresence] = useState(null);
 	const [transcribingMonth, setTranscribingMonth] = useState(false);
+	const [retranscribingMonth, setRetranscribingMonth] = useState(false);
 	const [exportingTranscriptions, setExportingTranscriptions] = useState(false);
 
 	// controls for adding a day
@@ -165,23 +166,43 @@ export default function DayList() {
 		}
 	};
 
-	const transcribeMonth = async () => {
-		if (!isAdmin || !monthId || !monthOwnerId || transcribingMonth) return;
+	const transcribeMonth = async (forceRetranscribe = false) => {
+		if (
+			!isAdmin ||
+			!monthId ||
+			!monthOwnerId ||
+			transcribingMonth ||
+			retranscribingMonth
+		)
+			return;
 		const confirmed = window.confirm(
-			[
-				"Transcribe all saved recordings for this student in this month?",
-				"",
-				"Transcription will run in the background and all days in this month will be locked until it finishes.",
-			].join("\n"),
+			(forceRetranscribe
+				? [
+						"Retranscribe every saved recording for this student in this month?",
+						"",
+						"Existing Text and IPA results will be replaced after each new transcription succeeds.",
+						"All days in this month will be locked until it finishes.",
+					]
+				: [
+						"Transcribe saved recordings that are missing Text or IPA?",
+						"",
+						"Completed recordings will be skipped, and all days in this month will be locked until it finishes.",
+					]
+			).join("\n"),
 		);
 		if (!confirmed) return;
 
-		setTranscribingMonth(true);
-		setMsg("Starting month transcription...");
+		if (forceRetranscribe) setRetranscribingMonth(true);
+		else setTranscribingMonth(true);
+		setMsg(
+			forceRetranscribe
+				? "Starting month retranscription..."
+				: "Starting month transcription...",
+		);
 		try {
 			const { data } = await axios.post(
 				`${API}/api/recordings/transcribe-month`,
-				{ monthId, userId: monthOwnerId },
+				{ monthId, userId: monthOwnerId, forceRetranscribe },
 				tokenHeader(),
 			);
 			await refreshDays();
@@ -193,6 +214,7 @@ export default function DayList() {
 			);
 		} finally {
 			setTranscribingMonth(false);
+			setRetranscribingMonth(false);
 		}
 	};
 
@@ -445,8 +467,12 @@ export default function DayList() {
 						</Link>
 						<button
 							type="button"
-							onClick={transcribeMonth}
-							disabled={transcribingMonth || exportingTranscriptions}
+							onClick={() => transcribeMonth(false)}
+							disabled={
+								transcribingMonth ||
+								retranscribingMonth ||
+								exportingTranscriptions
+							}
 						>
 							{transcribingMonth
 								? "Starting Transcription..."
@@ -454,11 +480,25 @@ export default function DayList() {
 						</button>
 						<button
 							type="button"
+							onClick={() => transcribeMonth(true)}
+							disabled={
+								transcribingMonth ||
+								retranscribingMonth ||
+								exportingTranscriptions
+							}
+						>
+							{retranscribingMonth
+								? "Starting Retranscription..."
+								: "Retranscribe Month"}
+						</button>
+						<button
+							type="button"
 							onClick={exportAllTranscriptions}
 							disabled={
 								!days.length ||
 								exportingTranscriptions ||
-								transcribingMonth
+								transcribingMonth ||
+								retranscribingMonth
 							}
 						>
 							{exportingTranscriptions
