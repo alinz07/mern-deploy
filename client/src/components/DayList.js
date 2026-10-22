@@ -17,6 +17,8 @@ export default function DayList() {
 	const [viewer, setViewer] = useState(null);
 	const [refreshing, setRefreshing] = useState(false);
 	const [studentPresence, setStudentPresence] = useState(null);
+	const [transcribingMonth, setTranscribingMonth] = useState(false);
+	const [exportingTranscriptions, setExportingTranscriptions] = useState(false);
 
 	// controls for adding a day
 	const [env, setEnv] = useState("online");
@@ -160,6 +162,76 @@ export default function DayList() {
 			setMsg(m);
 		} finally {
 			setRefreshing(false);
+		}
+	};
+
+	const transcribeMonth = async () => {
+		if (!isAdmin || !monthId || !monthOwnerId || transcribingMonth) return;
+		const confirmed = window.confirm(
+			[
+				"Transcribe all saved recordings for this student in this month?",
+				"",
+				"Transcription will run in the background and all days in this month will be locked until it finishes.",
+			].join("\n"),
+		);
+		if (!confirmed) return;
+
+		setTranscribingMonth(true);
+		setMsg("Starting month transcription...");
+		try {
+			const { data } = await axios.post(
+				`${API}/api/recordings/transcribe-month`,
+				{ monthId, userId: monthOwnerId },
+				tokenHeader(),
+			);
+			await refreshDays();
+			setMsg(data?.msg || "Month transcription started in the background.");
+		} catch (error) {
+			setMsg(
+				error?.response?.data?.msg ||
+					"Could not start month transcription. Please try again.",
+			);
+		} finally {
+			setTranscribingMonth(false);
+		}
+	};
+
+	const exportAllTranscriptions = async () => {
+		const contextDayId = days[0]?._id;
+		if (!isAdmin || !contextDayId || !monthOwnerId || exportingTranscriptions)
+			return;
+
+		setExportingTranscriptions(true);
+		setMsg("Preparing transcription export...");
+		try {
+			const response = await axios.get(
+				`${API}/api/recordings/export-day?day=${contextDayId}&user=${monthOwnerId}`,
+				{ ...tokenHeader(), responseType: "blob" },
+			);
+			const blob = new Blob([response.data], {
+				type:
+					response.headers["content-type"] ||
+					"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			});
+			const url = URL.createObjectURL(blob);
+			const downloadLink = document.createElement("a");
+			downloadLink.href = url;
+			const disposition = response.headers["content-disposition"] || "";
+			const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
+			const datePart = new Date().toISOString().slice(0, 10);
+			downloadLink.download =
+				filenameMatch?.[1] ||
+				`recordings-transcriptions-${datePart}.xlsx`;
+			downloadLink.click();
+			URL.revokeObjectURL(url);
+			setMsg("Transcription export downloaded.");
+		} catch (error) {
+			setMsg(
+				error?.response?.data?.msg ||
+					"Could not export transcriptions. Please try again.",
+			);
+		} finally {
+			setExportingTranscriptions(false);
 		}
 	};
 
@@ -371,6 +443,28 @@ export default function DayList() {
 						>
 							Back to User Details
 						</Link>
+						<button
+							type="button"
+							onClick={transcribeMonth}
+							disabled={transcribingMonth || exportingTranscriptions}
+						>
+							{transcribingMonth
+								? "Starting Transcription..."
+								: "Transcribe Month"}
+						</button>
+						<button
+							type="button"
+							onClick={exportAllTranscriptions}
+							disabled={
+								!days.length ||
+								exportingTranscriptions ||
+								transcribingMonth
+							}
+						>
+							{exportingTranscriptions
+								? "Exporting..."
+								: "Export All Transcriptions"}
+						</button>
 					</div>
 				)}
 

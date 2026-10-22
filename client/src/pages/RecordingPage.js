@@ -597,6 +597,7 @@ function RecordingPage({
 				"Transcribe all saved recordings for this student in this month?",
 				"",
 				"Transcription will run in the background.",
+				"All days in this month will be locked until it finishes.",
 				"You will be redirected to the Day List immediately.",
 				"",
 				"Only do this if you are finished editing checks, comments, equipment,",
@@ -635,7 +636,7 @@ function RecordingPage({
 
 			sessionStorage.setItem(
 				"transcribeNotice",
-				"✅ Transcription started in the background. This day will be locked until it finishes.",
+				"✅ Transcription started in the background. All days in this month will be locked until it finishes.",
 			);
 
 			console.log("Navigating back to month", { monthId });
@@ -723,7 +724,7 @@ function RecordingPage({
 						>
 							{transcribing
 								? "Transcribing..."
-								: "Transcribe month"}
+								: "Transcribe Month"}
 						</button>
 
 						<button
@@ -738,7 +739,7 @@ function RecordingPage({
 						>
 							{exportingAll
 								? "Exporting..."
-								: "Export all transcriptions"}
+								: "Export All Transcriptions"}
 						</button>
 					</>
 				)}

@@ -21,6 +21,7 @@ const TRANSCRIBE_STALE_MS = 30 * 60 * 1000; // 30 minutes
 const selfBase = `http://127.0.0.1:${process.env.PORT || 8000}`;
 
 const transcribeQueue = [];
+const transcribeBatches = new Map();
 let transcribeWorkerRunning = false;
 
 async function enqueueDayTranscription({ dayId, userId, token }) {
@@ -36,6 +37,71 @@ async function enqueueDayTranscription({ dayId, userId, token }) {
 	);
 }
 
+async function enqueueMonthTranscription({ days, userId, token }) {
+	const batchId = new mongoose.Types.ObjectId().toString();
+	const dayIds = days.map((day) => String(day._id));
+
+	transcribeBatches.set(batchId, {
+		remaining: dayIds.length,
+		dayIds,
+		failures: new Map(),
+	});
+
+	console.log("[transcribeQueue] enqueue month", {
+		batchId,
+		userId: String(userId),
+		dayCount: dayIds.length,
+		queueLengthBefore: transcribeQueue.length,
+	});
+
+	for (const dayId of dayIds) {
+		transcribeQueue.push({ dayId, userId, token, batchId });
+	}
+
+	runTranscribeWorker().catch((e) =>
+		console.error("[transcribeWorker] fatal", e),
+	);
+	return batchId;
+}
+
+async function completeMonthBatchJob(job, result) {
+	const batch = transcribeBatches.get(job.batchId);
+	if (!batch) return;
+
+	if (!result.ok) {
+		batch.failures.set(String(job.dayId), result.error || "Transcription failed");
+	}
+	batch.remaining -= 1;
+
+	if (batch.remaining > 0) return;
+
+	const finishedAt = new Date();
+	await Day.bulkWrite(
+		batch.dayIds.map((dayId) => {
+			const error = batch.failures.get(dayId);
+			return {
+				updateOne: {
+					filter: { _id: dayId },
+					update: {
+						$set: {
+							"transcription.status": error ? "error" : "done",
+							"transcription.error": error || null,
+							"transcription.finishedAt": finishedAt,
+						},
+					},
+				},
+			};
+		}),
+	);
+
+	console.log("[transcribeWorker] month batch complete", {
+		batchId: job.batchId,
+		dayCount: batch.dayIds.length,
+		failureCount: batch.failures.size,
+	});
+	transcribeBatches.delete(job.batchId);
+}
+
 async function runTranscribeWorker() {
 	if (transcribeWorkerRunning) return;
 	transcribeWorkerRunning = true;
@@ -43,18 +109,29 @@ async function runTranscribeWorker() {
 	try {
 		while (transcribeQueue.length) {
 			const job = transcribeQueue.shift();
-			await processDayTranscriptionJob(job);
+			let result;
+			try {
+				result = await processDayTranscriptionJob(job);
+			} catch (error) {
+				console.error("[transcribeWorker] unexpected job error", error);
+				result = {
+					ok: false,
+					error: error?.message ? String(error.message) : String(error),
+				};
+			}
+			if (job.batchId) await completeMonthBatchJob(job, result);
 		}
 	} finally {
 		transcribeWorkerRunning = false;
 	}
 }
 
-async function processDayTranscriptionJob({ dayId, userId, token }) {
+async function processDayTranscriptionJob({ dayId, userId, token, batchId }) {
 	console.log("[transcribeWorker] start job", {
 		dayId: String(dayId),
 		userId: String(userId),
 		hasToken: !!token,
+		batchId: batchId || null,
 	});
 
 	// mark processing
@@ -92,20 +169,23 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 
 		// nothing to do
 		if (!ids.length) {
-			console.log("[transcribeWorker] no audio recordings, marking done", {
+			console.log("[transcribeWorker] no audio recordings", {
 				dayId: String(dayId),
 				userId: String(userId),
+				batchId: batchId || null,
 			});
-			await Day.updateOne(
-				{ _id: dayId },
-				{
-					$set: {
-						"transcription.status": "done",
-						"transcription.finishedAt": new Date(),
+			if (!batchId) {
+				await Day.updateOne(
+					{ _id: dayId },
+					{
+						$set: {
+							"transcription.status": "done",
+							"transcription.finishedAt": new Date(),
+						},
 					},
-				},
-			);
-			return;
+				);
+			}
+			return { ok: true };
 		}
 
 		// run sequentially to avoid OOM / spikes
@@ -151,29 +231,34 @@ async function processDayTranscriptionJob({ dayId, userId, token }) {
 			userId: String(userId),
 			transcribedCount: ids.length,
 		});
-		await Day.updateOne(
-			{ _id: dayId },
-			{
-				$set: {
-					"transcription.status": "done",
-					"transcription.finishedAt": new Date(),
+		if (!batchId) {
+			await Day.updateOne(
+				{ _id: dayId },
+				{
+					$set: {
+						"transcription.status": "done",
+						"transcription.finishedAt": new Date(),
+					},
 				},
-			},
-		);
+			);
+		}
+		return { ok: true };
 	} catch (err) {
 		console.error("[transcribeWorker] job error", err);
-		await Day.updateOne(
-			{ _id: dayId },
-			{
-				$set: {
-					"transcription.status": "error",
-					"transcription.error": err?.message
-						? String(err.message)
-						: String(err),
-					"transcription.finishedAt": new Date(),
+		const error = err?.message ? String(err.message) : String(err);
+		if (!batchId) {
+			await Day.updateOne(
+				{ _id: dayId },
+				{
+					$set: {
+						"transcription.status": "error",
+						"transcription.error": error,
+						"transcription.finishedAt": new Date(),
+					},
 				},
-			},
-		);
+			);
+		}
+		return { ok: false, error };
 	}
 }
 
@@ -835,57 +920,76 @@ router.post("/transcribe-month", auth, async (req, res) => {
 					.lean()
 			: [];
 
-		const daysWithAudio = new Set(recordings.map((rec) => String(rec.day)));
-		const token = req.header("x-auth-token");
-		const staleCutoff = new Date(Date.now() - TRANSCRIBE_STALE_MS);
-		const queuedDays = [];
-		const skippedLockedDays = [];
-		let skippedAlreadyTranscribing = 0;
-
-		for (const day of dayDocs) {
-			if (!daysWithAudio.has(String(day._id))) continue;
-			if (day?.editingLock?.dayLocked && req.user.role !== "admin") {
-				skippedLockedDays.push(day.dayNumber);
-				continue;
-			}
-
-			const updated = await queueDayIfAvailable({
-				dayId: day._id,
-				userId,
-				token,
-				staleCutoff,
+		if (!recordings.length) {
+			return res.status(202).json({
+				ok: true,
+				status: "idle",
+				msg: "No saved recordings with audio were found for this month.",
+				recordingCount: 0,
+				queuedDayCount: 0,
+				queuedDays: [],
 			});
-
-			if (updated) queuedDays.push(day.dayNumber);
-			else skippedAlreadyTranscribing += 1;
 		}
 
-		const msg = queuedDays.length
-			? `Queued ${queuedDays.length} day${
-					queuedDays.length === 1 ? "" : "s"
-				} for transcription.`
-			: recordings.length
-				? "No new days were queued. They may already be transcribing or locked."
-				: "No saved recordings with audio were found for this month.";
+		const staleCutoff = new Date(Date.now() - TRANSCRIBE_STALE_MS);
+		const alreadyTranscribing = dayDocs.some((day) => {
+			const status = day?.transcription?.status;
+			const activityAt =
+				status === "queued"
+					? day.transcription.requestedAt
+					: day.transcription.startedAt;
+			return (
+				(status === "queued" || status === "processing") &&
+				activityAt &&
+				new Date(activityAt) >= staleCutoff
+			);
+		});
+
+		if (alreadyTranscribing) {
+			return res
+				.status(409)
+				.json({ msg: "This month is already being transcribed." });
+		}
+
+		await Day.updateMany(
+			{ _id: { $in: dayIds } },
+			{
+				$set: {
+					"transcription.status": "queued",
+					"transcription.requestedAt": new Date(),
+					"transcription.startedAt": null,
+					"transcription.finishedAt": null,
+					"transcription.error": null,
+				},
+			},
+		);
+
+		const queuedDays = dayDocs.map((day) => day.dayNumber);
+		const batchId = await enqueueMonthTranscription({
+			days: dayDocs,
+			userId,
+			token: req.header("x-auth-token"),
+		});
+		const msg = `Queued all ${queuedDays.length} day${
+			queuedDays.length === 1 ? "" : "s"
+		} in this month for transcription.`;
 
 		console.log("[recordings/transcribe-month] queued", {
 			monthId,
 			userId,
+			batchId,
 			recordingCount: recordings.length,
 			queuedDays,
-			skippedAlreadyTranscribing,
-			skippedLockedDays,
 		});
 
 		return res.status(202).json({
 			ok: true,
-			status: queuedDays.length ? "queued" : "idle",
+			status: "queued",
 			msg,
 			recordingCount: recordings.length,
 			queuedDayCount: queuedDays.length,
 			queuedDays,
-			skippedAlreadyTranscribing,
-			skippedLockedDays,
+			batchId,
 		});
 	} catch (e) {
 		console.error("POST /api/recordings/transcribe-month error", e);
@@ -1115,7 +1219,7 @@ router.get("/export-day", auth, async (req, res) => {
 
 		const monthLabel = formatExportMonth(month.name);
 		const monthDayIds = monthDays.map((monthDay) => monthDay._id);
-		const [equipmentChecks, recordings] = monthDayIds.length
+		const [equipmentChecks, recordings, comments] = monthDayIds.length
 			? await Promise.all([
 					EquipmentCheck.find({
 						user,
@@ -1128,8 +1232,15 @@ router.get("/export-day", auth, async (req, res) => {
 					})
 						.select("day field audioText audioIPA createdAt")
 						.lean(),
+					Comment.find({
+						user,
+						month: dayDoc.month,
+						day: { $in: monthDayIds },
+					})
+						.select("day field commentText")
+						.lean(),
 				])
-			: [[], []];
+			: [[], [], []];
 		const monthlySoundCheckRows = await buildMonthlySoundCheckRows({
 			userId: user,
 			monthDoc: month,
@@ -1141,6 +1252,12 @@ router.get("/export-day", auth, async (req, res) => {
 			equipmentChecks.map((equipmentCheck) => [
 				String(equipmentCheck.day),
 				equipmentCheck,
+			]),
+		);
+		const commentByDayAndField = new Map(
+			comments.map((comment) => [
+				`${String(comment.day)}:${comment.field}`,
+				comment.commentText || "",
 			]),
 		);
 		const sortedRecordings = [...recordings].sort((a, b) => {
@@ -1170,6 +1287,7 @@ router.get("/export-day", auth, async (req, res) => {
 					"Text",
 					"IPA Transcription",
 					"Equipment Missing",
+					"Sound Check Comments",
 				],
 				2,
 			),
@@ -1188,6 +1306,9 @@ router.get("/export-day", auth, async (req, res) => {
 						rec.audioText || "",
 						rec.audioIPA || "",
 						recEquipmentMissing,
+						commentByDayAndField.get(
+							`${String(rec.day)}:${rec.field}`,
+						) || "",
 					],
 					3,
 					48,
@@ -1217,7 +1338,7 @@ router.get("/export-day", auth, async (req, res) => {
 		const workbook = buildXlsxWorkbook([
 			{
 				name: "Recordings",
-				widths: [22, 16, 34, 34, 24],
+				widths: [22, 16, 34, 34, 24, 42],
 				rows: recordingsSheet,
 			},
 			{

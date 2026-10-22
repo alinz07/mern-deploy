@@ -601,12 +601,12 @@ button {
 
 .public-mission {
 	position: absolute;
-	right: clamp(1rem, 5vw, 6rem);
-	bottom: clamp(12px, 2.5vh, 28px);
-	width: min(760px, 58vw);
-	padding: 11px 16px;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	width: 100%;
+	padding: 12px clamp(18px, 5vw, 72px);
 	border-top: 3px solid #e2bd59;
-	border-radius: 6px;
 	background: rgba(39, 90, 77, 0.96);
 	box-shadow: 0 10px 28px rgba(49, 36, 20, 0.16);
 	color: #fffaf0;
@@ -614,6 +614,12 @@ button {
 	font-weight: 650;
 	line-height: 1.45;
 	text-align: center;
+}
+
+.public-mission span {
+	display: block;
+	max-width: 1000px;
+	margin: 0 auto;
 }
 
 @media (min-width: 900px) {
@@ -671,7 +677,8 @@ button {
 
 	.public-mission {
 		position: static;
-		width: min(520px, 92vw);
+		width: 100vw;
+		margin-inline: calc(50% - 50vw);
 		margin-top: 0.25rem;
 		font-size: 0.82rem;
 	}
